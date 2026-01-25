@@ -1,9 +1,10 @@
 use axum::{
-    http::{Request, StatusCode},
+    http::{Request, StatusCode, Method},
     body::Body,
     middleware::Next,
     response::{Response, Redirect, IntoResponse},
     extract::State,
+
 };
 use std::sync::atomic::Ordering;
 use crate::state::AppState;
@@ -15,6 +16,11 @@ pub async fn setup_redirect_guard(
 ) -> Result<Response, StatusCode> {
     let path = req.uri().path();
     let setup_completed = state.setup_completed.load(Ordering::SeqCst);
+
+     // Allow GET /setup always
+    if path == "/setup" && req.method() ==  Method::GET {
+        return Ok(next.run(req).await);
+    }
 
     if !setup_completed && path != "/setup" {
         // Redirect all requests to /setup if setup is not completed

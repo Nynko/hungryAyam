@@ -7,11 +7,13 @@ use axum::{
 };
 
 use crate::{
-    features::restaurant::dto::{CreateRestaurantRequest,RestaurantDto},
+    features::restaurant::{
+        dto::CreateRestaurantRequest,
+        domain::Restaurant
+    },
     state::AppState,
     errors::api_errors::ApiError,
 };
-
 
 pub fn restaurant_routes() -> Router<AppState>{
     Router::new()
@@ -23,7 +25,7 @@ pub fn restaurant_routes() -> Router<AppState>{
 pub async fn create_restaurant(
     State(app_state): State<AppState>,
     Json(request): Json<CreateRestaurantRequest>,
-) -> Result<(StatusCode, Json<RestaurantDto>), ApiError> {
+) -> Result<(StatusCode, Json<Restaurant>), ApiError> {
     let restaurant = app_state.restaurant_service.create_restaurant(request).await?;
     Ok((StatusCode::CREATED, Json(restaurant)))
 }

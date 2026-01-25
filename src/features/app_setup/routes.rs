@@ -1,11 +1,10 @@
+use std::sync::atomic::Ordering;
 use axum::{
     Json,
     extract::State,
     http::StatusCode,
     Router,
-    routing::{
-        get, post
-    }
+    routing::get
 };
 use serde::Serialize;
 
@@ -44,6 +43,7 @@ pub async fn setup_app(
     match setup_result {
         Ok(setup) => {
             // Setup succeeded, return 201 Created (or 200 OK if you prefer)
+            state.setup_completed.store(true, Ordering::SeqCst);
             Ok((StatusCode::CREATED, Json(setup)))
         }
         Err(e) => {

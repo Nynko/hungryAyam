@@ -6,8 +6,6 @@ use crate::features::restaurant::{
     domain::Restaurant
 };
 
-pub type RestaurantRow = Restaurant;
-
 
 #[derive(Clone)]
 pub struct RestaurantRepository {
@@ -20,9 +18,9 @@ impl RestaurantRepository {
     }
 
     /// Create a new restaurant
-    pub async fn create(&self, request: CreateRestaurantRequest) -> Result<RestaurantRow> {
+    pub async fn create(&self, request: CreateRestaurantRequest) -> Result<Restaurant> {
         let restaurant = sqlx::query_as!(
-            RestaurantRow,
+            Restaurant,
             r#"
             INSERT INTO restaurants (name, image_url)
             VALUES ($1, $2)

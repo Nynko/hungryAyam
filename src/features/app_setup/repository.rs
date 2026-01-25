@@ -20,8 +20,8 @@ impl AppSetupRepository {
         let setup = sqlx::query_as!(
             AppSetup,
             r#"
-            INSERT INTO app_settings (title)
-            VALUES ($1)
+            INSERT INTO app_settings (id,title)
+            VALUES (1,$1)
             RETURNING id, title, created_at, updated_at
             "#,
             request.app_name

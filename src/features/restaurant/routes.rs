@@ -1,14 +1,23 @@
 use axum::{
+    routing::post,
+    Router,
     extract::{State},
     http::StatusCode,
     Json,
 };
 
 use crate::{
-    api::dtos::restaurant::{CreateRestaurantRequest,RestaurantDto},
+    features::restaurant::dto::{CreateRestaurantRequest,RestaurantDto},
     state::AppState,
     errors::api_errors::ApiError,
 };
+
+
+pub fn restaurant_routes() -> Router<AppState>{
+    Router::new()
+        .route("/api/restaurants", post(create_restaurant))
+}
+
 
 /// Create a new restaurant
 pub async fn create_restaurant(

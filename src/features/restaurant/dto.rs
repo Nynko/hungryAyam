@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::domain::restaurant::Restaurant;
+use crate::features::restaurant::domain::Restaurant;
 use ts_rs::TS;
 
 pub type RestaurantDto = Restaurant;

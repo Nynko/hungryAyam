@@ -1,21 +1,21 @@
 use axum::{
-    Router, middleware, routing::{get, post}
+    Router, middleware
 };
 use tower_http::cors::CorsLayer;
 
 use crate::{
-    api::routes::{
-        restaurants::create_restaurant,
-        setup::{setup_app,get_setup_status}
+    setup_middleware::setup_redirect_guard,
+    features::{
+        app_setup::routes::setup_routes,
+        restaurant::routes::restaurant_routes
     },
-    api::setup_middleware::setup_redirect_guard,
     state::AppState
 };
 
 pub fn build_app(state: AppState) -> Router {
     Router::new()
-        .route("/setup", get(get_setup_status).post(setup_app))
-        .route("/api/restaurants", post(create_restaurant))
+        .merge(setup_routes())
+        .merge(restaurant_routes())
         // .route("/api/restaurants", get(list_restaurants))
         // .route("/api/restaurants/:id", get(get_restaurant))
         // .route("/api/restaurants/:id", put(update_restaurant))

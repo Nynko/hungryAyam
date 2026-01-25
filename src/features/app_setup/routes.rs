@@ -1,9 +1,20 @@
-use axum::{Json, extract::State,http::StatusCode};
+use axum::{
+    Json,
+    extract::State,
+    http::StatusCode,
+    Router,
+    routing::{
+        get, post
+    }
+};
 use serde::Serialize;
+
 use crate::{
+    features::app_setup::{
+        domain::AppSetup,
+        dto::AppSetupRequest
+    },
     state::AppState,
-    domain::app_setup::AppSetup,
-    api::dtos::app_setup::AppSetupRequest,
     errors::api_errors::ApiError
 };
 
@@ -12,6 +23,12 @@ use crate::{
 pub struct SetupStatus {
     completed: bool,
 }
+
+pub fn setup_routes() -> Router<AppState>{
+    Router::new()
+        .route("/setup", get(get_setup_status).post(setup_app))
+}
+
 
 pub async fn get_setup_status(State(state): State<AppState>) -> (StatusCode, Json<SetupStatus>) {
     let completed = state.setup_completed.load(std::sync::atomic::Ordering::SeqCst);

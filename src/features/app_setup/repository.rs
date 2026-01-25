@@ -1,8 +1,9 @@
 use anyhow::Result;
 use sqlx::PgPool;
 
-use crate::domain::app_setup::AppSetup;
-use crate::api::dtos::app_setup::AppSetupRequest;
+use crate::features::app_setup::{
+    domain::AppSetup,
+    dto::AppSetupRequest};
 
 #[derive(Clone)]
 pub struct AppSetupRepository {
@@ -16,7 +17,7 @@ impl AppSetupRepository {
 
     /// Create a new restaurant
     pub async fn create(&self, request: AppSetupRequest) -> Result<AppSetup> {
-        let restaurant = sqlx::query_as!(
+        let setup = sqlx::query_as!(
             AppSetup,
             r#"
             INSERT INTO app_settings (title)
@@ -28,7 +29,7 @@ impl AppSetupRepository {
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(restaurant)
+        Ok(setup)
     }
 
 }

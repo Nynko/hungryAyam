@@ -1,8 +1,13 @@
 use anyhow::Result;
 use sqlx::PgPool;
 
-use crate::repository::db_models::RestaurantRow;
-use crate::api::dtos::restaurant::CreateRestaurantRequest;
+use crate::features::restaurant::{
+    dto::CreateRestaurantRequest,
+    domain::Restaurant
+};
+
+pub type RestaurantRow = Restaurant;
+
 
 #[derive(Clone)]
 pub struct RestaurantRepository {

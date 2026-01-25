@@ -5,14 +5,14 @@ use tracing_subscriber::FmtSubscriber;
 use dotenv::dotenv;
 use std::sync::{Arc, atomic::AtomicBool};
 
+
+mod features;
+
 mod app;
 mod state;
 mod errors;
-mod domain;
-mod repository;
-mod services;
-mod api;
 mod auth;
+mod setup_middleware;
 
 use crate::{
     state::build_state,

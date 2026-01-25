@@ -1,8 +1,10 @@
 use anyhow::Result;
 
-use crate::domain::app_setup::AppSetup;
-use crate::api::dtos::app_setup::{AppSetupRequest};
-use crate::repository::app_setup::AppSetupRepository;
+use crate::features::app_setup::{
+  domain::AppSetup,
+  dto::AppSetupRequest,
+  repository::AppSetupRepository
+};
 
 #[derive(Clone)]
 pub struct AppSetupService {

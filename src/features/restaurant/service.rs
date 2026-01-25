@@ -1,8 +1,10 @@
 use anyhow::Result;
 
-use crate::domain::restaurant::Restaurant;
-use crate::api::dtos::restaurant::CreateRestaurantRequest;
-use crate::repository::restaurants::RestaurantRepository;
+use crate::features::restaurant::{
+    domain::Restaurant,
+    dto::CreateRestaurantRequest,
+    repository::RestaurantRepository
+};
 
 #[derive(Clone)]
 pub struct RestaurantService {

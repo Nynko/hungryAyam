@@ -1,11 +1,16 @@
 use sqlx::PgPool;
 use std::sync::Arc;
 use crate::{
-    repository::{
-        app_setup::AppSetupRepository,
-        restaurants::RestaurantRepository
-    },
-    services::{app_setup::AppSetupService, restaurants::RestaurantService},
+    features::{
+        restaurant::{
+        repository::RestaurantRepository,
+        service::RestaurantService
+        },
+        app_setup::{
+            repository::AppSetupRepository,
+            service::AppSetupService
+        }
+    }
 };
 
 #[derive(Clone)]

@@ -2,8 +2,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 use crate::features::restaurant::{
-    dto::CreateRestaurantRequest,
-    domain::Restaurant
+    db_model::RestaurantRow, domain::Restaurant, dto::CreateRestaurantRequest
 };
 
 
@@ -20,7 +19,7 @@ impl RestaurantRepository {
     /// Create a new restaurant
     pub async fn create(&self, request: CreateRestaurantRequest) -> Result<Restaurant> {
         let restaurant = sqlx::query_as!(
-            Restaurant,
+            RestaurantRow,
             r#"
             INSERT INTO restaurants (name, image_url)
             VALUES ($1, $2)
@@ -32,7 +31,7 @@ impl RestaurantRepository {
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(restaurant)
+        Ok(restaurant.into_domain())
     }
 
     // /// Get a restaurant by ID

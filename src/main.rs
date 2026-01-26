@@ -13,6 +13,7 @@ mod state;
 mod errors;
 mod auth;
 mod setup_middleware;
+mod types;
 
 use crate::{
     state::build_state,

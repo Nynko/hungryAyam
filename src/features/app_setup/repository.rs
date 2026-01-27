@@ -1,10 +1,14 @@
 use anyhow::Result;
 use sqlx::PgPool;
 
-use crate::features::app_setup::{
+use crate::{
+    features::app_setup::{
     domain::AppSetup,
     db_model::AppSetupRow,
-    dto::AppSetupRequest};
+    dto::AppSetupRequest
+    },
+    types::utils::option_to_string
+};
 
 #[derive(Clone)]
 pub struct AppSetupRepository {
@@ -18,7 +22,6 @@ impl AppSetupRepository {
 
     /// Create a new restaurant
     pub async fn create(&self, request: AppSetupRequest) -> Result<AppSetup> {
-        let image_url_string : Option<String> = request.image_url.map(|url| (*url).to_string());
         let setup_row = sqlx::query_as!(
             AppSetupRow,
             r#"
@@ -27,7 +30,7 @@ impl AppSetupRepository {
             RETURNING id, title, image_url, created_at, updated_at
             "#,
             request.app_name,
-            image_url_string
+            option_to_string(request.image_url)
         )
         .fetch_one(&self.pool)
         .await?;

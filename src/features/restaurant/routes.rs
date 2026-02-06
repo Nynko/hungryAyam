@@ -18,11 +18,11 @@ use crate::{
 
 pub fn restaurant_routes() -> Router<AppState>{
     Router::new()
-        .route("/api/restaurants", post(create_restaurant))
-        .route("/api/restaurant", get(get_restaurant))
+        .route("/api/restaurant", post(create_restaurant))
+        .route("/api/restaurant/:id", get(get_restaurant))
         .route("/api/all-restaurants", get(list_restaurants))
         .route("/api/active-restaurants", get(get_restaurants_with_active_orders))
-        .route("/api/update-restaurant", post(update_restaurant))
+        .route("/api/update-restaurant/:id", post(update_restaurant))
 }
 
 

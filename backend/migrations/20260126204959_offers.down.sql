@@ -8,3 +8,6 @@ drop column if exists allowed_tag_id;
 
 drop table if exists item_tags;
 drop table if exists tags;
+drop table if exists offer_slot_constraints;
+drop table if exists offer_slots;
+drop table if exists offers;

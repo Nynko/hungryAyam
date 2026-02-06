@@ -1,4 +1,4 @@
-// pub mod dto;
+pub mod dto;
 // pub mod routes;
 pub mod domain;
 // pub mod service;

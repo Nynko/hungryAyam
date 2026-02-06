@@ -41,6 +41,7 @@ create table menu_sections (
 create table items (
     id uuid primary key default gen_random_uuid(),
     name text not null,
+    description text,
     base_price_cents integer not null check (base_price_cents >= 0),
     image_url text,
     active boolean not null default true,

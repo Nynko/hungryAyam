@@ -13,7 +13,8 @@ use crate::{
 pub struct ItemRow {
     pub id: Uuid,
     pub name: String,
-    pub base_price_cents: i32,
+    pub description: Option<String>,
+    pub base_price_cents: u32,
     #[domain_with_urlstring]
     pub image_url: Option<String>,
     pub active: bool,

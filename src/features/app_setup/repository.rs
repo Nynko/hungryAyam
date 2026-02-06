@@ -7,7 +7,8 @@ use crate::{
     db_model::AppSetupRow,
     dto::AppSetupRequest
     },
-    types::utils::option_to_string
+    types::utils::option_to_string,
+    traits::domain_traits::IntoDomain
 };
 
 #[derive(Clone)]

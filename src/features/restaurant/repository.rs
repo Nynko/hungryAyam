@@ -6,7 +6,8 @@ use crate::{
     features::restaurant::{
     db_model::RestaurantRow, domain::Restaurant, dto::CreateRestaurantRequest
     },
-    types::utils::option_to_string
+    types::utils::option_to_string,
+    traits::domain_traits::IntoDomain
 };
 
 

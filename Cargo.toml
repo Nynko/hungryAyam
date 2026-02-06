@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Handmade macros
+hungry_ayam_derive = { path = "../hungry_ayam_derive" }
+
 # Core framework
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1.49.0", features = ["full"] }

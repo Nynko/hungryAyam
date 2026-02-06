@@ -27,7 +27,7 @@ pub fn build_app(state: AppState) -> Router {
         // Health check
         // .route("/health", get(health_check))
         // Add CORS middleware
-        .layer(CorsLayer::permissive())
+        .layer(CorsLayer::permissive()) // TODO: Change
         .layer(middleware::from_fn_with_state(state.clone(), setup_redirect_guard))
         .with_state(state)
 }

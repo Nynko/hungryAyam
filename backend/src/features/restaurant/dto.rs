@@ -9,3 +9,9 @@ pub struct CreateRestaurantRequest {
     pub name: String,
     pub image_url: Option<UrlString>,
 }
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct UpdateRestaurantRequest {
+    pub name: Option<String>,
+    pub image_url: Option<UrlString>,
+}

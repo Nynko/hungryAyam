@@ -9,7 +9,10 @@ use uuid::Uuid;
 
 use crate::{
     features::restaurant::{
-        dto::CreateRestaurantRequest,
+        dto::{
+            CreateRestaurantRequest,
+            UpdateRestaurantRequest
+            },
         domain::Restaurant
     },
     state::AppState,
@@ -59,7 +62,7 @@ pub async fn get_restaurant(
 pub async fn update_restaurant(
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
-    Json(request): Json<CreateRestaurantRequest>,
+    Json(request): Json<UpdateRestaurantRequest>,
 ) -> Result<Json<Restaurant>, ApiError> {
     let restaurant = app_state.restaurant_service
         .update_restaurant(id, request)

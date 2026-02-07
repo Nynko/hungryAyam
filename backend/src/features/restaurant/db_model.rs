@@ -17,4 +17,5 @@ pub struct RestaurantRow {
     #[domain_with_urlstring]
     pub image_url: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

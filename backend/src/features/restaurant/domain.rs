@@ -12,6 +12,7 @@ pub struct Restaurant {
     pub name: String,
     pub image_url: Option<UrlString>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>
 }
 
 impl Restaurant {

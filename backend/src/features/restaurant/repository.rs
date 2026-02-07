@@ -4,10 +4,8 @@ use uuid::Uuid;
 
 use crate::{
     features::restaurant::{
-    db_model::RestaurantRow, domain::Restaurant, dto::CreateRestaurantRequest
-    },
-    types::utils::option_to_string,
-    traits::domain_traits::IntoDomain
+    db_model::RestaurantRow, domain::Restaurant, dto::{CreateRestaurantRequest, UpdateRestaurantRequest}
+    }, traits::domain_traits::IntoDomain, types::utils::option_to_string
 };
 
 
@@ -27,7 +25,7 @@ impl RestaurantRepository {
             r#"
             INSERT INTO restaurants (name, image_url)
             VALUES ($1, $2)
-            RETURNING id, name, image_url, created_at
+            RETURNING id, name, image_url, created_at, updated_at
             "#,
             request.name,
             option_to_string(request.image_url)
@@ -41,7 +39,7 @@ impl RestaurantRepository {
     pub async fn get_by_id(&self, id: Uuid) -> Result<Option<Restaurant>> {
         let restaurant_row = sqlx::query_as!(
             RestaurantRow,
-            "SELECT id, name, image_url, created_at FROM restaurants WHERE id = $1",
+            "SELECT id, name, image_url, created_at, updated_at FROM restaurants WHERE id = $1",
             id
         )
         .fetch_optional(&self.pool)
@@ -53,7 +51,7 @@ impl RestaurantRepository {
     pub async fn get_all(&self) -> Result<Vec<Restaurant>> {
         let restaurants = sqlx::query_as!(
             RestaurantRow,
-            "SELECT id, name, image_url, created_at FROM restaurants ORDER BY created_at DESC"
+            "SELECT id, name, image_url, created_at, updated_at FROM restaurants ORDER BY created_at DESC"
         )
         .fetch_all(&self.pool)
         .await?;
@@ -62,14 +60,16 @@ impl RestaurantRepository {
     }
 
     /// Update a restaurant
-    pub async fn update(&self, id: Uuid, request: CreateRestaurantRequest) -> Result<Option<Restaurant>> {
+    pub async fn update(&self, id: Uuid, request: UpdateRestaurantRequest) -> Result<Option<Restaurant>> {
         let restaurant = sqlx::query_as!(
             RestaurantRow,
             r#"
             UPDATE restaurants
-            SET name = $1, image_url = $2
+            SET name = COALESCE($1, name),
+                image_url = COALESCE($2, image_url),
+                updated_at = NOW()
             WHERE id = $3
-            RETURNING id, name, image_url, created_at
+            RETURNING id, name, image_url, created_at, updated_at
             "#,
             request.name,
             option_to_string(request.image_url),
@@ -98,7 +98,7 @@ impl RestaurantRepository {
         let restaurants = sqlx::query_as!(
             RestaurantRow,
             r#"
-            SELECT DISTINCT r.id, r.name, r.image_url, r.created_at
+            SELECT DISTINCT r.id, r.name, r.image_url, r.created_at, r.updated_at
             FROM restaurants r
             INNER JOIN orders o ON r.id = o.restaurant_id
             WHERE o.active = true

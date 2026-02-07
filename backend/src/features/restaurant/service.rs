@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::features::restaurant::{
     domain::Restaurant,
-    dto::CreateRestaurantRequest,
+    dto::{CreateRestaurantRequest, UpdateRestaurantRequest},
     repository::RestaurantRepository
 };
 
@@ -34,13 +34,16 @@ impl RestaurantService {
     }
 
     /// Update a restaurant with business validation
-    pub async fn update_restaurant(&self, id: Uuid, request: CreateRestaurantRequest) -> Result<Option<Restaurant>> {
+    pub async fn update_restaurant(&self, id: Uuid, request: UpdateRestaurantRequest) -> Result<Option<Restaurant>> {
 
         if !self.repository.get_by_id(id).await?.is_some() {
             return Ok(None);
         }
 
-        Restaurant::validate_name(&request.name)?;
+        if let Some(name) = &request.name {
+            Restaurant::validate_name(&name)?;
+        }
+
 
         self.repository.update(id, request).await
     }

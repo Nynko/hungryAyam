@@ -4,6 +4,7 @@ create table menu_section_items (
     item_id uuid not null references items(id),
     position integer not null default 0,
     created_at timestamptz not null default now(),
+    created_by uuid not null references users(id),
     primary key (section_id, item_id)
 );
 

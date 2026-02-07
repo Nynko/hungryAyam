@@ -5,7 +5,8 @@ create table offers (
     restaurant_id uuid not null references restaurants(id) on delete cascade,
     title text not null,
     fixed_price_cents integer not null check (fixed_price_cents >= 0),
-    created_at timestamptz not null default now()
+    created_at timestamptz not null default now(),
+    created_by uuid references users(id)
 );
 
 -- Offer slots

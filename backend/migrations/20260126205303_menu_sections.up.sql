@@ -6,6 +6,7 @@ create table menu_sections (
     label text not null,
     position integer not null default 0,
     created_at timestamptz not null default now(),
+    created_by uuid not null references users(id)
 );
 
 create index idx_menu_sections_menu on menu_sections(menu_id);

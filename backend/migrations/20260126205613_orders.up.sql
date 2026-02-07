@@ -1,14 +1,12 @@
 -- Orders
 create table orders (
     id uuid primary key default gen_random_uuid(),
-    restaurant_id uuid not null references restaurants(id) on delete cascade,
-    menu_id uuid not null references menus(id),
-    user uuid not null references users(id),
-    deadline timestamptz,
-    allow_late boolean not null default false,
-    active boolean not null default true,
+    user_id uuid not null references users(id),
+    session_id uuid not null references order_sessions(id) on delete cascade,
+    offer_id uuid references offers(id),
+    total_price_cents integer not null,
     created_at timestamptz not null default now()
 );
 
-create index idx_orders_restaurant on orders(restaurant_id);
-create index idx_orders_active on orders(active);
+create index idx_orders_session on orders(session_id);
+create index idx_orders_user on orders(user_id);

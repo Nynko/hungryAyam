@@ -6,14 +6,18 @@ create table offers (
     title text not null,
     fixed_price_cents integer not null check (fixed_price_cents >= 0),
     created_at timestamptz not null default now(),
-    created_by uuid references users(id)
+    created_by uuid not null references users(id)
 );
 
 -- Offer slots
+-- Example: Menu of the day correspond to "entrée" + "plat" + (optional) dessert
+-- Slot 1 => Entrée (1)
+-- Slot 2 => Plat (1)
+-- Slot 3 => Dessert (0 or 1)
 create table offer_slots (
     id uuid primary key default gen_random_uuid(),
     offer_id uuid not null references offers(id) on delete cascade,
-    label text not null,
+    label text not null, -- e.g. "Pick your main"
     min_items integer not null check (min_items >= 0),
     max_items integer not null check (max_items >= min_items)
 );

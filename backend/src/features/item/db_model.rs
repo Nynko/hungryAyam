@@ -19,4 +19,5 @@ pub struct ItemRow {
     pub image_url: Option<String>,
     pub active: bool,
     pub created_at: DateTime<Utc>,
+    pub update_at: DateTime<Utc>,
 }

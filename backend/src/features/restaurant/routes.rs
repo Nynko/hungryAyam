@@ -1,93 +1,88 @@
 use axum::{
-    routing::{get, post},
-    Router,
-    extract::{State, Path},
-    http::StatusCode,
-    Json,
+    Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, post}
 };
 use uuid::Uuid;
 
 use crate::{
-    features::restaurant::{
-        dto::{
-            CreateRestaurantRequest,
-            UpdateRestaurantRequest
-            },
-        domain::Restaurant
+    errors::{
+        api_errors::ApiError,
+        json_extractor::ApiJson,
     },
+    features::restaurant::domain::{CreateRestaurant, Restaurant, UpdateRestaurant},
     state::AppState,
-    errors::api_errors::ApiError,
+    types::response::ApiResponse
 };
 
-pub fn restaurant_routes() -> Router<AppState>{
+pub fn restaurant_routes() -> Router<AppState> {
     Router::new()
-        .route("/api/restaurant", post(create_restaurant))
-        .route("/api/restaurant/:id", get(get_restaurant))
-        .route("/api/all-restaurants", get(list_restaurants))
-        .route("/api/active-restaurants", get(get_restaurants_with_active_orders))
-        .route("/api/update-restaurant/:id", post(update_restaurant))
+        .route("/api/restaurants", post(create_restaurant))
+        .route("/api/restaurants", get(list_restaurants))
+        .route("/api/restaurants/active", get(list_active_restaurants))
+        .route("/api/restaurants/:id", get(get_restaurant))
+        .route("/api/restaurants/:id", delete(delete_restaurant))
+        .route("/api/update-restaurant", post(update_restaurant))
 }
-
 
 /// Create a new restaurant
 pub async fn create_restaurant(
     State(app_state): State<AppState>,
-    Json(request): Json<CreateRestaurantRequest>,
-) -> Result<(StatusCode, Json<Restaurant>), ApiError> {
+    ApiJson(request): ApiJson<CreateRestaurant>,
+) -> Result<(StatusCode, ApiJson<ApiResponse<Restaurant>>), ApiError> {
     let restaurant = app_state.restaurant_service.create_restaurant(request).await?;
-    Ok((StatusCode::CREATED, Json(restaurant)))
+    Ok((StatusCode::CREATED, ApiJson(ApiResponse::success(restaurant))))
 }
 
 /// Get all restaurants
 pub async fn list_restaurants(
     State(app_state): State<AppState>,
-) -> Result<Json<Vec<Restaurant>>, ApiError> {
+) -> Result<ApiJson<ApiResponse<Vec<Restaurant>>>, ApiError> {
     let restaurants = app_state.restaurant_service.list_restaurants().await?;
-    Ok(Json(restaurants))
+    Ok(ApiJson(ApiResponse::success(restaurants)))
+}
+
+/// Get restaurants with active order sessions
+pub async fn list_active_restaurants(
+    State(app_state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<Vec<Restaurant>>>, ApiError> {
+    let restaurants = app_state.restaurant_service.list_active_restaurants().await?;
+    Ok(ApiJson(ApiResponse::success(restaurants)))
 }
 
 /// Get a restaurant by ID
 pub async fn get_restaurant(
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<Restaurant>, ApiError> {
+) -> Result<ApiJson<ApiResponse<Restaurant>>, ApiError> {
     let restaurant = app_state.restaurant_service
         .get_restaurant(id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    Ok(Json(restaurant))
+    Ok(ApiJson(ApiResponse::success(restaurant)))
 }
 
 /// Update a restaurant
 pub async fn update_restaurant(
     State(app_state): State<AppState>,
-    Path(id): Path<Uuid>,
-    Json(request): Json<UpdateRestaurantRequest>,
-) -> Result<Json<Restaurant>, ApiError> {
+    ApiJson(request): ApiJson<UpdateRestaurant>,
+) -> Result<ApiJson<ApiResponse<Restaurant>>, ApiError> {
     let restaurant = app_state.restaurant_service
-        .update_restaurant(id, request)
+        .update_restaurant(request)
         .await?
         .ok_or(ApiError::NotFound)?;
-    Ok(Json(restaurant))
+    Ok(ApiJson(ApiResponse::success(restaurant)))
 }
 
-// /// Delete a restaurant
-// pub async fn delete_restaurant(
-//     State(restaurant_service): State<RestaurantService>,
-//     Path(id): Path<Uuid>,
-// ) -> Result<StatusCode, ApiError> {
-//     let deleted = restaurant_service.delete_restaurant(id).await?;
-//     if deleted {
-//         Ok(StatusCode::NO_CONTENT)
-//     } else {
-//         Err(ApiError::NotFound)
-//     }
-// }
-
-/// Get restaurants with active orders
-pub async fn get_restaurants_with_active_orders(
+/// Delete a restaurant
+/// Returns success on deletion, 404 if not found
+/// Returns 400 if restaurant has active order sessions
+pub async fn delete_restaurant(
     State(app_state): State<AppState>,
-) -> Result<Json<Vec<Restaurant>>, ApiError> {
-    let restaurants = app_state.restaurant_service.get_restaurants_with_active_orders().await?;
-    Ok(Json(restaurants))
+    Path(id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
+    let deleted = app_state.restaurant_service.delete_restaurant(id).await?;
+    if deleted {
+        Ok(ApiJson(ApiResponse::success(())))
+    } else {
+        Err(ApiError::NotFound)
+    }
 }

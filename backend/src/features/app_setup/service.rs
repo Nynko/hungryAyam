@@ -1,10 +1,10 @@
 use anyhow::Result;
 
-use crate::features::app_setup::{
+use crate::{features::app_setup::{
   domain::AppSetup,
   dto::AppSetupRequest,
   repository::AppSetupRepository
-};
+}, traits::domain_traits::IntoDomain};
 
 #[derive(Clone)]
 pub struct AppSetupService {
@@ -26,6 +26,6 @@ impl AppSetupService {
             anyhow::bail!("App name cannot exceed 100 characters");
         }
 
-        return self.repository.create(request).await;
+        return self.repository.create(request.into_domain()).await;
     }
 }

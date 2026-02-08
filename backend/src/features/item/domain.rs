@@ -2,35 +2,34 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use ts_rs::TS;
-use crate::types::url::UrlString;
+use hungry_ayam_derive::domain_struct;
+use crate::types::{
+    url::UrlString,
+    price::PriceCents,
+    name::Name
+};
 
 // Remove derive(TS) and #[ts(export)] if the front end dto diverge from the domain
+#[domain_struct(create, update)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Item {
+    #[create_ignore]
+    #[update_required]
     pub id: Uuid,
-    pub name: String,
-    pub base_price_cents: u32,
+    pub restaurant_id: Uuid,
+    pub name: Name,
     pub description: Option<String>,
+    pub base_price_cents: PriceCents,
     pub image_url: Option<UrlString>,
+    #[create_ignore]
     pub active: bool,
+    #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
-    pub update_at: DateTime<Utc>,
-    // pub tags : Vec<Tags>
-}
-
-impl Item {
-
-    pub fn validate_name(name : &str) -> Result<(),anyhow::Error> {
-        if name.trim().is_empty() {
-            anyhow::bail!("Item name cannot be empty"); // Can be replaced by domain error later
-        }
-
-        if name.len() > 100 {
-            anyhow::bail!("Item name cannot exceed 100 characters"); // Can be replaced by domain error later
-        }
-
-        Ok(())
-    }
-
+    #[derived_domain_ignore]
+    pub updated_at: DateTime<Utc>,
+    #[update_ignore]
+    pub created_by: Uuid,
+    #[create_ignore]
+    pub updated_by: Uuid,
 }

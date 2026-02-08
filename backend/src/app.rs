@@ -7,7 +7,9 @@ use crate::{
     setup_middleware::setup_redirect_guard,
     features::{
         app_setup::routes::setup_routes,
-        restaurant::routes::restaurant_routes
+        restaurant::routes::restaurant_routes,
+        user::routes::user_routes,
+        item::routes::item_routes
     },
     state::AppState
 };
@@ -16,6 +18,8 @@ pub fn build_app(state: AppState) -> Router {
     Router::new()
         .merge(setup_routes())
         .merge(restaurant_routes())
+        .merge(user_routes())
+        .merge(item_routes())
         // .route("/api/restaurants", get(list_restaurants))
         // .route("/api/restaurants/:id", get(get_restaurant))
         // .route("/api/restaurants/:id", put(update_restaurant))

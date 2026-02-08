@@ -3,11 +3,13 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    features::restaurant::{
-    db_model::RestaurantRow, domain::Restaurant, dto::{CreateRestaurantRequest, UpdateRestaurantRequest}
-    }, traits::domain_traits::IntoDomain, types::utils::option_to_string
+    features::restaurant::{db_model::RestaurantRow, domain::{
+        CreateRestaurant, Restaurant, UpdateRestaurant
+    }},
+    types::{
+        name::Name, url::UrlString
+    }
 };
-
 
 #[derive(Clone)]
 pub struct RestaurantRepository {
@@ -19,95 +21,159 @@ impl RestaurantRepository {
         Self { pool }
     }
 
-    pub async fn create(&self, request: CreateRestaurantRequest) -> Result<Restaurant> {
+    pub async fn create(&self, request: CreateRestaurant) -> Result<Restaurant> {
         let restaurant = sqlx::query_as!(
             RestaurantRow,
             r#"
-            INSERT INTO restaurants (name, image_url)
-            VALUES ($1, $2)
-            RETURNING id, name, image_url, created_at, updated_at
+            INSERT INTO restaurants (name, image_url, created_by, updated_by)
+            VALUES ($1, $2, $3, $4)
+            RETURNING
+                id,
+                name as "name: Name",
+                image_url as "image_url?: UrlString",
+                created_at,
+                created_by,
+                updated_at,
+                updated_by
             "#,
-            request.name,
-            option_to_string(request.image_url)
+            request.name.as_ref(),
+            request.image_url.as_ref().map(|u| u.to_string()),
+            request.created_by,
+            request.created_by
         )
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(restaurant.into_domain())
+        Ok(restaurant)
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<Option<Restaurant>> {
-        let restaurant_row = sqlx::query_as!(
+        let restaurant = sqlx::query_as!(
             RestaurantRow,
-            "SELECT id, name, image_url, created_at, updated_at FROM restaurants WHERE id = $1",
+            r#"
+            SELECT
+                id,
+                name as "name: Name",
+                image_url as "image_url?: UrlString",
+                created_at,
+                created_by,
+                updated_at,
+                updated_by
+            FROM restaurants
+            WHERE id = $1
+            "#,
             id
         )
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(restaurant_row.map(|resto| resto.into_domain()))
+        Ok(restaurant)
     }
 
     pub async fn get_all(&self) -> Result<Vec<Restaurant>> {
         let restaurants = sqlx::query_as!(
             RestaurantRow,
-            "SELECT id, name, image_url, created_at, updated_at FROM restaurants ORDER BY created_at DESC"
+            r#"
+            SELECT
+                id,
+                name as "name: Name",
+                image_url as "image_url?: UrlString",
+                created_at,
+                created_by,
+                updated_at,
+                updated_by
+            FROM restaurants
+            ORDER BY created_at DESC
+            "#
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(restaurants.into_iter().map(|resto| resto.into_domain()).collect())
+        Ok(restaurants)
     }
 
     /// Update a restaurant
-    pub async fn update(&self, id: Uuid, request: UpdateRestaurantRequest) -> Result<Option<Restaurant>> {
+    pub async fn update(&self, request: UpdateRestaurant) -> Result<Option<Restaurant>> {
         let restaurant = sqlx::query_as!(
             RestaurantRow,
             r#"
             UPDATE restaurants
             SET name = COALESCE($1, name),
                 image_url = COALESCE($2, image_url),
-                updated_at = NOW()
+                updated_at = NOW(),
+                updated_by = $4
             WHERE id = $3
-            RETURNING id, name, image_url, created_at, updated_at
+            RETURNING
+                id,
+                name as "name: Name",
+                image_url as "image_url?: UrlString",
+                created_at,
+                created_by,
+                updated_at,
+                updated_by
             "#,
-            request.name,
-            option_to_string(request.image_url),
-            id
+            request.name.as_ref().map(|n| n.as_ref()),
+            request.image_url.as_ref().map(|u| u.to_string()),
+            request.id,
+            request.updated_by
         )
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(restaurant.map(|resto| resto.into_domain()))
+        Ok(restaurant)
     }
 
-    // /// Delete a restaurant
-    // pub async fn delete(&self, id: Uuid) -> Result<bool> {
-    //     let result = sqlx::query!(
-    //         "DELETE FROM restaurants WHERE id = $1",
-    //         id
-    //     )
-    //     .execute(&self.pool)
-    //     .await?;
-
-    //     Ok(result.rows_affected() > 0)
-    // }
-
-    /// Get restaurants with active orders
-    pub async fn get_with_active_orders(&self) -> Result<Vec<Restaurant>> {
+    /// Get all restaurants that have active order sessions
+    /// A session is considered active if its end_date is in the future
+    pub async fn get_with_active_sessions(&self) -> Result<Vec<Restaurant>> {
         let restaurants = sqlx::query_as!(
             RestaurantRow,
             r#"
-            SELECT DISTINCT r.id, r.name, r.image_url, r.created_at, r.updated_at
+            SELECT DISTINCT
+                r.id,
+                r.name as "name: Name",
+                r.image_url as "image_url?: UrlString",
+                r.created_at,
+                r.created_by,
+                r.updated_at,
+                r.updated_by
             FROM restaurants r
-            INNER JOIN orders o ON r.id = o.restaurant_id
-            WHERE o.active = true
+            INNER JOIN order_sessions os ON os.restaurant_id = r.id
+            WHERE os.end_date > NOW()
             ORDER BY r.created_at DESC
             "#
         )
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(restaurants.into_iter().map(|resto| resto.into_domain()).collect())
+        Ok(restaurants)
+    }
+
+    /// Check if a restaurant has any active order sessions
+    /// A session is considered active if its end_date is in the future
+    pub async fn has_active_session(&self, restaurant_id: Uuid) -> Result<bool> {
+        let result = sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM order_sessions
+                WHERE restaurant_id = $1
+                AND end_date > NOW()
+            ) as "exists!"
+            "#,
+            restaurant_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    /// Delete a restaurant
+    pub async fn delete(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query!("DELETE FROM restaurants WHERE id = $1", id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 }

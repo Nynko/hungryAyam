@@ -1,75 +1,126 @@
+//! # Hungry Ayam Derive Macros
+//!
+//! Custom derive macros for domain-driven design patterns.
+//!
+//! ## Macros
+//!
+//! - [`domain_struct`] - Attribute macro to generate `CreateX` and `UpdateX` structs
+//! - [`IntoDomain`] - Convert DTOs/DB models → Domain objects
+//!
+//! ## Quick Reference
+//!
+//! ```text
+//! DTO/DB Model ──IntoDomain──▶ Domain ──domain_struct──▶ CreateX/UpdateX
+//! ```
+//!
+//! ### `domain_struct` Attribute
+//!
+//! Automatically forwards all derives and struct-level attributes to generated structs.
+//!
+//! ```rust,ignore
+//! #[domain_struct(create, update)]
+//! #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+//! #[ts(export)]
+//! pub struct Item {
+//!     #[derived_domain_ignore]
+//!     pub id: Uuid,
+//!     pub name: String,
+//!     #[create_ignore]
+//!     pub active: bool,
+//! }
+//! // Generates CreateItem and UpdateItem with same derives and #[ts(export)]
+//! ```
+//!
+//! ### `IntoDomain` Attributes
+//!
+//! | Attribute | Description |
+//! |-----------|-------------|
+//! | `#[into_domain(Type)]` | Target domain type (required) |
+//! | `#[into_domain_name = "field"]` | Rename field in target |
+//! | `#[into_domain_ignored]` | Skip field |
+//! | `#[into_domain_with(fn)]` | Use custom function for conversion (fn must return `Result<T, E>`) |
+//!
+//! ### Field Attributes for `domain_struct`
+//!
+//! | Attribute | Create | Update |
+//! |-----------|--------|--------|
+//! | `#[derived_domain_ignore]` | Exclude | Exclude |
+//! | `#[create_ignore]` | Exclude | - |
+//! | `#[update_ignore]` | - | Exclude |
+//! | `#[create_optional]` | Wrap in Option | - |
+//! | `#[derived_domain_optional]` | Wrap in Option | (no-op) |
+//! | `#[update_required]` | - | Keep as-is (no Option wrap) |
+//!
+//! **Note:** `UpdateX` structs wrap all non-Option fields in `Option<T>` automatically.
+//! Fields already `Option<T>` stay as `Option<T>` (no double-wrapping).
+
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields, Path};
+use syn::{parse_macro_input, DeriveInput};
 
-#[proc_macro_derive(IntoDomain, attributes(into_domain, domain_with_urlstring))]
-pub fn into_domain_derive(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+use crate::into_domain::impl_into_domain_derive;
+use crate::domain_struct::impl_domain_struct;
 
-    impl_into_domain_derive(input)
+mod into_domain;
+mod domain_struct;
+
+/// Attribute macro to generate `Create{StructName}` and/or `Update{StructName}` structs.
+///
+/// This macro automatically forwards all derives and struct-level attributes
+/// (like `#[ts(export)]`, `#[serde(...)]`) to the generated structs.
+///
+/// # Arguments
+///
+/// - `create` - Generate a `Create{StructName}` struct
+/// - `update` - Generate an `Update{StructName}` struct
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[domain_struct(create, update)]
+/// #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+/// #[ts(export)]
+/// pub struct Item {
+///     #[derived_domain_ignore]
+///     pub id: Uuid,
+///     pub name: String,
+///     pub description: Option<String>,
+///     #[create_ignore]
+///     pub active: bool,
+/// }
+/// // Generates:
+/// // #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+/// // #[ts(export)]
+/// // pub struct CreateItem { pub name: String, pub description: Option<String> }
+/// //
+/// // #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+/// // #[ts(export)]
+/// // pub struct UpdateItem { pub name: Option<String>, pub description: Option<String>, pub active: Option<bool> }
+/// ```
+#[proc_macro_attribute]
+pub fn domain_struct(args: TokenStream, input: TokenStream) -> TokenStream {
+    impl_domain_struct(args, input)
 }
 
-
-fn impl_into_domain_derive(input : DeriveInput) -> TokenStream{
-
-    let struct_name = &input.ident;
-    // Try to find #[into_domain(SomeType)]
-    let mut domain_name = None;
-    for attr in &input.attrs {
-        if attr.path().is_ident("into_domain") {
-            // Parse the attribute tokens as a Path, e.g. #[into_domain(Item)]
-            let path: Path = attr.parse_args().expect("Expected a type name in #[into_domain(Type)]");
-            if let Some(ident) = path.get_ident() {
-                domain_name = Some(ident.clone());
-            }
-        }
-    }
-
-
-    let domain_name = match domain_name {
-        Some(name) => name,
-        None => {
-            // Emit a compile error if the attribute is missing
-            return syn::Error::new_spanned(
-                struct_name,
-                "Missing #[into_domain(DomainType)] attribute. Please specify the domain struct."
-            )
-            .to_compile_error()
-            .into();
-        }
-    };
-
-    let fields = if let Data::Struct(data_struct) = &input.data {
-        if let Fields::Named(fields_named) = &data_struct.fields {
-            &fields_named.named
-        } else {
-            panic!("IntoDomain can only be derived for structs with named fields");
-        }
-    } else {
-        panic!("IntoDomain can only be derived for structs");
-    };
-
-    // Generate field mappings
-    let field_mappings = fields.iter().map(|f| {
-        let name = &f.ident;
-        // Check for #[domain_with_urlstring] attribute
-        let is_urlstring = f.attrs.iter().any(|attr| attr.path().is_ident("domain_with_urlstring"));
-        if is_urlstring {
-            quote! { #name: self.#name.and_then(|s| url::Url::parse(&s).ok().map(UrlString)), }
-        } else {
-            quote! { #name: self.#name, }
-        }
-    });
-
-    let expanded = quote! {
-        impl IntoDomain<#domain_name> for #struct_name {
-            fn into_domain(self) -> #domain_name {
-                #domain_name {
-                    #(#field_mappings)*
-                }
-            }
-        }
-    };
-
-    TokenStream::from(expanded)
+/// Derive `IntoDomain<T>` trait for converting structs to domain objects.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[derive(IntoDomain)]
+/// #[into_domain(User)]
+/// pub struct UserRow {
+///     pub id: Uuid,
+///     #[into_domain_name = "user_email"]
+///     #[into_domain_with(parse_email)]  // custom conversion function
+///     pub email: Option<String>,
+///     #[into_domain_with(parse_name)]
+///     pub name: String,
+///     #[into_domain_ignored]
+///     pub internal: String,
+/// }
+/// ```
+#[proc_macro_derive(IntoDomain, attributes(into_domain, into_domain_name, into_domain_ignored, into_domain_with))]
+pub fn into_domain_derive(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    impl_into_domain_derive(input)
 }

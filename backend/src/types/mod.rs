@@ -1,2 +1,7 @@
+pub mod email;
+pub mod name;
+pub mod price;
+pub mod response;
 pub mod url;
 pub mod utils;
+pub mod validated;

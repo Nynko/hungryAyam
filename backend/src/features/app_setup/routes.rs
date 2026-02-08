@@ -1,6 +1,5 @@
 use std::sync::atomic::Ordering;
 use axum::{
-    Json,
     extract::State,
     http::StatusCode,
     Router,
@@ -14,7 +13,11 @@ use crate::{
         dto::AppSetupRequest
     },
     state::AppState,
-    errors::api_errors::ApiError
+    errors::{
+        api_errors::ApiError,
+        json_extractor::ApiJson,
+    },
+    types::response::ApiResponse
 };
 
 
@@ -29,22 +32,22 @@ pub fn setup_routes() -> Router<AppState>{
 }
 
 
-pub async fn get_setup_status(State(state): State<AppState>) -> (StatusCode, Json<SetupStatus>) {
+pub async fn get_setup_status(State(state): State<AppState>) -> ApiJson<ApiResponse<SetupStatus>> {
     let completed = state.setup_completed.load(std::sync::atomic::Ordering::SeqCst);
-    (StatusCode::OK ,Json(SetupStatus { completed }))
+    ApiJson(ApiResponse::success(SetupStatus { completed }))
 }
 
 pub async fn setup_app(
     State(state): State<AppState>,
-    Json(request): Json<AppSetupRequest>
-) -> Result<(StatusCode, Json<AppSetup>), ApiError> {
+    ApiJson(request): ApiJson<AppSetupRequest>
+) -> Result<(StatusCode, ApiJson<ApiResponse<AppSetup>>), ApiError> {
     let setup_result = state.setup_service.setup_app(request).await;
 
     match setup_result {
         Ok(setup) => {
-            // Setup succeeded, return 201 Created (or 200 OK if you prefer)
+            // Setup succeeded, return 201 Created
             state.setup_completed.store(true, Ordering::SeqCst);
-            Ok((StatusCode::CREATED, Json(setup)))
+            Ok((StatusCode::CREATED, ApiJson(ApiResponse::success(setup))))
         }
         Err(e) => {
             Err(ApiError::from(e))

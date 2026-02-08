@@ -3,8 +3,9 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde::Serialize;
 use thiserror::Error;
+
+use crate::types::response::ApiResponse;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -24,11 +25,6 @@ pub enum ApiError {
     Internal(String),
 }
 
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String,
-}
-
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = match self {
@@ -39,9 +35,7 @@ impl IntoResponse for ApiError {
             ApiError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
-        let body = Json(ErrorResponse {
-            error: self.to_string(),
-        });
+        let body = Json(ApiResponse::<()>::error(self.to_string()));
 
         (status, body).into_response()
     }

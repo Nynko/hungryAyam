@@ -2,31 +2,29 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use ts_rs::TS;
-use crate::types::url::UrlString;
+use hungry_ayam_derive::domain_struct;
+use crate::types::{
+    url::UrlString,
+    name::Name
+};
 
+#[domain_struct(create, update)]
 // Remove derive(TS) and #[ts(export)] if the front end dto diverge from the domain
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+// With validated types implementing sqlx traits, we can derive FromRow directly!
+#[derive(Debug, Clone, Serialize, Deserialize, TS, sqlx::FromRow)]
 #[ts(export)]
 pub struct Restaurant {
+    #[create_ignore]
+    #[update_required]
     pub id: Uuid,
-    pub name: String,
+    pub name: Name,
     pub image_url: Option<UrlString>,
+    #[update_ignore]
+    pub created_by: Uuid,
+    #[create_ignore]
+    pub updated_by: Uuid,
+    #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>
-}
-
-impl Restaurant {
-
-    pub fn validate_name(name : &str) -> Result<(),anyhow::Error> {
-        if name.trim().is_empty() {
-            anyhow::bail!("Restaurant name cannot be empty"); // Can be replaced by domain error later
-        }
-
-        if name.len() > 100 {
-            anyhow::bail!("Restaurant name cannot exceed 100 characters"); // Can be replaced by domain error later
-        }
-
-        Ok(())
-    }
-
+    #[derived_domain_ignore]
+    pub updated_at: DateTime<Utc>,
 }

@@ -8,8 +8,11 @@ use uuid::Uuid;
 
 use crate::{
     features::item::{
-        domain::Item,
-        dto::{CreateItemRequest, UpdateItemRequest}
+        domain::{
+            item::Item,
+            tag::{Tag, UpdateTag}
+        },
+        dto::{CreateItemRequest, UpdateItemRequest},
     },
     state::AppState,
     errors::{
@@ -21,6 +24,7 @@ use crate::{
 
 pub fn item_routes() -> Router<AppState> {
     Router::new()
+        // Item routes
         .route("/api/items", post(create_item))
         .route("/api/items/batch", post(create_batch_items))
         .route("/api/items/:id", get(get_item))
@@ -28,9 +32,16 @@ pub fn item_routes() -> Router<AppState> {
         .route("/api/update-item", post(update_item))
         .route("/api/restaurants/:restaurant_id/items", get(list_items_for_restaurant))
         .route("/api/restaurants/:restaurant_id/items/active", get(list_active_items_for_restaurant))
+        // Tag routes (read, update, delete - tags are created through item operations)
+        .route("/api/tags", get(list_tags))
+        .route("/api/tags/:id", get(get_tag))
+        .route("/api/update-tag", post(update_tag))
+        .route("/api/tags/:id", delete(delete_tag))
 }
 
-/// Create a new item
+// ==================== ITEM HANDLERS ====================
+
+/// Create a new item (with tags if provided)
 pub async fn create_item(
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateItemRequest>,
@@ -78,7 +89,7 @@ pub async fn list_active_items_for_restaurant(
     Ok(ApiJson(ApiResponse::success(items)))
 }
 
-/// Update an item (ID provided in request body)
+/// Update an item (ID provided in request body, with tags if provided)
 pub async fn update_item(
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateItemRequest>,
@@ -96,6 +107,53 @@ pub async fn delete_item(
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
     let deleted = app_state.item_service.delete_item(id).await?;
+    if deleted {
+        Ok(ApiJson(ApiResponse::success(())))
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+// ==================== TAG HANDLERS ====================
+
+/// List all tags
+pub async fn list_tags(
+    State(app_state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<Vec<Tag>>>, ApiError> {
+    let tags = app_state.item_service.list_tags().await?;
+    Ok(ApiJson(ApiResponse::success(tags)))
+}
+
+/// Get a tag by ID
+pub async fn get_tag(
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<Tag>>, ApiError> {
+    let tag = app_state.item_service
+        .get_tag(id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(ApiJson(ApiResponse::success(tag)))
+}
+
+/// Update a tag (ID provided in request body)
+pub async fn update_tag(
+    State(app_state): State<AppState>,
+    ApiJson(request): ApiJson<UpdateTag>,
+) -> Result<ApiJson<ApiResponse<Tag>>, ApiError> {
+    let tag = app_state.item_service
+        .update_tag(request)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(ApiJson(ApiResponse::success(tag)))
+}
+
+/// Delete a tag (will cascade remove from all items)
+pub async fn delete_tag(
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
+    let deleted = app_state.item_service.delete_tag(id).await?;
     if deleted {
         Ok(ApiJson(ApiResponse::success(())))
     } else {

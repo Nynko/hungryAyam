@@ -2,9 +2,13 @@ use anyhow::Result;
 use uuid::Uuid;
 
 use crate::features::item::{
-    domain::Item,
+    domain::{
+        item::Item,
+        tag::{Tag, UpdateTag}
+    },
     dto::{CreateItemRequest, UpdateItemRequest},
-    repository::ItemRepository
+    repository::ItemRepository,
+
 };
 
 #[derive(Clone)]
@@ -17,7 +21,9 @@ impl ItemService {
         Self { repository }
     }
 
-    /// Create a new item
+    // ==================== ITEM OPERATIONS ====================
+
+    /// Create a new item (with tags if provided)
     /// Note: Name and price validation happens automatically during deserialization via validated_type
     pub async fn create_item(&self, request: CreateItemRequest) -> Result<Item> {
         self.repository.create(request).await
@@ -38,11 +44,6 @@ impl ItemService {
         self.repository.get_by_id(id).await
     }
 
-    /// Get all items
-    pub async fn list_items(&self) -> Result<Vec<Item>> {
-        self.repository.get_all().await
-    }
-
     /// Get all items for a specific restaurant
     pub async fn list_items_by_restaurant(&self, restaurant_id: Uuid) -> Result<Vec<Item>> {
         self.repository.get_by_restaurant(restaurant_id).await
@@ -53,7 +54,7 @@ impl ItemService {
         self.repository.get_active_by_restaurant(restaurant_id).await
     }
 
-    /// Update an item
+    /// Update an item (with tags if provided)
     /// Note: Name and price validation happens automatically during deserialization via validated_type
     pub async fn update_item(&self, request: UpdateItemRequest) -> Result<Option<Item>> {
         if self.repository.get_by_id(request.id).await?.is_none() {
@@ -66,5 +67,27 @@ impl ItemService {
     /// Delete an item
     pub async fn delete_item(&self, id: Uuid) -> Result<bool> {
         self.repository.delete(id).await
+    }
+
+    // ==================== TAG OPERATIONS ====================
+
+    /// Get all available tags
+    pub async fn list_tags(&self) -> Result<Vec<Tag>> {
+        self.repository.get_all_tags().await
+    }
+
+    /// Get a tag by ID
+    pub async fn get_tag(&self, id: Uuid) -> Result<Option<Tag>> {
+        self.repository.get_tag_by_id(id).await
+    }
+
+    /// Update a tag (rename)
+    pub async fn update_tag(&self, request: UpdateTag) -> Result<Option<Tag>> {
+        self.repository.update_tag(request).await
+    }
+
+    /// Delete a tag (will cascade remove from all items)
+    pub async fn delete_tag(&self, id: Uuid) -> Result<bool> {
+        self.repository.delete_tag(id).await
     }
 }

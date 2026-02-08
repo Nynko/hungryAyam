@@ -50,6 +50,9 @@
 //! | `#[create_optional]` | Wrap in Option | - |
 //! | `#[derived_domain_optional]` | Wrap in Option | (no-op) |
 //! | `#[update_required]` | - | Keep as-is (no Option wrap) |
+//! | `#[derived_type(Type)]` | Use Type | Use Type |
+//! | `#[create_type(Type)]` | Use Type | - |
+//! | `#[update_type(Type)]` | - | Use Type |
 //!
 //! **Note:** `UpdateX` structs wrap all non-Option fields in `Option<T>` automatically.
 //! Fields already `Option<T>` stay as `Option<T>` (no double-wrapping).
@@ -80,21 +83,24 @@ mod domain_struct;
 /// #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 /// #[ts(export)]
 /// pub struct Item {
-///     #[derived_domain_ignore]
+///     #[create_ignore]
+///     #[update_required]
 ///     pub id: Uuid,
 ///     pub name: String,
 ///     pub description: Option<String>,
 ///     #[create_ignore]
 ///     pub active: bool,
+///     #[derived_type(Vec<TagInput>)]  // Use different type in Create/Update
+///     pub tags: Vec<Tag>,
 /// }
 /// // Generates:
 /// // #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 /// // #[ts(export)]
-/// // pub struct CreateItem { pub name: String, pub description: Option<String> }
+/// // pub struct CreateItem { pub name: String, pub description: Option<String>, pub tags: Vec<TagInput> }
 /// //
 /// // #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 /// // #[ts(export)]
-/// // pub struct UpdateItem { pub name: Option<String>, pub description: Option<String>, pub active: Option<bool> }
+/// // pub struct UpdateItem { pub id: Uuid, pub name: Option<String>, pub description: Option<String>, pub active: Option<bool>, pub tags: Option<Vec<TagInput>> }
 /// ```
 #[proc_macro_attribute]
 pub fn domain_struct(args: TokenStream, input: TokenStream) -> TokenStream {

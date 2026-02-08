@@ -19,6 +19,9 @@ const HELPER_ATTRS: &[&str] = &[
     "create_optional",
     "derived_domain_optional",
     "update_required",
+    "derived_type",
+    "create_type",
+    "update_type",
 ];
 
 /// Configuration for which structs to generate
@@ -67,6 +70,22 @@ fn is_option_type(ty: &Type) -> bool {
 /// Check if an attribute is a helper attribute that should be stripped
 fn is_helper_attr(attr: &Attribute) -> bool {
     HELPER_ATTRS.iter().any(|name| attr.path().is_ident(name))
+}
+
+/// Extract type from #[derived_type(Type)], #[create_type(Type)], or #[update_type(Type)] attribute
+fn extract_type_override(field: &Field, attr_name: &str) -> Option<Type> {
+    for attr in &field.attrs {
+        if attr.path().is_ident(attr_name) {
+            // Parse the attribute as #[attr_name(Type)]
+            if let Meta::List(meta_list) = &attr.meta {
+                let tokens = &meta_list.tokens;
+                if let Ok(ty) = syn::parse2::<Type>(tokens.clone()) {
+                    return Some(ty);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Extracts derive macros from `#[derive(...)]` attributes
@@ -166,19 +185,39 @@ fn generate_domain_struct(
             continue;
         }
 
+        // Check for type override
+        // Priority: specific (create_type/update_type) > generic (derived_type) > original
+        let type_override = match kind {
+            DomainKind::Create => {
+                extract_type_override(f, "create_type")
+                    .or_else(|| extract_type_override(f, "derived_type"))
+            }
+            DomainKind::Update => {
+                extract_type_override(f, "update_type")
+                    .or_else(|| extract_type_override(f, "derived_type"))
+            }
+        };
+
+        // Get the base type (either overridden or original)
+        let base_ty = type_override.as_ref().unwrap_or(ty);
+
         // Should wrap in Option?
         let should_wrap_in_option = match kind {
             DomainKind::Create => is_create_optional || is_derived_domain_optional,
             DomainKind::Update => !is_update_required,
         };
 
-        let generated_field_ty = if should_wrap_in_option && !is_option_type(ty) {
-            quote! { Option<#ty> }
+        let generated_field_ty = if should_wrap_in_option && !is_option_type(base_ty) {
+            quote! { Option<#base_ty> }
         } else {
-            quote! { #ty }
+            quote! { #base_ty }
         };
 
+        // Get filtered attributes for the field
+        let field_attrs = filter_field_attrs(f);
+
         generated_fields.push(quote! {
+            #(#field_attrs)*
             #vis #name: #generated_field_ty
         });
     }

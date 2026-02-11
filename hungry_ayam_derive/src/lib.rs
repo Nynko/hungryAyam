@@ -2,112 +2,107 @@
 //!
 //! Custom derive macros for domain-driven design patterns.
 //!
-//! ## Macros
-//!
-//! - [`domain_struct`] - Attribute macro to generate `CreateX` and `UpdateX` structs
-//! - [`IntoDomain`] - Convert DTOs/DB models → Domain objects
-//!
-//! ## Quick Reference
+//! - [`domain_struct`] — Generate derived structs from a domain struct
+//! - [`IntoDomain`] — Convert DTOs/DB models into domain objects
 //!
 //! ```text
-//! DTO/DB Model ──IntoDomain──▶ Domain ──domain_struct──▶ CreateX/UpdateX
+//! DTO/DB Model ──IntoDomain──▶ Domain ──domain_struct──▶ CreateX / UpdateX / {Name}X
 //! ```
 //!
-//! ### `domain_struct` Attribute
+//! ## `domain_struct`
 //!
-//! Automatically forwards all derives and struct-level attributes to generated structs.
+//! Each variant name produces a `{PascalName}{StructName}` struct.
+//! Snake_case names are converted to PascalCase (e.g. `unit_create` → `UnitCreateItem`).
 //!
 //! ```rust,ignore
-//! #[domain_struct(create, update)]
-//! #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-//! #[ts(export)]
+//! #[domain_struct(create, update, unit_create)]
+//! #[derive(Debug, Clone, Serialize, Deserialize)]
 //! pub struct Item {
-//!     #[derived_domain_ignore]
+//!     #[create_ignore]
+//!     #[update_required]
 //!     pub id: Uuid,
 //!     pub name: String,
 //!     #[create_ignore]
 //!     pub active: bool,
+//!     #[derived_type(Vec<TagInput>)]
+//!     pub tags: Vec<Tag>,
 //! }
-//! // Generates CreateItem and UpdateItem with same derives and #[ts(export)]
+//! // Generates: CreateItem, UpdateItem, UnitCreateItem
 //! ```
 //!
-//! ### `IntoDomain` Attributes
+//! ### Variant modifiers
+//!
+//! - `name` — fields are required by default
+//! - `name(all_optional)` — fields are wrapped in `Option<T>` by default
+//! - Bare `update` is treated as `update(all_optional)` for backward compatibility
+//!
+//! ### Field attributes
+//!
+//! **Global** (all variants):
+//!
+//! | Attribute | Effect |
+//! |-----------|--------|
+//! | `#[derived_domain_ignore]` | Exclude from all variants |
+//! | `#[derived_domain_optional]` | Wrap in `Option` in all variants |
+//! | `#[derived_type(Type)]` | Override type in all variants |
+//! | `#[derived_nested]` | Auto-prefix inner types with the variant name (composition) |
+//!
+//! **Per-variant** (`{name}` = variant name):
+//!
+//! | Attribute | Effect |
+//! |-----------|--------|
+//! | `#[{name}_ignore]` | Exclude from this variant |
+//! | `#[{name}_optional]` | Wrap in `Option` |
+//! | `#[{name}_required]` | Keep as-is (no `Option` wrap) |
+//! | `#[{name}_type(Type)]` | Override type |
+//! | `#[{name}_nested]` | Auto-prefix inner types for this variant only |
+//!
+//! `Option<T>` fields are never double-wrapped.
+//!
+//! Type resolution priority: `{name}_type` > `derived_type` > `{name}_nested` / `derived_nested` > original.
+//! `{name}_ignore` / `derived_domain_ignore` is always checked first.
+//!
+//! ## `IntoDomain`
 //!
 //! | Attribute | Description |
 //! |-----------|-------------|
 //! | `#[into_domain(Type)]` | Target domain type (required) |
 //! | `#[into_domain_name = "field"]` | Rename field in target |
 //! | `#[into_domain_ignored]` | Skip field |
-//! | `#[into_domain_with(fn)]` | Use custom function for conversion (fn must return `Result<T, E>`) |
-//!
-//! ### Field Attributes for `domain_struct`
-//!
-//! | Attribute | Create | Update |
-//! |-----------|--------|--------|
-//! | `#[derived_domain_ignore]` | Exclude | Exclude |
-//! | `#[create_ignore]` | Exclude | - |
-//! | `#[update_ignore]` | - | Exclude |
-//! | `#[create_optional]` | Wrap in Option | - |
-//! | `#[derived_domain_optional]` | Wrap in Option | (no-op) |
-//! | `#[update_required]` | - | Keep as-is (no Option wrap) |
-//! | `#[derived_type(Type)]` | Use Type | Use Type |
-//! | `#[create_type(Type)]` | Use Type | - |
-//! | `#[update_type(Type)]` | - | Use Type |
-//!
-//! **Note:** `UpdateX` structs wrap all non-Option fields in `Option<T>` automatically.
-//! Fields already `Option<T>` stay as `Option<T>` (no double-wrapping).
+//! | `#[into_domain_with(fn)]` | Custom conversion (fn must return `Result<T, E>`) |
 
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
 
-use crate::into_domain::impl_into_domain_derive;
 use crate::domain_struct::impl_domain_struct;
+use crate::into_domain::impl_into_domain_derive;
 
-mod into_domain;
 mod domain_struct;
+mod into_domain;
 
-/// Attribute macro to generate `Create{StructName}` and/or `Update{StructName}` structs.
-///
-/// This macro automatically forwards all derives and struct-level attributes
-/// (like `#[ts(export)]`, `#[serde(...)]`) to the generated structs.
-///
-/// # Arguments
-///
-/// - `create` - Generate a `Create{StructName}` struct
-/// - `update` - Generate an `Update{StructName}` struct
+/// Generate derived variant structs from a domain struct.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// #[domain_struct(create, update)]
-/// #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-/// #[ts(export)]
+/// #[domain_struct(create, update, unit_create)]
+/// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub struct Item {
 ///     #[create_ignore]
 ///     #[update_required]
+///     #[unit_create_required]
 ///     pub id: Uuid,
 ///     pub name: String,
-///     pub description: Option<String>,
-///     #[create_ignore]
-///     pub active: bool,
-///     #[derived_type(Vec<TagInput>)]  // Use different type in Create/Update
+///     #[derived_type(Vec<TagInput>)]
 ///     pub tags: Vec<Tag>,
 /// }
-/// // Generates:
-/// // #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-/// // #[ts(export)]
-/// // pub struct CreateItem { pub name: String, pub description: Option<String>, pub tags: Vec<TagInput> }
-/// //
-/// // #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-/// // #[ts(export)]
-/// // pub struct UpdateItem { pub id: Uuid, pub name: Option<String>, pub description: Option<String>, pub active: Option<bool>, pub tags: Option<Vec<TagInput>> }
 /// ```
 #[proc_macro_attribute]
 pub fn domain_struct(args: TokenStream, input: TokenStream) -> TokenStream {
     impl_domain_struct(args, input)
 }
 
-/// Derive `IntoDomain<T>` trait for converting structs to domain objects.
+/// Derive `IntoDomain<T>` for converting structs to domain objects.
 ///
 /// # Example
 ///
@@ -117,10 +112,8 @@ pub fn domain_struct(args: TokenStream, input: TokenStream) -> TokenStream {
 /// pub struct UserRow {
 ///     pub id: Uuid,
 ///     #[into_domain_name = "user_email"]
-///     #[into_domain_with(parse_email)]  // custom conversion function
+///     #[into_domain_with(parse_email)]
 ///     pub email: Option<String>,
-///     #[into_domain_with(parse_name)]
-///     pub name: String,
 ///     #[into_domain_ignored]
 ///     pub internal: String,
 /// }

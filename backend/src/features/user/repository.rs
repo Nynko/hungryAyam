@@ -8,7 +8,10 @@ use crate::{
         db_model::UserRow,
         domain::{CreateUser, UpdateUser, User},
     },
-    types::email::Email
+    types::{
+        email::Email,
+        name::Name
+    }
 };
 
 #[derive(Clone)]
@@ -22,7 +25,6 @@ impl UserRepository {
     }
 
     pub async fn create(&self, create_user: CreateUser) -> Result<User> {
-        let email_str = create_user.email.as_ref().map(|e| e.to_string());
 
         let user = sqlx::query_as!(
             UserRow,
@@ -31,15 +33,15 @@ impl UserRepository {
             VALUES ($1, $2, $3, $4)
             RETURNING
                 id,
-                name,
+                name as "name: Name",
                 email as "email?: Email",
                 auth_method,
                 user_cookie,
                 created_at,
                 updated_at
             "#,
-            create_user.name,
-            email_str,
+            create_user.name.as_ref().map(|e| e.to_string()),
+            create_user.email.as_ref().map(|e| e.to_string()),
             create_user.auth_method,
             create_user.user_cookie
         )
@@ -55,7 +57,7 @@ impl UserRepository {
             r#"
             SELECT
                 id,
-                name,
+                name as "name: Name",
                 email as "email?: Email",
                 auth_method,
                 user_cookie,
@@ -77,7 +79,7 @@ impl UserRepository {
             r#"
             SELECT
                 id,
-                name,
+                name as "name: Name",
                 email as "email?: Email",
                 auth_method,
                 user_cookie,
@@ -99,7 +101,7 @@ impl UserRepository {
             r#"
             SELECT
                 id,
-                name,
+                name as "name: Name",
                 email as "email?: Email",
                 auth_method,
                 user_cookie,
@@ -122,7 +124,7 @@ impl UserRepository {
             r#"
             SELECT
                 id,
-                name,
+                name as "name: Name",
                 email as "email?: Email",
                 auth_method,
                 user_cookie,
@@ -145,7 +147,7 @@ impl UserRepository {
             r#"
             SELECT
                 id,
-                name,
+                name as "name: Name",
                 email as "email?: Email",
                 auth_method,
                 user_cookie,
@@ -162,8 +164,6 @@ impl UserRepository {
     }
 
     pub async fn update(&self, update_user: UpdateUser) -> Result<Option<User>> {
-        let email_str = update_user.email.map(|e| e.to_string());
-
         let user = sqlx::query_as!(
             UserRow,
             r#"
@@ -176,15 +176,15 @@ impl UserRepository {
             WHERE id = $5
             RETURNING
                 id,
-                name,
+                name as "name: Name",
                 email as "email?: Email",
                 auth_method,
                 user_cookie,
                 created_at,
                 updated_at
             "#,
-            update_user.name,
-            email_str,
+            update_user.name.as_ref().map(|e| e.to_string()),
+            update_user.email.as_ref().map(|e| e.to_string()),
             update_user.auth_method,
             update_user.user_cookie,
             update_user.id

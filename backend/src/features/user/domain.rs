@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-use crate::types::email::Email;
+use crate::types::{email::Email, name::Name};
 
 #[domain_struct(create, update)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,7 +11,7 @@ pub struct User {
     #[create_ignore]
     #[update_required]
     pub id: Uuid,
-    pub name: Option<String>,
+    pub name: Option<Name>,
     pub email: Option<Email>,
     pub auth_method: Option<String>,
     pub user_cookie: Option<String>,
@@ -22,20 +22,6 @@ pub struct User {
 }
 
 impl User {
-    pub fn validate_name(name: &Option<String>) -> Result<(), anyhow::Error> {
-        if let Some(name) = name {
-            if name.trim().is_empty() {
-                anyhow::bail!("User name cannot be empty if provided");
-            }
-
-            if name.len() > 100 {
-                anyhow::bail!("User name cannot exceed 100 characters");
-            }
-        }
-
-        Ok(())
-    }
-
     pub fn validate_auth_method(auth_method: &Option<String>) -> Result<(), anyhow::Error> {
         // if let Some(method) = auth_method {
         //     let valid_methods = ["password", "oauth", "google", "github", "guest"];

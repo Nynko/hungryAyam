@@ -22,7 +22,6 @@ impl UserService {
 
     /// Create a new user with business validation
     pub async fn create_user(&self, request: CreateUserRequest) -> Result<User> {
-        User::validate_name(&request.name)?;
         // User::validate_auth_method(&request.auth_method)?;
 
         // Check if email is already taken (if provided)
@@ -78,7 +77,6 @@ impl UserService {
             return Ok(None);
         }
 
-        User::validate_name(&request.name)?;
         // User::validate_auth_method(&request.auth_method)?;
 
         // Check if email is already taken by another user (if provided)

@@ -25,7 +25,7 @@ async fn seed(pool: &PgPool) -> Uuid {
         .unwrap();
 
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name) VALUES ('tester') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method) VALUES ('tester', 'Password') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -36,7 +36,7 @@ async fn seed(pool: &PgPool) -> Uuid {
 /// Seed a second user for multi-user scenarios.
 async fn seed_second_user(pool: &PgPool) -> Uuid {
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name) VALUES ('second_user') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method) VALUES ('second_user', 'Password') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();

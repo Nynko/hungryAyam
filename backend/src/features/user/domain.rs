@@ -1,20 +1,22 @@
 use hungry_ayam_derive::domain_struct;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-use crate::types::{email::Email, name::Name};
+use crate::types::{auth::AuthMethod, email::Email, name::Name};
 
 #[domain_struct(create, update)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct User {
     #[create_ignore]
     #[update_required]
     pub id: Uuid,
-    pub name: Option<Name>,
+    pub name: Name,
     pub email: Option<Email>,
-    pub auth_method: Option<String>,
-    pub user_cookie: Option<String>,
+    pub auth_method: AuthMethod,
+    pub auth_value: Option<String>,
     #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]

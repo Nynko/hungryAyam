@@ -7,3 +7,4 @@ pub mod utils;
 pub mod validated;
 pub mod actions;
 pub mod position;
+pub mod auth;

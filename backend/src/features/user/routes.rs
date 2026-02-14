@@ -68,7 +68,7 @@ pub async fn get_user_by_email(
     Ok(ApiJson(ApiResponse::success(user)))
 }
 
-/// Get a user by cookie (for guest users)
+/// Get a user by cookie (for guest users with NoneWithCookie auth)
 pub async fn get_user_by_cookie(
     State(app_state): State<AppState>,
     Path(cookie): Path<String>,

@@ -76,8 +76,9 @@ async fn del(router: &Router, uri: &str) -> (StatusCode, Value) {
 async fn create_user(router: &Router, name: &str, email: Option<&str>) -> Value {
     let mut payload = json!({
         "name": name,
-        "auth_method": "password",
-        "user_cookie": null
+        "email": null,
+        "auth_method": "Password",
+        "auth_value": null
     });
     if let Some(e) = email {
         payload["email"] = json!(e);
@@ -98,10 +99,10 @@ async fn test_create_user_minimal(pool: PgPool) {
     let router = app(pool);
 
     let payload = json!({
-        "name": null,
+        "name": "MinimalUser",
         "email": null,
-        "auth_method": null,
-        "user_cookie": null
+        "auth_method": "NoneWithCookie",
+        "auth_value": null
     });
 
     let (status, body) = post(&router, "/api/user", payload).await;
@@ -110,10 +111,10 @@ async fn test_create_user_minimal(pool: PgPool) {
 
     let data = &body["data"];
     assert!(data["id"].is_string());
-    assert_eq!(data["name"], Value::Null);
+    assert_eq!(data["name"], "MinimalUser");
     assert_eq!(data["email"], Value::Null);
-    assert_eq!(data["auth_method"], Value::Null);
-    assert_eq!(data["user_cookie"], Value::Null);
+    assert_eq!(data["auth_method"], "NoneWithCookie");
+    assert_eq!(data["auth_value"], Value::Null);
     assert!(data["created_at"].is_string());
     assert!(data["updated_at"].is_string());
 }
@@ -126,8 +127,8 @@ async fn test_create_user_with_all_fields(pool: PgPool) {
     let payload = json!({
         "name": "Alice",
         "email": "alice@example.com",
-        "auth_method": "password",
-        "user_cookie": "cookie_abc_123"
+        "auth_method": "Password",
+        "auth_value": "hashed_password_abc"
     });
 
     let (status, body) = post(&router, "/api/user", payload).await;
@@ -137,8 +138,8 @@ async fn test_create_user_with_all_fields(pool: PgPool) {
     let data = &body["data"];
     assert_eq!(data["name"], "Alice");
     assert_eq!(data["email"], "alice@example.com");
-    assert_eq!(data["auth_method"], "password");
-    assert_eq!(data["user_cookie"], "cookie_abc_123");
+    assert_eq!(data["auth_method"], "Password");
+    assert_eq!(data["auth_value"], "hashed_password_abc");
 }
 
 #[sqlx::test]
@@ -153,14 +154,13 @@ async fn test_create_user_duplicate_email_rejected(pool: PgPool) {
     let payload = json!({
         "name": "User2",
         "email": "dup@example.com",
-        "auth_method": null,
-        "user_cookie": null
+        "auth_method": "Password",
+        "auth_value": null
     });
 
     let (status, body) = post(&router, "/api/user", payload).await;
     // The service returns an error for duplicate email
     assert_ne!(status, StatusCode::CREATED, "should reject duplicate email");
-    // Depending on error mapping, this should be a 400 or 500
     assert!(
         status == StatusCode::BAD_REQUEST || status == StatusCode::INTERNAL_SERVER_ERROR,
         "expected error status, got {status}: {body}"
@@ -175,8 +175,8 @@ async fn test_create_user_with_invalid_email_rejected(pool: PgPool) {
     let payload = json!({
         "name": "BadEmail",
         "email": "not-an-email",
-        "auth_method": null,
-        "user_cookie": null
+        "auth_method": "Password",
+        "auth_value": null
     });
 
     let (status, _body) = post(&router, "/api/user", payload).await;
@@ -185,23 +185,40 @@ async fn test_create_user_with_invalid_email_rejected(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn test_create_user_guest_with_cookie(pool: PgPool) {
+async fn test_create_user_none_with_cookie(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
-        "name": null,
+        "name": "GuestUser",
         "email": null,
-        "auth_method": "guest",
-        "user_cookie": "guest_session_xyz"
+        "auth_method": "NoneWithCookie",
+        "auth_value": "guest_session_xyz"
     });
 
     let (status, body) = post(&router, "/api/user", payload).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
     let data = &body["data"];
-    assert_eq!(data["auth_method"], "guest");
-    assert_eq!(data["user_cookie"], "guest_session_xyz");
+    assert_eq!(data["auth_method"], "NoneWithCookie");
+    assert_eq!(data["auth_value"], "guest_session_xyz");
+}
+
+#[sqlx::test]
+async fn test_create_user_with_invalid_auth_method_rejected(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let payload = json!({
+        "name": "BadAuth",
+        "email": null,
+        "auth_method": "invalid_method",
+        "auth_value": null
+    });
+
+    let (status, _body) = post(&router, "/api/user", payload).await;
+    // Invalid AuthMethod variant should fail during deserialization
+    assert_ne!(status, StatusCode::CREATED);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -266,10 +283,10 @@ async fn test_get_user_by_cookie(pool: PgPool) {
     let router = app(pool);
 
     let payload = json!({
-        "name": null,
+        "name": "CookieUser",
         "email": null,
-        "auth_method": "guest",
-        "user_cookie": "my_unique_cookie"
+        "auth_method": "NoneWithCookie",
+        "auth_value": "my_unique_cookie"
     });
     let (status, body) = post(&router, "/api/user", payload).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
@@ -278,7 +295,7 @@ async fn test_get_user_by_cookie(pool: PgPool) {
     let (status, body) = get(&router, "/api/user/cookie/my_unique_cookie").await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["id"], user_id);
-    assert_eq!(body["data"]["user_cookie"], "my_unique_cookie");
+    assert_eq!(body["data"]["auth_value"], "my_unique_cookie");
 }
 
 #[sqlx::test]
@@ -287,6 +304,26 @@ async fn test_get_user_by_cookie_not_found(pool: PgPool) {
     let router = app(pool);
 
     let (status, _body) = get(&router, "/api/user/cookie/nonexistent_cookie").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn test_get_user_by_cookie_only_matches_none_with_cookie_auth(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    // Create a Password user with an auth_value
+    let payload = json!({
+        "name": "PasswordUser",
+        "email": null,
+        "auth_method": "Password",
+        "auth_value": "some_password_hash"
+    });
+    let (status, _body) = post(&router, "/api/user", payload).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // Cookie lookup should NOT find a Password user even if auth_value matches
+    let (status, _body) = get(&router, "/api/user/cookie/some_password_hash").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -412,8 +449,8 @@ async fn test_update_user_multiple_fields(pool: PgPool) {
         "id": user_id,
         "name": "UpdatedMulti",
         "email": "updated_multi@example.com",
-        "auth_method": "oauth",
-        "user_cookie": "new_cookie_value"
+        "auth_method": "NoneWithCookie",
+        "auth_value": "new_cookie_value"
     });
 
     let (status, body) = post(&router, "/api/update-user", update_payload).await;
@@ -422,8 +459,8 @@ async fn test_update_user_multiple_fields(pool: PgPool) {
     let data = &body["data"];
     assert_eq!(data["name"], "UpdatedMulti");
     assert_eq!(data["email"], "updated_multi@example.com");
-    assert_eq!(data["auth_method"], "oauth");
-    assert_eq!(data["user_cookie"], "new_cookie_value");
+    assert_eq!(data["auth_method"], "NoneWithCookie");
+    assert_eq!(data["auth_value"], "new_cookie_value");
 }
 
 #[sqlx::test]
@@ -483,6 +520,27 @@ async fn test_update_user_same_email_allowed(pool: PgPool) {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["name"], "SameEmailRenamed");
     assert_eq!(body["data"]["email"], "same@example.com");
+}
+
+#[sqlx::test]
+async fn test_update_user_auth_method(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let created = create_user(&router, "AuthSwitch", None).await;
+    let user_id = created["id"].as_str().unwrap();
+    assert_eq!(created["auth_method"], "Password");
+
+    let update_payload = json!({
+        "id": user_id,
+        "auth_method": "NoneWithCookie",
+        "auth_value": "new_cookie"
+    });
+
+    let (status, body) = post(&router, "/api/update-user", update_payload).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["auth_method"], "NoneWithCookie");
+    assert_eq!(body["data"]["auth_value"], "new_cookie");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -545,8 +603,8 @@ async fn test_create_and_retrieve_preserves_all_fields(pool: PgPool) {
     let payload = json!({
         "name": "FullUser",
         "email": "full@example.com",
-        "auth_method": "google",
-        "user_cookie": "session_token_full"
+        "auth_method": "NoneWithCookie",
+        "auth_value": "session_token_full"
     });
 
     let (status, body) = post(&router, "/api/user", payload).await;
@@ -560,15 +618,15 @@ async fn test_create_and_retrieve_preserves_all_fields(pool: PgPool) {
     let data = &body["data"];
     assert_eq!(data["name"], "FullUser");
     assert_eq!(data["email"], "full@example.com");
-    assert_eq!(data["auth_method"], "google");
-    assert_eq!(data["user_cookie"], "session_token_full");
+    assert_eq!(data["auth_method"], "NoneWithCookie");
+    assert_eq!(data["auth_value"], "session_token_full");
 
     // Also verify via email lookup
     let (status, body) = get(&router, "/api/user/email/full@example.com").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["id"], user_id);
 
-    // Also verify via cookie lookup
+    // Also verify via cookie lookup (NoneWithCookie auth)
     let (status, body) = get(&router, "/api/user/cookie/session_token_full").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["id"], user_id);
@@ -599,9 +657,9 @@ async fn test_list_users_order(pool: PgPool) {
     let router = app(pool);
 
     // Create users in sequence
-    let first = create_user(&router, "First", None).await;
-    let second = create_user(&router, "Second", None).await;
-    let third = create_user(&router, "Third", None).await;
+    create_user(&router, "First", None).await;
+    create_user(&router, "Second", None).await;
+    create_user(&router, "Third", None).await;
 
     let (status, body) = get(&router, "/api/users").await;
     assert_eq!(status, StatusCode::OK);
@@ -613,4 +671,91 @@ async fn test_list_users_order(pool: PgPool) {
     assert_eq!(users[0]["name"], "Third");
     assert_eq!(users[1]["name"], "Second");
     assert_eq!(users[2]["name"], "First");
+}
+
+#[sqlx::test]
+async fn test_create_user_password_auth(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let payload = json!({
+        "name": "PasswordUser",
+        "email": "pw@example.com",
+        "auth_method": "Password",
+        "auth_value": "hashed_pw_value"
+    });
+
+    let (status, body) = post(&router, "/api/user", payload).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let data = &body["data"];
+    assert_eq!(data["auth_method"], "Password");
+    assert_eq!(data["auth_value"], "hashed_pw_value");
+}
+
+#[sqlx::test]
+async fn test_create_user_none_with_cookie_auth(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let payload = json!({
+        "name": "CookieAuthUser",
+        "email": null,
+        "auth_method": "NoneWithCookie",
+        "auth_value": "browser_cookie_abc"
+    });
+
+    let (status, body) = post(&router, "/api/user", payload).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let data = &body["data"];
+    assert_eq!(data["auth_method"], "NoneWithCookie");
+    assert_eq!(data["auth_value"], "browser_cookie_abc");
+}
+
+#[sqlx::test]
+async fn test_update_preserves_auth_method_when_not_specified(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let created = create_user(&router, "KeepAuth", None).await;
+    let user_id = created["id"].as_str().unwrap();
+    assert_eq!(created["auth_method"], "Password");
+
+    // Update only the name — auth_method should remain Password
+    let update_payload = json!({
+        "id": user_id,
+        "name": "KeepAuthRenamed"
+    });
+
+    let (status, body) = post(&router, "/api/update-user", update_payload).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["name"], "KeepAuthRenamed");
+    assert_eq!(body["data"]["auth_method"], "Password");
+}
+
+#[sqlx::test]
+async fn test_delete_removes_from_list(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let keep = create_user(&router, "KeepUser", None).await;
+    let remove = create_user(&router, "RemoveUser", None).await;
+    let remove_id = remove["id"].as_str().unwrap();
+
+    // Verify both listed
+    let (status, body) = get(&router, "/api/users").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"].as_array().unwrap().len(), 2);
+
+    // Delete one
+    let (status, _body) = del(&router, &format!("/api/user/{remove_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Verify only one remains
+    let (status, body) = get(&router, "/api/users").await;
+    assert_eq!(status, StatusCode::OK);
+    let users = body["data"].as_array().unwrap();
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0]["name"], "KeepUser");
 }

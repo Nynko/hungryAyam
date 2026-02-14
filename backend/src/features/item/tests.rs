@@ -25,7 +25,7 @@ async fn seed(pool: &PgPool) -> (Uuid, Uuid) {
         .unwrap();
 
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name) VALUES ('tester') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method) VALUES ('tester', 'Password') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -1398,7 +1398,7 @@ async fn test_item_updated_by_tracks_updater(pool: PgPool) {
 
     // Create second user via direct SQL (before pool is moved)
     let second_user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name) VALUES ('updater') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method) VALUES ('updater', 'Password') RETURNING id")
             .fetch_one(&pool)
             .await
             .unwrap();

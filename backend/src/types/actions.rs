@@ -12,7 +12,7 @@ pub enum EntityRef {
     /// References an existing entity in the database
     Existing(Uuid),
     /// References the entity created by the action at this index
-    CreatedBy(usize),
+    CreatedByAction(usize),
 }
 
 impl EntityRef {
@@ -25,7 +25,7 @@ impl EntityRef {
     pub fn resolve(&self, result_ids: &[Option<Uuid>]) -> Result<Uuid> {
         match self {
             EntityRef::Existing(uuid) => Ok(*uuid),
-            EntityRef::CreatedBy(index) => {
+            EntityRef::CreatedByAction(index) => {
                 let id = result_ids
                     .get(*index)
                     .ok_or_else(|| {

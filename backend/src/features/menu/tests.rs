@@ -27,7 +27,7 @@ async fn seed(pool: &PgPool) -> (Uuid, Uuid) {
 
     // user
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name) VALUES ('tester') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method) VALUES ('tester', 'Password') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -747,7 +747,7 @@ async fn test_update_add_section_then_add_item_via_created_by(pool: PgPool) {
                 // Action 1: add an item into the section created by action 0
                 {
                     "AddItem": {
-                        "section_id": { "CreatedBy": 0 },
+                        "section_id": { "CreatedByAction": 0 },
                         "item": {
                             "section_id": Uuid::nil(),
                             "position": 0,
@@ -1265,7 +1265,7 @@ async fn test_update_multiple_actions_in_batch(pool: PgPool) {
                 // 2: add item into section from action 1
                 {
                     "AddItem": {
-                        "section_id": { "CreatedBy": 1 },
+                        "section_id": { "CreatedByAction": 1 },
                         "item": {
                             "section_id": Uuid::nil(),
                             "position": 0,

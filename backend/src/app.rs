@@ -9,7 +9,8 @@ use crate::{
         app_setup::routes::setup_routes,
         restaurant::routes::restaurant_routes,
         user::routes::user_routes,
-        item::routes::item_routes
+        item::routes::item_routes,
+        menu::routes::menu_routes
     },
     state::AppState
 };
@@ -20,6 +21,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(restaurant_routes())
         .merge(user_routes())
         .merge(item_routes())
+        .merge(menu_routes())
         // .route("/api/restaurants", get(list_restaurants))
         // .route("/api/restaurants/:id", get(get_restaurant))
         // .route("/api/restaurants/:id", put(update_restaurant))

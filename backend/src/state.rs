@@ -17,6 +17,10 @@ use crate::{
         item::{
             repository::ItemRepository,
             service::ItemService
+        },
+        menu::{
+            repository::MenuRepository,
+            service::MenuService
         }
     }
 };
@@ -28,20 +32,25 @@ pub struct AppState {
     pub setup_service: AppSetupService,
     pub user_service: UserService,
     pub item_service: ItemService,
+    pub menu_service: MenuService,
 }
 
 pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
     db: PgPool) -> AppState {
 
-    // Create repository and service
+    // Create repositories
     let setup_repository = AppSetupRepository::new(db.clone());
-    let setup_service = AppSetupService::new(setup_repository);
     let restaurant_repository = RestaurantRepository::new(db.clone());
-    let restaurant_service = RestaurantService::new(restaurant_repository);
     let user_repository = UserRepository::new(db.clone());
-    let user_service = UserService::new(user_repository);
     let item_repository = ItemRepository::new(db.clone());
+    let menu_repository = MenuRepository::new(db.clone(), item_repository.clone());
+
+    // Create services
+    let setup_service = AppSetupService::new(setup_repository.clone());
+    let restaurant_service = RestaurantService::new(restaurant_repository);
+    let user_service = UserService::new(user_repository);
     let item_service = ItemService::new(item_repository);
+    let menu_service = MenuService::new(menu_repository, setup_repository);
 
     return AppState {
         setup_completed,
@@ -49,5 +58,6 @@ pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
         setup_service,
         user_service,
         item_service,
+        menu_service,
     };
 }

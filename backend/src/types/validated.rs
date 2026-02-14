@@ -1,8 +1,12 @@
-//! Validated types macro.
+//! Validated types and enum macros.
 //!
-//! This module provides the `validated_type!` macro for creating newtype wrappers
-//! that validate/convert on deserialization using a custom function. These types
-//! integrate with:
+//! This module provides:
+//! - `validated_type!` macro for creating newtype wrappers that validate/convert
+//!   on deserialization using a custom function.
+//! - `validated_enum!` macro for creating string-backed enums that store as TEXT
+//!   in Postgres and integrate with Serde, SQLx, and ts-rs.
+//!
+//! Both macros integrate with:
 //! - **Serde**: Validates during JSON deserialization
 //! - **SQLx**: Validates when decoding from database rows
 //! - **ts-rs**: Exports to TypeScript
@@ -482,6 +486,117 @@ macro_rules! validated_type {
             ) -> Result<Self, ::sqlx::error::BoxDynError> {
                 let external = <$external as ::sqlx::Decode<'_, ::sqlx::Postgres>>::decode(value)?;
                 $parse(external).map_err(|e| e.to_string().into())
+            }
+        }
+    };
+}
+
+// =============================================================================
+// validated_enum! macro
+// =============================================================================
+
+/// Creates a string-backed enum with full Serde, SQLx (Postgres TEXT), and ts-rs integration.
+///
+/// The enum uses `EnumStringify` (from the `enum_stringify` crate) to derive
+/// `Display` and `FromStr`, which are then used for database encoding/decoding.
+///
+/// # Syntax
+///
+/// ```rust,ignore
+/// validated_enum!(
+///     /// Doc comment for the enum.
+///     pub EnumName {
+///         Variant1,
+///         Variant2,
+///         Variant3,
+///     }
+/// );
+/// ```
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use crate::validated_enum;
+///
+/// validated_enum!(
+///     /// How a user authenticates.
+///     pub AuthMethod {
+///         NoneWithCookie,
+///         Password,
+///     }
+/// );
+/// ```
+///
+/// # Generated Traits
+///
+/// The macro derives/implements:
+/// - `Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`
+/// - `EnumStringify` → `Display` + `FromStr`
+/// - `Serialize` / `Deserialize` (serde)
+/// - `TS` (ts-rs, exported)
+/// - `sqlx::Type<Postgres>` — maps to TEXT
+/// - `sqlx::Encode<Postgres>` — encodes via `Display`
+/// - `sqlx::Decode<Postgres>` — decodes via `FromStr`
+///
+/// # Using with SQLx `query_as!`
+///
+/// Use type overrides just like with `validated_type!`:
+///
+/// ```sql
+/// SELECT auth_method as "auth_method: AuthMethod" FROM users WHERE id = $1
+/// ```
+#[macro_export]
+macro_rules! validated_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis $name:ident {
+            $( $(#[$variant_meta:meta])* $variant:ident ),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(
+            Debug, Clone, PartialEq, Eq, Hash,
+            ::enum_stringify::EnumStringify,
+            ::serde::Serialize, ::serde::Deserialize,
+            ::ts_rs::TS,
+        )]
+        #[ts(export)]
+        $vis enum $name {
+            $( $(#[$variant_meta])* $variant ),+
+        }
+
+        // === SQLx Type: stored as TEXT in Postgres ===
+        impl ::sqlx::Type<::sqlx::Postgres> for $name {
+            fn type_info() -> ::sqlx::postgres::PgTypeInfo {
+                <String as ::sqlx::Type<::sqlx::Postgres>>::type_info()
+            }
+
+            fn compatible(ty: &::sqlx::postgres::PgTypeInfo) -> bool {
+                <String as ::sqlx::Type<::sqlx::Postgres>>::compatible(ty)
+            }
+        }
+
+        // === SQLx Encode: serialize to string via Display ===
+        impl ::sqlx::Encode<'_, ::sqlx::Postgres> for $name {
+            fn encode_by_ref(
+                &self,
+                buf: &mut ::sqlx::postgres::PgArgumentBuffer,
+            ) -> Result<::sqlx::encode::IsNull, ::sqlx::error::BoxDynError> {
+                let s = self.to_string();
+                <String as ::sqlx::Encode<'_, ::sqlx::Postgres>>::encode_by_ref(&s, buf)
+            }
+        }
+
+        // === SQLx Decode: parse from string via FromStr ===
+        impl ::sqlx::Decode<'_, ::sqlx::Postgres> for $name {
+            fn decode(
+                value: ::sqlx::postgres::PgValueRef<'_>,
+            ) -> Result<Self, ::sqlx::error::BoxDynError> {
+                let s = <String as ::sqlx::Decode<'_, ::sqlx::Postgres>>::decode(value)?;
+                ::std::str::FromStr::from_str(&s)
+                    .map_err(|e: String|
+                        format!("Invalid {} '{}': {}", stringify!($name), s, e).into()
+                    )
             }
         }
     };

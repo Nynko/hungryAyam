@@ -7,7 +7,9 @@ use crate::{
         db_model::ItemRow,
         domain::{
             item::Item,
-            tag::{Tag, TagInput, UpdateTag
+            tag::{Tag,
+                EitherTag,
+                UpdateTag
             }
         },
         dto::{CreateItemRequest, UpdateItemRequest},
@@ -303,7 +305,7 @@ impl ItemRepository {
 
     /// Set tags for an item using TagInput (replaces existing associations)
     /// TagInput can specify either an existing tag by ID or create/find by name
-    pub async fn set_item_tags(&self, item_id: Uuid, tag_inputs: Vec<TagInput>) -> Result<Vec<Tag>> {
+    pub async fn set_item_tags(&self, item_id: Uuid, tag_inputs: Vec<EitherTag>) -> Result<Vec<Tag>> {
         // Delete existing tag associations
         sqlx::query!("DELETE FROM item_tags WHERE item_id = $1", item_id)
             .execute(&self.pool)

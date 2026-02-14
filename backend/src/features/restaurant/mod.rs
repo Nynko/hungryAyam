@@ -4,3 +4,6 @@ pub mod domain;
 pub mod service;
 pub mod repository;
 pub mod db_model;
+
+#[cfg(test)]
+mod tests;

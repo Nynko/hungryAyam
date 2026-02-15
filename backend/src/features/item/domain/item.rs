@@ -33,9 +33,9 @@ pub struct Item {
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]
     pub updated_at: DateTime<Utc>,
-    #[update_ignore]
+    #[derived_domain_ignore]
     pub created_by: Uuid,
-    #[create_ignore]
+    #[derived_domain_ignore]
     pub updated_by: Uuid,
 
     /// Tags attached to this item

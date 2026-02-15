@@ -7,6 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
+    auth::middleware::AuthUser,
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::menu::{
         domain::menu::Menu,
@@ -34,15 +35,13 @@ pub fn menu_routes() -> Router<AppState> {
 
 // ==================== MENU HANDLERS ====================
 
-/// Create a new menu with sections and items
+/// Create a new menu with sections and items (requires authenticated user)
 pub async fn create_menu(
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateMenuRequest>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<Menu>>), ApiError> {
-    // TODO: Get user_id from auth context
-    let user_id = request.created_by;
-
-    let menu = app_state.menu_service.create_menu(request, user_id).await?;
+    let menu = app_state.menu_service.create_menu(request, user.id).await?;
     Ok((StatusCode::CREATED, ApiJson(ApiResponse::success(menu))))
 }
 
@@ -83,18 +82,15 @@ pub async fn list_active_menus_for_restaurant(
     Ok(ApiJson(ApiResponse::success(menus)))
 }
 
-/// Update a menu with actions
+/// Update a menu with actions (requires authenticated user)
 pub async fn update_menu(
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateMenuActionsRequest>,
 ) -> Result<ApiJson<ApiResponse<Menu>>, ApiError> {
-    // TODO: Get user_id from auth context
-    // and verify the one in the payload
-    let user_id = request.user_id;
-
     let menu = app_state
         .menu_service
-        .update_menu(request, user_id)
+        .update_menu(request, user.id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(menu)))
@@ -102,13 +98,15 @@ pub async fn update_menu(
 
 /// Reset a non-permanent menu - sets all items to is_available = false
 /// This keeps items in the "candidate pool" for easy re-selection
+/// (requires authenticated user)
 pub async fn reset_menu(
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<ResetMenuRequest>,
 ) -> Result<ApiJson<ApiResponse<ResetMenuResponse>>, ApiError> {
     let items_reset = app_state
         .menu_service
-        .reset_menu(request.id, request.updated_by)
+        .reset_menu(request.id, user.id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -118,8 +116,9 @@ pub async fn reset_menu(
     })))
 }
 
-/// Delete a menu
+/// Delete a menu (requires authenticated user)
 pub async fn delete_menu(
+    AuthUser(_user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {

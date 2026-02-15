@@ -16,8 +16,11 @@ pub struct AppSetup {
     /// Maximum allowed nesting depth for menu sections (default: 2, max: 10)
     #[create_ignore]
     pub max_menu_nesting_depth: i16,
+    /// SHA-256 hex hash of the shared site access code.
+    /// The plaintext code is never stored — only this hash.
+    pub access_hash: String,
     #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]
-    pub updated_at: DateTime<Utc>
+    pub updated_at: DateTime<Utc>,
 }

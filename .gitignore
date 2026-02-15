@@ -1,5 +1,6 @@
 target/
 
+
 dist
 .wrangler
 .output
@@ -7,6 +8,9 @@ dist
 .netlify
 .vinxi
 app.config.timestamp_*.js
+
+# SQLX Cache
+.sqlx
 
 # Environment
 .env

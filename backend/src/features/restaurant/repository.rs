@@ -21,7 +21,7 @@ impl RestaurantRepository {
         Self { pool }
     }
 
-    pub async fn create(&self, request: CreateRestaurant) -> Result<Restaurant> {
+    pub async fn create(&self, request: CreateRestaurant, operator_id: Uuid) -> Result<Restaurant> {
         let restaurant = sqlx::query_as!(
             RestaurantRow,
             r#"
@@ -38,8 +38,8 @@ impl RestaurantRepository {
             "#,
             request.name.as_ref(),
             request.image_url.as_ref().map(|u| u.to_string()),
-            request.created_by,
-            request.created_by
+            operator_id,
+            operator_id
         )
         .fetch_one(&self.pool)
         .await?;
@@ -93,7 +93,7 @@ impl RestaurantRepository {
     }
 
     /// Update a restaurant
-    pub async fn update(&self, request: UpdateRestaurant) -> Result<Option<Restaurant>> {
+    pub async fn update(&self, request: UpdateRestaurant, operator_id: Uuid) -> Result<Option<Restaurant>> {
         let restaurant = sqlx::query_as!(
             RestaurantRow,
             r#"
@@ -115,7 +115,7 @@ impl RestaurantRepository {
             request.name.as_ref().map(|n| n.as_ref()),
             request.image_url.as_ref().map(|u| u.to_string()),
             request.id,
-            request.updated_by
+            operator_id
         )
         .fetch_optional(&self.pool)
         .await?;

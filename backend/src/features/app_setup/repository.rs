@@ -24,18 +24,20 @@ impl AppSetupRepository {
         let setup = sqlx::query_as!(
             AppSetupRow,
             r#"
-            INSERT INTO app_settings (id, title, image_url)
-            VALUES (1, $1, $2)
+            INSERT INTO app_settings (id, title, image_url, access_hash)
+            VALUES (1, $1, $2, $3)
             RETURNING
                 id,
                 title,
                 image_url as "image_url?: UrlString",
                 max_menu_nesting_depth,
+                access_hash,
                 created_at,
                 updated_at
             "#,
             request.title,
-            request.image_url.as_ref().map(|u| u.to_string())
+            request.image_url.as_ref().map(|u| u.to_string()),
+            request.access_hash
         )
         .fetch_one(&self.pool)
         .await?;
@@ -53,6 +55,7 @@ impl AppSetupRepository {
                 title,
                 image_url as "image_url?: UrlString",
                 max_menu_nesting_depth,
+                access_hash,
                 created_at,
                 updated_at
             FROM app_settings
@@ -74,6 +77,7 @@ impl AppSetupRepository {
             SET title = COALESCE($1, title),
                 image_url = COALESCE($2, image_url),
                 max_menu_nesting_depth = COALESCE($3, max_menu_nesting_depth),
+                access_hash = COALESCE($4, access_hash),
                 updated_at = NOW()
             WHERE id = 1
             RETURNING
@@ -81,12 +85,14 @@ impl AppSetupRepository {
                 title,
                 image_url as "image_url?: UrlString",
                 max_menu_nesting_depth,
+                access_hash,
                 created_at,
                 updated_at
             "#,
             request.title,
             request.image_url.as_ref().map(|u| u.to_string()),
-            request.max_menu_nesting_depth
+            request.max_menu_nesting_depth,
+            request.access_hash
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -108,5 +114,23 @@ impl AppSetupRepository {
 
         // Default to 2 if not found
         Ok(result.unwrap_or(2))
+    }
+
+    /// Get the access hash for site-access verification.
+    ///
+    /// This is the SHA-256 hex hash of the shared site access code.
+    /// Returns `None` if app settings have not been configured yet.
+    pub async fn get_access_hash(&self) -> Result<Option<String>> {
+        let result = sqlx::query_scalar!(
+            r#"
+            SELECT access_hash
+            FROM app_settings
+            WHERE id = 1
+            "#
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result)
     }
 }

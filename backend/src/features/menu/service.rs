@@ -7,7 +7,6 @@ use crate::features::{
         domain::{
             menu::Menu,
             section::CreateMenuSection,
-            actions::update_actions::UpdateMenuAction,
         },
         dto::{CreateMenuRequest, UpdateMenuActionsRequest},
         repository::MenuRepository,
@@ -65,9 +64,10 @@ impl MenuService {
     /// created ID so that later actions can reference it via
     /// `EntityRef::CreatedBy(index)`.
     ///
+    /// The authenticated `user_id` is stamped as `created_by` / `updated_by`
+    /// on every row touched by the actions (clients never supply these fields).
+    ///
     /// Validations performed per action:
-    /// - `user_id` must match the `updated_by` / `created_by` carried in the
-    ///   action payload.
     /// - For `AddSection` the maximum nesting depth is enforced.
     /// - Entity existence is checked at the repository level (queries fail if
     ///   the referenced row does not exist).
@@ -80,11 +80,6 @@ impl MenuService {
             .app_setup_repository
             .get_max_menu_nesting_depth()
             .await?;
-
-        // Pre-validate every action's user_id fields before touching the DB.
-        for (i, action) in request.actions.iter().enumerate() {
-            self.validate_action_user_id(action, user_id, i)?;
-        }
 
         // Delegate to the repository which runs everything in one transaction.
         self.repository
@@ -110,59 +105,6 @@ impl MenuService {
     }
 
     // ==================== VALIDATION HELPERS ====================
-
-    /// Ensure the `updated_by` / `created_by` field carried inside the action
-    /// matches the authenticated `user_id`.
-    fn validate_action_user_id(
-        &self,
-        action: &UpdateMenuAction,
-        user_id: Uuid,
-        action_index: usize,
-    ) -> Result<()> {
-        let mismatch = |field: &str| {
-            Err(anyhow!(
-                "Action [{}]: {} does not match the authenticated user_id",
-                action_index,
-                field
-            ))
-        };
-
-        match action {
-            UpdateMenuAction::UpdateMenu(update) => {
-                if update.updated_by != user_id {
-                    return mismatch("updated_by");
-                }
-            }
-            UpdateMenuAction::UpdateMenuSection { update, .. } => {
-                if update.updated_by != user_id {
-                    return mismatch("updated_by");
-                }
-            }
-            UpdateMenuAction::UpdateMenuSectionItem { update, .. } => {
-                if update.updated_by != user_id {
-                    return mismatch("updated_by");
-                }
-            }
-            UpdateMenuAction::AddSection { section, .. } => {
-                if section.created_by != user_id {
-                    return mismatch("created_by");
-                }
-            }
-            UpdateMenuAction::AddItem { item, .. } => {
-                if item.created_by != user_id {
-                    return mismatch("created_by");
-                }
-            }
-            // Position / move actions carry no user_id fields;
-            // the repository stamps updated_by from the top-level user_id.
-            UpdateMenuAction::ChangePositionSection { .. }
-            | UpdateMenuAction::ChangePositionItem { .. }
-            | UpdateMenuAction::ChangeSectionForItem { .. }
-            | UpdateMenuAction::ChangeSectionForSubSection { .. } => {}
-        }
-
-        Ok(())
-    }
 
     /// Validate that nesting depth doesn't exceed the maximum allowed
     /// (used during full menu creation with `CreateMenuSection` trees).

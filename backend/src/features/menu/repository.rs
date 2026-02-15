@@ -286,7 +286,7 @@ impl MenuRepository {
                         update.is_active,
                         update.permanent,
                         update.id,
-                        update.updated_by
+                        user_id
                     )
                     .fetch_one(&mut *tx)
                     .await?;
@@ -323,7 +323,7 @@ impl MenuRepository {
                         update.is_active,
                         update.parent_id,
                         section_id,
-                        update.updated_by
+                        user_id
                     )
                     .fetch_one(&mut *tx)
                     .await?;
@@ -356,7 +356,7 @@ impl MenuRepository {
                         update.price_override_cents.as_ref().map(|p| p.as_ref()),
                         update.is_available,
                         *item_id,
-                        update.updated_by
+                        user_id
                     )
                     .fetch_one(&mut *tx)
                     .await?;
@@ -381,7 +381,7 @@ impl MenuRepository {
                             item_update.image_url.as_ref().map(|u| u.to_string()),
                             item_update.active,
                             item_update.id,
-                            item_update.updated_by
+                            user_id
                         )
                         .execute(&mut *tx)
                         .await?;
@@ -488,8 +488,8 @@ impl MenuRepository {
                         section.description,
                         section.position,
                         section.is_active,
-                        section.created_by,
-                        section.created_by // updated_by = created_by on insert
+                        user_id,
+                        user_id
                     )
                     .fetch_one(&mut *tx)
                     .await?;
@@ -540,8 +540,8 @@ impl MenuRepository {
                         item.item.base_price_cents.as_ref(),
                         item.item.image_url.as_ref().map(|u| u.to_string()),
                         item.item.active,
-                        item.created_by,
-                        item.created_by
+                        user_id,
+                        user_id
                     )
                     .fetch_one(&mut *tx)
                     .await?;
@@ -560,8 +560,8 @@ impl MenuRepository {
                         item.position,
                         item.price_override_cents.as_ref().map(|p| p.as_ref()),
                         item.is_available,
-                        item.created_by,
-                        item.created_by
+                        user_id,
+                        user_id
                     )
                     .fetch_one(&mut *tx)
                     .await?;
@@ -929,7 +929,7 @@ impl MenuRepository {
             // NOTE: this goes through item_repository which uses its own pool
             // connection (outside the current transaction). A future improvement
             // would be to make item creation transaction-aware.
-            let catalog_item = self.item_repository.create(input.item).await?;
+            let catalog_item = self.item_repository.create(user_id, input.item).await?;
 
             let item_row = sqlx::query_as!(
                 MenuSectionItemRow,

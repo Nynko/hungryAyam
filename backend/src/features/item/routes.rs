@@ -7,6 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
+    auth::middleware::AuthUser,
     features::item::{
         domain::{
             item::Item,
@@ -41,21 +42,23 @@ pub fn item_routes() -> Router<AppState> {
 
 // ==================== ITEM HANDLERS ====================
 
-/// Create a new item (with tags if provided)
+/// Create a new item (with tags if provided; requires authenticated user)
 pub async fn create_item(
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateItemRequest>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<Item>>), ApiError> {
-    let item = app_state.item_service.create_item(request).await?;
+    let item = app_state.item_service.create_item(user.id, request).await?;
     Ok((StatusCode::CREATED, ApiJson(ApiResponse::success(item))))
 }
 
-/// Create multiple items in batch
+/// Create multiple items in batch (requires authenticated user)
 pub async fn create_batch_items(
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(requests): ApiJson<Vec<CreateItemRequest>>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<Vec<Item>>>), ApiError> {
-    let items = app_state.item_service.create_batch_items(requests).await?;
+    let items = app_state.item_service.create_batch_items(user.id, requests).await?;
     Ok((StatusCode::CREATED, ApiJson(ApiResponse::success(items))))
 }
 
@@ -89,20 +92,22 @@ pub async fn list_active_items_for_restaurant(
     Ok(ApiJson(ApiResponse::success(items)))
 }
 
-/// Update an item (ID provided in request body, with tags if provided)
+/// Update an item (ID provided in request body, with tags if provided; requires authenticated user)
 pub async fn update_item(
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateItemRequest>,
 ) -> Result<ApiJson<ApiResponse<Item>>, ApiError> {
     let item = app_state.item_service
-        .update_item(request)
+        .update_item(user.id,request)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(item)))
 }
 
-/// Delete an item
+/// Delete an item (requires authenticated user)
 pub async fn delete_item(
+    AuthUser(_user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
@@ -136,8 +141,9 @@ pub async fn get_tag(
     Ok(ApiJson(ApiResponse::success(tag)))
 }
 
-/// Update a tag (ID provided in request body)
+/// Update a tag (ID provided in request body; requires authenticated user)
 pub async fn update_tag(
+    AuthUser(_user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateTag>,
 ) -> Result<ApiJson<ApiResponse<Tag>>, ApiError> {
@@ -148,8 +154,9 @@ pub async fn update_tag(
     Ok(ApiJson(ApiResponse::success(tag)))
 }
 
-/// Delete a tag (will cascade remove from all items)
+/// Delete a tag (will cascade remove from all items; requires authenticated user)
 pub async fn delete_tag(
+    AuthUser(_user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {

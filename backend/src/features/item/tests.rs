@@ -10,7 +10,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use crate::{app::build_app, state::build_state};
+use crate::{app::build_app, auth::password::sha256_hex, state::build_state};
 
 // ═══════════════════════════════════════════════════════════════════
 // Test helpers
@@ -18,17 +18,29 @@ use crate::{app::build_app, state::build_state};
 
 /// Seed the database with app_settings, a user, and a restaurant.
 /// Returns (user_id, restaurant_id).
-async fn seed(pool: &PgPool) -> (Uuid, Uuid) {
-    sqlx::query("INSERT INTO app_settings (id, title) VALUES (1, 'Test App')")
+async fn seed(pool: &PgPool) -> (Uuid, Uuid, String) {
+    let access_hash = sha256_hex("test_access_code");
+    sqlx::query("INSERT INTO app_settings (id, title, access_hash) VALUES (1, 'Test App', $1)")
+        .bind(&access_hash)
         .execute(pool)
         .await
         .unwrap();
 
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name, auth_method) VALUES ('tester', 'Password') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('tester', 'Password', 'User') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();
+
+    let token: String = sqlx::query_scalar(
+        "INSERT INTO user_sessions (user_id, token, expires_at) \
+         VALUES ($1, gen_random_uuid()::text, NOW() + INTERVAL '1 day') \
+         RETURNING token",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
 
     let rest_id: Uuid = sqlx::query_scalar(
         "INSERT INTO restaurants (name, created_by, updated_by) VALUES ('Test Restaurant', $1, $1) RETURNING id",
@@ -38,7 +50,7 @@ async fn seed(pool: &PgPool) -> (Uuid, Uuid) {
     .await
     .unwrap();
 
-    (user_id, rest_id)
+    (user_id, rest_id, token)
 }
 
 /// Seed a second restaurant for cross-restaurant tests.
@@ -61,24 +73,20 @@ fn app(pool: PgPool) -> Router {
 }
 
 /// Fire a request and return (status, parsed JSON body).
-async fn send(
-    router: &Router,
-    method: Method,
-    uri: &str,
-    body: Option<Value>,
-) -> (StatusCode, Value) {
+async fn send(router: &Router, method: Method, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
+    send_with_auth(router, method, uri, body, None).await
+}
+
+async fn send_with_auth(router: &Router, method: Method, uri: &str, body: Option<Value>, token: Option<&str>) -> (StatusCode, Value) {
     let req_body = match body {
         Some(v) => Body::from(serde_json::to_vec(&v).unwrap()),
         None => Body::empty(),
     };
-
-    let req = Request::builder()
-        .method(method)
-        .uri(uri)
-        .header("content-type", "application/json")
-        .body(req_body)
-        .unwrap();
-
+    let mut builder = Request::builder().method(method).uri(uri).header("content-type", "application/json");
+    if let Some(t) = token {
+        builder = builder.header("authorization", format!("Bearer {}", t));
+    }
+    let req = builder.body(req_body).unwrap();
     let resp = router.clone().oneshot(req).await.unwrap();
     let status = resp.status();
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
@@ -86,28 +94,33 @@ async fn send(
     (status, json)
 }
 
-/// Convenience: POST with JSON body.
 async fn post(router: &Router, uri: &str, body: Value) -> (StatusCode, Value) {
     send(router, Method::POST, uri, Some(body)).await
 }
 
-/// Convenience: GET.
+async fn post_auth(router: &Router, uri: &str, body: Value, token: &str) -> (StatusCode, Value) {
+    send_with_auth(router, Method::POST, uri, Some(body), Some(token)).await
+}
+
 async fn get(router: &Router, uri: &str) -> (StatusCode, Value) {
     send(router, Method::GET, uri, None).await
 }
 
-/// Convenience: DELETE.
 async fn del(router: &Router, uri: &str) -> (StatusCode, Value) {
     send(router, Method::DELETE, uri, None).await
+}
+
+async fn del_auth(router: &Router, uri: &str, token: &str) -> (StatusCode, Value) {
+    send_with_auth(router, Method::DELETE, uri, None, Some(token)).await
 }
 
 /// Create a simple item via the API and return the response data object.
 async fn create_item(
     router: &Router,
     restaurant_id: Uuid,
-    user_id: Uuid,
     name: &str,
     price_cents: i32,
+    token: &str,
 ) -> Value {
     let payload = json!({
         "restaurant_id": restaurant_id,
@@ -115,10 +128,9 @@ async fn create_item(
         "description": null,
         "base_price_cents": price_cents,
         "image_url": null,
-        "created_by": user_id,
         "tags": []
     });
-    let (status, body) = post(router, "/api/items", payload).await;
+    let (status, body) = post_auth(router, "/api/items", payload, token).await;
     assert_eq!(status, StatusCode::CREATED, "create item failed: {body}");
     assert_eq!(body["success"], true);
     body["data"].clone()
@@ -128,10 +140,10 @@ async fn create_item(
 async fn create_item_with_tags(
     router: &Router,
     restaurant_id: Uuid,
-    user_id: Uuid,
     name: &str,
     price_cents: i32,
     tags: Value,
+    token: &str,
 ) -> Value {
     let payload = json!({
         "restaurant_id": restaurant_id,
@@ -139,10 +151,9 @@ async fn create_item_with_tags(
         "description": "A delicious dish",
         "base_price_cents": price_cents,
         "image_url": "https://example.com/food.jpg",
-        "created_by": user_id,
         "tags": tags
     });
-    let (status, body) = post(router, "/api/items", payload).await;
+    let (status, body) = post_auth(router, "/api/items", payload, token).await;
     assert_eq!(status, StatusCode::CREATED, "create item with tags failed: {body}");
     assert_eq!(body["success"], true);
     body["data"].clone()
@@ -154,7 +165,7 @@ async fn create_item_with_tags(
 
 #[sqlx::test]
 async fn test_create_item_minimal(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
@@ -163,11 +174,10 @@ async fn test_create_item_minimal(pool: PgPool) {
         "description": null,
         "base_price_cents": 1500,
         "image_url": null,
-        "created_by": user_id,
         "tags": []
     });
 
-    let (status, body) = post(&router, "/api/items", payload).await;
+    let (status, body) = post_auth(&router, "/api/items", payload, &token).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["success"], true);
 
@@ -188,7 +198,7 @@ async fn test_create_item_minimal(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_create_item_with_all_fields(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
@@ -197,11 +207,10 @@ async fn test_create_item_with_all_fields(pool: PgPool) {
         "description": "Indonesian fried noodles",
         "base_price_cents": 1200,
         "image_url": "https://example.com/mie.jpg",
-        "created_by": user_id,
         "tags": []
     });
 
-    let (status, body) = post(&router, "/api/items", payload).await;
+    let (status, body) = post_auth(&router, "/api/items", payload, &token).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
     let data = &body["data"];
@@ -213,7 +222,7 @@ async fn test_create_item_with_all_fields(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_create_item_with_tags_by_name(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let tags = json!([
@@ -224,10 +233,10 @@ async fn test_create_item_with_tags_by_name(pool: PgPool) {
     let data = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Gado Gado",
         1000,
         tags,
+        &token,
     )
     .await;
 
@@ -246,7 +255,7 @@ async fn test_create_item_with_tags_by_name(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_create_item_with_invalid_url_rejected(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
@@ -255,17 +264,16 @@ async fn test_create_item_with_invalid_url_rejected(pool: PgPool) {
         "description": null,
         "base_price_cents": 500,
         "image_url": "not-a-url",
-        "created_by": user_id,
         "tags": []
     });
 
-    let (status, _body) = post(&router, "/api/items", payload).await;
+    let (status, _body) = post_auth(&router, "/api/items", payload, &token).await;
     assert_ne!(status, StatusCode::CREATED);
 }
 
 #[sqlx::test]
 async fn test_create_item_with_negative_price_rejected(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
@@ -274,17 +282,16 @@ async fn test_create_item_with_negative_price_rejected(pool: PgPool) {
         "description": null,
         "base_price_cents": -100,
         "image_url": null,
-        "created_by": user_id,
         "tags": []
     });
 
-    let (status, _body) = post(&router, "/api/items", payload).await;
+    let (status, _body) = post_auth(&router, "/api/items", payload, &token).await;
     assert_ne!(status, StatusCode::CREATED, "should reject negative price");
 }
 
 #[sqlx::test]
 async fn test_create_item_with_zero_price(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
@@ -293,28 +300,27 @@ async fn test_create_item_with_zero_price(pool: PgPool) {
         "description": null,
         "base_price_cents": 0,
         "image_url": null,
-        "created_by": user_id,
         "tags": []
     });
 
-    let (status, body) = post(&router, "/api/items", payload).await;
+    let (status, body) = post_auth(&router, "/api/items", payload, &token).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["data"]["base_price_cents"], 0);
 }
 
 #[sqlx::test]
 async fn test_create_item_tag_deduplication_by_name(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create first item with tag "Halal"
     let data1 = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Item A",
         500,
         json!([{ "name": "Halal" }]),
+        &token,
     )
     .await;
     let tag_id_1 = data1["tags"][0]["id"].as_str().unwrap().to_string();
@@ -323,10 +329,10 @@ async fn test_create_item_tag_deduplication_by_name(pool: PgPool) {
     let data2 = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Item B",
         600,
         json!([{ "name": "Halal" }]),
+        &token,
     )
     .await;
     let tag_id_2 = data2["tags"][0]["id"].as_str().unwrap().to_string();
@@ -340,7 +346,7 @@ async fn test_create_item_tag_deduplication_by_name(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_create_batch_items(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!([
@@ -350,7 +356,6 @@ async fn test_create_batch_items(pool: PgPool) {
             "description": null,
             "base_price_cents": 100,
             "image_url": null,
-            "created_by": user_id,
             "tags": []
         },
         {
@@ -359,7 +364,6 @@ async fn test_create_batch_items(pool: PgPool) {
             "description": "Second item",
             "base_price_cents": 200,
             "image_url": null,
-            "created_by": user_id,
             "tags": [{ "name": "New" }]
         },
         {
@@ -368,12 +372,11 @@ async fn test_create_batch_items(pool: PgPool) {
             "description": null,
             "base_price_cents": 300,
             "image_url": null,
-            "created_by": user_id,
             "tags": []
         }
     ]);
 
-    let (status, body) = post(&router, "/api/items/batch", payload).await;
+    let (status, body) = post_auth(&router, "/api/items/batch", payload, &token).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["success"], true);
 
@@ -393,12 +396,12 @@ async fn test_create_batch_items(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_create_batch_items_empty(pool: PgPool) {
-    let (_user_id, _restaurant_id) = seed(&pool).await;
+    let (_user_id, _restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!([]);
 
-    let (status, body) = post(&router, "/api/items/batch", payload).await;
+    let (status, body) = post_auth(&router, "/api/items/batch", payload, &token).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["success"], true);
     assert!(body["data"].as_array().unwrap().is_empty());
@@ -410,10 +413,10 @@ async fn test_create_batch_items_empty(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_item_by_id(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Sate Ayam", 2000).await;
+    let created = create_item(&router, restaurant_id, "Sate Ayam", 2000, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
     let (status, body) = get(&router, &format!("/api/items/{item_id}")).await;
@@ -429,7 +432,7 @@ async fn test_get_item_by_id(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_item_not_found(pool: PgPool) {
-    seed(&pool).await;
+    let (_u, _r, _t) = seed(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
@@ -439,16 +442,16 @@ async fn test_get_item_not_found(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_item_includes_tags(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let created = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Tagged Item",
         1500,
         json!([{ "name": "Spicy" }, { "name": "Chicken" }]),
+        &token,
     )
     .await;
     let item_id = created["id"].as_str().unwrap();
@@ -470,7 +473,7 @@ async fn test_get_item_includes_tags(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_items_for_restaurant_empty(pool: PgPool) {
-    let (_user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, _token) = seed(&pool).await;
     let router = app(pool);
 
     let (status, body) = get(&router, &format!("/api/restaurants/{restaurant_id}/items")).await;
@@ -481,12 +484,12 @@ async fn test_list_items_for_restaurant_empty(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_items_for_restaurant(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    create_item(&router, restaurant_id, user_id, "Alpha", 100).await;
-    create_item(&router, restaurant_id, user_id, "Beta", 200).await;
-    create_item(&router, restaurant_id, user_id, "Gamma", 300).await;
+    create_item(&router, restaurant_id, "Alpha", 100, &token).await;
+    create_item(&router, restaurant_id, "Beta", 200, &token).await;
+    create_item(&router, restaurant_id, "Gamma", 300, &token).await;
 
     let (status, body) = get(&router, &format!("/api/restaurants/{restaurant_id}/items")).await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -503,12 +506,12 @@ async fn test_list_items_for_restaurant(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_items_scoped_to_restaurant(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (user_id, restaurant_id, token) = seed(&pool).await;
     let second_restaurant_id = seed_second_restaurant(&pool, user_id).await;
     let router = app(pool);
 
-    create_item(&router, restaurant_id, user_id, "Rest1 Item", 100).await;
-    create_item(&router, second_restaurant_id, user_id, "Rest2 Item", 200).await;
+    create_item(&router, restaurant_id, "Rest1 Item", 100, &token).await;
+    create_item(&router, second_restaurant_id, "Rest2 Item", 200, &token).await;
 
     // List items for restaurant 1
     let (status, body) = get(&router, &format!("/api/restaurants/{restaurant_id}/items")).await;
@@ -531,16 +534,16 @@ async fn test_list_items_scoped_to_restaurant(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_items_includes_tags(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "TaggedList Item",
         500,
         json!([{ "name": "Vegan" }]),
+        &token,
     )
     .await;
 
@@ -560,21 +563,20 @@ async fn test_list_items_includes_tags(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_active_items_for_restaurant(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create two items, both active by default
-    create_item(&router, restaurant_id, user_id, "Active Item", 100).await;
-    let inactive = create_item(&router, restaurant_id, user_id, "To Deactivate", 200).await;
+    create_item(&router, restaurant_id, "Active Item", 100, &token).await;
+    let inactive = create_item(&router, restaurant_id, "To Deactivate", 200, &token).await;
     let inactive_id = inactive["id"].as_str().unwrap();
 
     // Deactivate one item
     let update_payload = json!({
         "id": inactive_id,
         "active": false,
-        "updated_by": user_id
     });
-    let (status, _body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK);
 
     // List all items
@@ -597,19 +599,18 @@ async fn test_list_active_items_for_restaurant(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_active_items_empty_when_all_inactive(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let item = create_item(&router, restaurant_id, user_id, "Only Item", 100).await;
+    let item = create_item(&router, restaurant_id, "Only Item", 100, &token).await;
     let item_id = item["id"].as_str().unwrap();
 
     // Deactivate it
     let update_payload = json!({
         "id": item_id,
         "active": false,
-        "updated_by": user_id
     });
-    let (status, _body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK);
 
     let (status, body) = get(
@@ -627,19 +628,18 @@ async fn test_list_active_items_empty_when_all_inactive(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_item_name(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Old Name", 1000).await;
+    let created = create_item(&router, restaurant_id, "Old Name", 1000, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
     let update_payload = json!({
         "id": item_id,
         "name": "New Name",
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
     assert_eq!(body["data"]["name"], "New Name");
@@ -649,19 +649,18 @@ async fn test_update_item_name(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_item_price(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Price Update", 500).await;
+    let created = create_item(&router, restaurant_id, "Price Update", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
     let update_payload = json!({
         "id": item_id,
         "base_price_cents": 750,
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["base_price_cents"], 750);
     assert_eq!(body["data"]["name"], "Price Update");
@@ -669,48 +668,46 @@ async fn test_update_item_price(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_item_description(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Desc Update", 500).await;
+    let created = create_item(&router, restaurant_id, "Desc Update", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
     let update_payload = json!({
         "id": item_id,
         "description": "Brand new description",
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["description"], "Brand new description");
 }
 
 #[sqlx::test]
 async fn test_update_item_image_url(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Image Update", 500).await;
+    let created = create_item(&router, restaurant_id, "Image Update", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
     let update_payload = json!({
         "id": item_id,
         "image_url": "https://example.com/new-image.png",
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["image_url"], "https://example.com/new-image.png");
 }
 
 #[sqlx::test]
 async fn test_update_item_active_flag(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Toggle Active", 500).await;
+    let created = create_item(&router, restaurant_id, "Toggle Active", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
     assert_eq!(created["active"], true);
 
@@ -718,9 +715,8 @@ async fn test_update_item_active_flag(pool: PgPool) {
     let update_payload = json!({
         "id": item_id,
         "active": false,
-        "updated_by": user_id
     });
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["active"], false);
 
@@ -728,19 +724,18 @@ async fn test_update_item_active_flag(pool: PgPool) {
     let update_payload = json!({
         "id": item_id,
         "active": true,
-        "updated_by": user_id
     });
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["active"], true);
 }
 
 #[sqlx::test]
 async fn test_update_item_multiple_fields(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Multi Update", 500).await;
+    let created = create_item(&router, restaurant_id, "Multi Update", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
     let update_payload = json!({
@@ -750,10 +745,9 @@ async fn test_update_item_multiple_fields(pool: PgPool) {
         "base_price_cents": 999,
         "image_url": "https://example.com/updated.png",
         "active": false,
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
     let data = &body["data"];
@@ -766,35 +760,33 @@ async fn test_update_item_multiple_fields(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_item_not_found(pool: PgPool) {
-    let (user_id, _restaurant_id) = seed(&pool).await;
+    let (_user_id, _restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
     let update_payload = json!({
         "id": fake_id,
         "name": "Ghost",
-        "updated_by": user_id
     });
 
-    let (status, _body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
 async fn test_update_item_with_invalid_url_rejected(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Bad URL Update", 500).await;
+    let created = create_item(&router, restaurant_id, "Bad URL Update", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
     let update_payload = json!({
         "id": item_id,
         "image_url": "not-a-url",
-        "updated_by": user_id
     });
 
-    let (status, _body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_ne!(status, StatusCode::OK, "should reject invalid URL");
 }
 
@@ -804,11 +796,11 @@ async fn test_update_item_with_invalid_url_rejected(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_item_add_tags(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create item without tags
-    let created = create_item(&router, restaurant_id, user_id, "Add Tags", 500).await;
+    let created = create_item(&router, restaurant_id, "Add Tags", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
     assert!(created["tags"].as_array().unwrap().is_empty());
 
@@ -816,10 +808,9 @@ async fn test_update_item_add_tags(pool: PgPool) {
     let update_payload = json!({
         "id": item_id,
         "tags": [{ "name": "Spicy" }, { "name": "Hot" }],
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
     let tags = body["data"]["tags"].as_array().unwrap();
@@ -831,17 +822,17 @@ async fn test_update_item_add_tags(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_item_replace_tags(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create item with initial tags
     let created = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Replace Tags",
         500,
         json!([{ "name": "OldTag1" }, { "name": "OldTag2" }]),
+        &token,
     )
     .await;
     let item_id = created["id"].as_str().unwrap();
@@ -851,10 +842,9 @@ async fn test_update_item_replace_tags(pool: PgPool) {
     let update_payload = json!({
         "id": item_id,
         "tags": [{ "name": "NewTag1" }, { "name": "NewTag2" }, { "name": "NewTag3" }],
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
     let tags = body["data"]["tags"].as_array().unwrap();
@@ -869,17 +859,17 @@ async fn test_update_item_replace_tags(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_item_remove_all_tags(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create item with tags
     let created = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Remove Tags",
         500,
         json!([{ "name": "ToRemove" }]),
+        &token,
     )
     .await;
     let item_id = created["id"].as_str().unwrap();
@@ -889,27 +879,26 @@ async fn test_update_item_remove_all_tags(pool: PgPool) {
     let update_payload = json!({
         "id": item_id,
         "tags": [],
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body["data"]["tags"].as_array().unwrap().is_empty());
 }
 
 #[sqlx::test]
 async fn test_update_item_without_tags_field_preserves_existing_tags(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create item with tags
     let created = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Preserve Tags",
         500,
         json!([{ "name": "Keep Me" }]),
+        &token,
     )
     .await;
     let item_id = created["id"].as_str().unwrap();
@@ -918,10 +907,9 @@ async fn test_update_item_without_tags_field_preserves_existing_tags(pool: PgPoo
     let update_payload = json!({
         "id": item_id,
         "name": "Renamed But Tags Stay",
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["name"], "Renamed But Tags Stay");
 
@@ -932,33 +920,32 @@ async fn test_update_item_without_tags_field_preserves_existing_tags(pool: PgPoo
 
 #[sqlx::test]
 async fn test_update_item_tags_by_existing_id(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create an item with a tag to get the tag's ID
     let first = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Tag Source",
         500,
         json!([{ "name": "SharedTag" }]),
+        &token,
     )
     .await;
     let tag_id = first["tags"][0]["id"].as_str().unwrap().to_string();
 
     // Create another item without tags
-    let second = create_item(&router, restaurant_id, user_id, "Tag Target", 600).await;
+    let second = create_item(&router, restaurant_id, "Tag Target", 600, &token).await;
     let second_id = second["id"].as_str().unwrap();
 
     // Update second item to use the existing tag by ID
     let update_payload = json!({
         "id": second_id,
         "tags": [{ "id": tag_id }],
-        "updated_by": user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
     let tags = body["data"]["tags"].as_array().unwrap();
@@ -973,13 +960,13 @@ async fn test_update_item_tags_by_existing_id(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_delete_item(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "To Delete", 500).await;
+    let created = create_item(&router, restaurant_id, "To Delete", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
-    let (status, body) = del(&router, &format!("/api/items/{item_id}")).await;
+    let (status, body) = del_auth(&router, &format!("/api/items/{item_id}"), &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
 
@@ -990,36 +977,36 @@ async fn test_delete_item(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_delete_item_not_found(pool: PgPool) {
-    seed(&pool).await;
+    let (_u, _r, token) = seed(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
-    let (status, _body) = del(&router, &format!("/api/items/{fake_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/items/{fake_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
 async fn test_delete_item_idempotent(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Delete Twice", 500).await;
+    let created = create_item(&router, restaurant_id, "Delete Twice", 500, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
-    let (status, _body) = del(&router, &format!("/api/items/{item_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/items/{item_id}"), &token).await;
     assert_eq!(status, StatusCode::OK);
 
-    let (status, _body) = del(&router, &format!("/api/items/{item_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/items/{item_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
 async fn test_delete_item_removes_from_list(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let keep = create_item(&router, restaurant_id, user_id, "Keep Me", 100).await;
-    let remove = create_item(&router, restaurant_id, user_id, "Remove Me", 200).await;
+    let _keep = create_item(&router, restaurant_id, "Keep Me", 100, &token).await;
+    let remove = create_item(&router, restaurant_id, "Remove Me", 200, &token).await;
     let remove_id = remove["id"].as_str().unwrap();
 
     // Verify both listed
@@ -1028,7 +1015,7 @@ async fn test_delete_item_removes_from_list(pool: PgPool) {
     assert_eq!(body["data"].as_array().unwrap().len(), 2);
 
     // Delete one
-    let (status, _body) = del(&router, &format!("/api/items/{remove_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/items/{remove_id}"), &token).await;
     assert_eq!(status, StatusCode::OK);
 
     // Verify only one remains
@@ -1045,7 +1032,7 @@ async fn test_delete_item_removes_from_list(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_tags_empty(pool: PgPool) {
-    seed(&pool).await;
+    let (_u, _r, _t) = seed(&pool).await;
     let router = app(pool);
 
     let (status, body) = get(&router, "/api/tags").await;
@@ -1056,27 +1043,27 @@ async fn test_list_tags_empty(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_tags_after_item_creation(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create items with tags to populate the tags table
     create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Item1",
         500,
         json!([{ "name": "Chicken" }, { "name": "Spicy" }]),
+        &token,
     )
     .await;
 
     create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Item2",
         600,
         json!([{ "name": "Vegetarian" }, { "name": "Spicy" }]),  // Spicy is shared
+        &token,
     )
     .await;
 
@@ -1093,16 +1080,16 @@ async fn test_list_tags_after_item_creation(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_tag_by_id(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let item = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Tagged",
         500,
         json!([{ "name": "Halal" }]),
+        &token,
     )
     .await;
     let tag_id = item["tags"][0]["id"].as_str().unwrap();
@@ -1116,7 +1103,7 @@ async fn test_get_tag_by_id(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_tag_not_found(pool: PgPool) {
-    seed(&pool).await;
+    let (_u, _r, _t) = seed(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
@@ -1126,16 +1113,16 @@ async fn test_get_tag_not_found(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_tag_rename(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let item = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Tag Rename Item",
         500,
         json!([{ "name": "OldTagName" }]),
+        &token,
     )
     .await;
     let tag_id = item["tags"][0]["id"].as_str().unwrap();
@@ -1145,7 +1132,7 @@ async fn test_update_tag_rename(pool: PgPool) {
         "name": "NewTagName"
     });
 
-    let (status, body) = post(&router, "/api/update-tag", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-tag", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
     assert_eq!(body["data"]["id"], tag_id);
@@ -1159,7 +1146,7 @@ async fn test_update_tag_rename(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_tag_not_found(pool: PgPool) {
-    seed(&pool).await;
+    let (_u, _r, token) = seed(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
@@ -1168,23 +1155,23 @@ async fn test_update_tag_not_found(pool: PgPool) {
         "name": "Ghost Tag"
     });
 
-    let (status, _body) = post(&router, "/api/update-tag", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-tag", update_payload, &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
 async fn test_update_tag_reflected_in_items(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create two items sharing the same tag
     let item1 = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Shared Tag Item 1",
         500,
         json!([{ "name": "SharedTag" }]),
+        &token,
     )
     .await;
     let tag_id = item1["tags"][0]["id"].as_str().unwrap().to_string();
@@ -1193,10 +1180,10 @@ async fn test_update_tag_reflected_in_items(pool: PgPool) {
     let _item2 = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Shared Tag Item 2",
         600,
         json!([{ "id": tag_id }]),
+        &token,
     )
     .await;
 
@@ -1205,7 +1192,7 @@ async fn test_update_tag_reflected_in_items(pool: PgPool) {
         "id": tag_id,
         "name": "RenamedSharedTag"
     });
-    let (status, _body) = post(&router, "/api/update-tag", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-tag", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK);
 
     // Both items should reflect the renamed tag
@@ -1216,16 +1203,16 @@ async fn test_update_tag_reflected_in_items(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_delete_tag(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let item = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Delete Tag Item",
         500,
         json!([{ "name": "ToDelete" }, { "name": "ToKeep" }]),
+        &token,
     )
     .await;
     let item_id = item["id"].as_str().unwrap();
@@ -1239,7 +1226,7 @@ async fn test_delete_tag(pool: PgPool) {
         .unwrap();
 
     // Delete the tag
-    let (status, body) = del(&router, &format!("/api/tags/{tag_to_delete_id}")).await;
+    let (status, body) = del_auth(&router, &format!("/api/tags/{tag_to_delete_id}"), &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
 
@@ -1257,27 +1244,27 @@ async fn test_delete_tag(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_delete_tag_not_found(pool: PgPool) {
-    seed(&pool).await;
+    let (_u, _r, token) = seed(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
-    let (status, _body) = del(&router, &format!("/api/tags/{fake_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/tags/{fake_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
 async fn test_delete_tag_cascade_removes_from_all_items(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create two items sharing the same tag
     let item1 = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Cascade Item 1",
         500,
         json!([{ "name": "CascadeTag" }]),
+        &token,
     )
     .await;
     let tag_id = item1["tags"][0]["id"].as_str().unwrap().to_string();
@@ -1286,16 +1273,16 @@ async fn test_delete_tag_cascade_removes_from_all_items(pool: PgPool) {
     let item2 = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Cascade Item 2",
         600,
         json!([{ "id": tag_id }]),
+        &token,
     )
     .await;
     let item2_id = item2["id"].as_str().unwrap();
 
     // Delete the shared tag
-    let (status, _body) = del(&router, &format!("/api/tags/{tag_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/tags/{tag_id}"), &token).await;
     assert_eq!(status, StatusCode::OK);
 
     // Both items should now have no tags
@@ -1314,16 +1301,16 @@ async fn test_delete_tag_cascade_removes_from_all_items(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_create_and_get_item_round_trip(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let created = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Round Trip",
         1234,
         json!([{ "name": "A" }, { "name": "B" }]),
+        &token,
     )
     .await;
     let item_id = created["id"].as_str().unwrap();
@@ -1346,10 +1333,10 @@ async fn test_create_and_get_item_round_trip(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_item_timestamps_are_set(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Timestamped", 100).await;
+    let created = create_item(&router, restaurant_id, "Timestamped", 100, &token).await;
     assert!(created["created_at"].is_string());
     assert!(created["updated_at"].is_string());
     assert!(!created["created_at"].as_str().unwrap().is_empty());
@@ -1358,10 +1345,10 @@ async fn test_item_timestamps_are_set(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_then_get_reflects_changes(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Before", 100).await;
+    let created = create_item(&router, restaurant_id, "Before", 100, &token).await;
     let item_id = created["id"].as_str().unwrap();
 
     let update_payload = json!({
@@ -1369,9 +1356,8 @@ async fn test_update_then_get_reflects_changes(pool: PgPool) {
         "name": "After",
         "base_price_cents": 999,
         "description": "Now with a description",
-        "updated_by": user_id
     });
-    let (status, _body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK);
 
     let (status, body) = get(&router, &format!("/api/items/{item_id}")).await;
@@ -1385,27 +1371,37 @@ async fn test_update_then_get_reflects_changes(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_item_default_active_is_true(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let data = create_item(&router, restaurant_id, user_id, "Default Active", 100).await;
+    let data = create_item(&router, restaurant_id, "Default Active", 100, &token).await;
     assert_eq!(data["active"], true);
 }
 
 #[sqlx::test]
 async fn test_item_updated_by_tracks_updater(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (user_id, restaurant_id, token) = seed(&pool).await;
 
     // Create second user via direct SQL (before pool is moved)
     let second_user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name, auth_method) VALUES ('updater', 'Password') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('updater', 'Password', 'User') RETURNING id")
             .fetch_one(&pool)
             .await
             .unwrap();
 
+    let second_token: String = sqlx::query_scalar(
+        "INSERT INTO user_sessions (user_id, token, expires_at) \
+         VALUES ($1, gen_random_uuid()::text, NOW() + INTERVAL '1 day') \
+         RETURNING token",
+    )
+    .bind(second_user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
     let router = app(pool);
 
-    let created = create_item(&router, restaurant_id, user_id, "Track Updater", 100).await;
+    let created = create_item(&router, restaurant_id, "Track Updater", 100, &token).await;
     let item_id = created["id"].as_str().unwrap();
     assert_eq!(created["created_by"], user_id.to_string());
     assert_eq!(created["updated_by"], user_id.to_string());
@@ -1414,39 +1410,38 @@ async fn test_item_updated_by_tracks_updater(pool: PgPool) {
     let update_payload = json!({
         "id": item_id,
         "name": "Updated By Another",
-        "updated_by": second_user_id
     });
 
-    let (status, body) = post(&router, "/api/update-item", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-item", update_payload, &second_token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     // created_by stays the same
     assert_eq!(body["data"]["created_by"], user_id.to_string());
-    // updated_by changes to the new user
+    // updated_by changes to the second user (derived from auth)
     assert_eq!(body["data"]["updated_by"], second_user_id.to_string());
 }
 
 #[sqlx::test]
 async fn test_multiple_items_same_restaurant_different_tags(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let item1 = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Chicken Rice",
         1200,
         json!([{ "name": "Chicken" }, { "name": "Rice" }]),
+        &token,
     )
     .await;
 
     let item2 = create_item_with_tags(
         &router,
         restaurant_id,
-        user_id,
         "Veggie Bowl",
         1000,
         json!([{ "name": "Vegetarian" }, { "name": "Rice" }]),
+        &token,
     )
     .await;
 

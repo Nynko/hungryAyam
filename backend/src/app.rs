@@ -5,6 +5,7 @@ use tower_http::cors::CorsLayer;
 
 use crate::{
     setup_middleware::setup_redirect_guard,
+    auth::routes::{auth_routes, admin_auth_routes},
     features::{
         app_setup::routes::setup_routes,
         restaurant::routes::restaurant_routes,
@@ -22,16 +23,8 @@ pub fn build_app(state: AppState) -> Router {
         .merge(user_routes())
         .merge(item_routes())
         .merge(menu_routes())
-        // .route("/api/restaurants", get(list_restaurants))
-        // .route("/api/restaurants/:id", get(get_restaurant))
-        // .route("/api/restaurants/:id", put(update_restaurant))
-        // .route("/api/restaurants/:id", delete(delete_restaurant))
-        // .route(
-        //     "/api/restaurants/active-orders",
-        //     get(get_restaurants_with_active_orders),
-        // )
-        // Health check
-        // .route("/health", get(health_check))
+        .merge(auth_routes())
+        .merge(admin_auth_routes())
         // Add CORS middleware
         .layer(CorsLayer::permissive()) // TODO: Change
         .layer(middleware::from_fn_with_state(state.clone(), setup_redirect_guard))

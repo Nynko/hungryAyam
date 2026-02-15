@@ -1,14 +1,16 @@
 use anyhow::Result;
 use uuid::Uuid;
 
-use crate::features::item::{
-    domain::{
-        item::Item,
-        tag::{Tag, UpdateTag}
+use crate::features::{
+    item::{
+        domain::{
+            item::Item,
+            tag::{Tag, UpdateTag}
+        },
+        dto::{CreateItemRequest, UpdateItemRequest},
+        repository::ItemRepository,
     },
-    dto::{CreateItemRequest, UpdateItemRequest},
-    repository::ItemRepository,
-
+    user::domain::User
 };
 
 #[derive(Clone)]
@@ -25,15 +27,15 @@ impl ItemService {
 
     /// Create a new item (with tags if provided)
     /// Note: Name and price validation happens automatically during deserialization via validated_type
-    pub async fn create_item(&self, request: CreateItemRequest) -> Result<Item> {
-        self.repository.create(request).await
+    pub async fn create_item(&self, user_id: Uuid, request: CreateItemRequest) -> Result<Item> {
+        self.repository.create(user_id, request).await
     }
 
     /// Create multiple items in batch
-    pub async fn create_batch_items(&self, requests: Vec<CreateItemRequest>) -> Result<Vec<Item>> {
+    pub async fn create_batch_items(&self, user_id: Uuid, requests: Vec<CreateItemRequest>) -> Result<Vec<Item>> {
         let mut items = Vec::with_capacity(requests.len());
         for request in requests {
-            let item = self.repository.create(request).await?;
+            let item = self.repository.create(user_id, request).await?;
             items.push(item);
         }
         Ok(items)
@@ -56,12 +58,12 @@ impl ItemService {
 
     /// Update an item (with tags if provided)
     /// Note: Name and price validation happens automatically during deserialization via validated_type
-    pub async fn update_item(&self, request: UpdateItemRequest) -> Result<Option<Item>> {
+    pub async fn update_item(&self, user_id: Uuid, request: UpdateItemRequest) -> Result<Option<Item>> {
         if self.repository.get_by_id(request.id).await?.is_none() {
             return Ok(None);
         }
 
-        self.repository.update(request).await
+        self.repository.update(user_id, request).await
     }
 
     /// Delete an item

@@ -23,11 +23,9 @@ pub struct MenuSection {
     pub description: Option<String>,
     pub position: i32,
     pub is_active: bool,
-    #[update_ignore]
+    #[derived_domain_ignore]
     pub created_by: Uuid,
-    #[create_ignore]
-    #[unit_create_ignore]
-    #[update_required]
+    #[derived_domain_ignore]
     pub updated_by: Uuid,
 
     /// Items in this section

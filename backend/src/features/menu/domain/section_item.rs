@@ -22,10 +22,9 @@ pub struct MenuSectionItem {
     pub is_available: bool,
     // pub created_at: DateTime<Utc>,
     // pub updated_at: DateTime<Utc>,
-    #[update_ignore]
-    #[create_required]
+    #[derived_domain_ignore]
     pub created_by: Uuid,
-    #[update_required]
+    #[derived_domain_ignore]
     pub updated_by: Uuid,
     #[derived_nested]
     pub item: Item,

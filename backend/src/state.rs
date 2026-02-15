@@ -1,6 +1,10 @@
 use sqlx::PgPool;
 use std::sync::Arc;
 use crate::{
+    auth::{
+        service::AuthService,
+        session::SessionRepository,
+    },
     features::{
         restaurant::{
             repository::RestaurantRepository,
@@ -30,9 +34,12 @@ pub struct AppState {
     pub setup_completed: Arc<std::sync::atomic::AtomicBool>,
     pub restaurant_service: RestaurantService,
     pub setup_service: AppSetupService,
+    pub setup_repository: AppSetupRepository,
     pub user_service: UserService,
     pub item_service: ItemService,
     pub menu_service: MenuService,
+    pub auth_service: AuthService,
+    pub session_repository: SessionRepository,
 }
 
 pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
@@ -44,20 +51,25 @@ pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
     let user_repository = UserRepository::new(db.clone());
     let item_repository = ItemRepository::new(db.clone());
     let menu_repository = MenuRepository::new(db.clone(), item_repository.clone());
+    let session_repository = SessionRepository::new(db.clone());
 
-    // Create services
-    let setup_service = AppSetupService::new(setup_repository.clone());
+    // Create services (auth_service must be created before setup_service)
+    let auth_service = AuthService::new(user_repository.clone(), session_repository.clone());
+    let setup_service = AppSetupService::new(setup_repository.clone(), auth_service.clone());
     let restaurant_service = RestaurantService::new(restaurant_repository);
     let user_service = UserService::new(user_repository);
     let item_service = ItemService::new(item_repository);
-    let menu_service = MenuService::new(menu_repository, setup_repository);
+    let menu_service = MenuService::new(menu_repository, setup_repository.clone());
 
-    return AppState {
+    AppState {
         setup_completed,
         restaurant_service,
         setup_service,
+        setup_repository,
         user_service,
         item_service,
         menu_service,
-    };
+        auth_service,
+        session_repository,
+    }
 }

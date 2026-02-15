@@ -10,7 +10,8 @@ use crate::{
     types::{
         email::Email,
         name::Name,
-        auth::AuthMethod
+        auth::AuthMethod,
+        role::UserRole,
     }
 };
 
@@ -24,25 +25,35 @@ impl UserRepository {
         Self { pool }
     }
 
-    pub async fn create(&self, create_user: CreateUser) -> Result<User> {
+    /// Create a new user.
+    ///
+    /// The `password_hash` parameter is provided separately because it is
+    /// computed by the service layer (not sent directly in the API request).
+    pub async fn create(
+        &self,
+        create_user: CreateUser,
+        password_hash: Option<String>,
+    ) -> Result<User> {
         let user = sqlx::query_as!(
             UserRow,
             r#"
-            INSERT INTO users (name, email, auth_method, auth_value)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO users (name, email, auth_method, password_hash, role)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING
                 id,
                 name as "name: Name",
                 email as "email?: Email",
                 auth_method as "auth_method: AuthMethod",
-                auth_value,
+                password_hash,
+                role as "role?: UserRole",
                 created_at,
                 updated_at
             "#,
             create_user.name.as_ref(),
             create_user.email.as_ref().map(|e| e.to_string()),
             create_user.auth_method.to_string(),
-            create_user.auth_value
+            password_hash,
+            create_user.role.as_ref().map(|r| r.to_string())
         )
         .fetch_one(&self.pool)
         .await?;
@@ -59,7 +70,8 @@ impl UserRepository {
                 name as "name: Name",
                 email as "email?: Email",
                 auth_method as "auth_method: AuthMethod",
-                auth_value,
+                password_hash,
+                role as "role?: UserRole",
                 created_at,
                 updated_at
             FROM users WHERE id = $1
@@ -81,7 +93,8 @@ impl UserRepository {
                 name as "name: Name",
                 email as "email?: Email",
                 auth_method as "auth_method: AuthMethod",
-                auth_value,
+                password_hash,
+                role as "role?: UserRole",
                 created_at,
                 updated_at
             FROM users WHERE email = $1
@@ -103,39 +116,14 @@ impl UserRepository {
                 name as "name: Name",
                 email as "email?: Email",
                 auth_method as "auth_method: AuthMethod",
-                auth_value,
+                password_hash,
+                role as "role?: UserRole",
                 created_at,
                 updated_at
             FROM users
             WHERE name = $1
             "#,
             name
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(user_row)
-    }
-
-    /// Look up a guest user by their cookie value.
-    /// Only matches users with auth_method = 'NoneWithCookie'.
-    pub async fn get_by_cookie(&self, cookie: &str) -> Result<Option<User>> {
-        let user_row = sqlx::query_as!(
-            UserRow,
-            r#"
-            SELECT
-                id,
-                name as "name: Name",
-                email as "email?: Email",
-                auth_method as "auth_method: AuthMethod",
-                auth_value,
-                created_at,
-                updated_at
-            FROM users
-            WHERE auth_method = 'NoneWithCookie'
-              AND auth_value = $1
-            "#,
-            cookie
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -152,7 +140,8 @@ impl UserRepository {
                 name as "name: Name",
                 email as "email?: Email",
                 auth_method as "auth_method: AuthMethod",
-                auth_value,
+                password_hash,
+                role as "role?: UserRole",
                 created_at,
                 updated_at
             FROM users
@@ -165,6 +154,10 @@ impl UserRepository {
         Ok(users.into_iter().collect())
     }
 
+    /// General-purpose update (name, email).
+    ///
+    /// Does NOT update auth_method, password_hash, or role — those are
+    /// changed through dedicated admin endpoints.
     pub async fn update(&self, update_user: UpdateUser) -> Result<Option<User>> {
         let user = sqlx::query_as!(
             UserRow,
@@ -172,24 +165,97 @@ impl UserRepository {
             UPDATE users
             SET name = COALESCE($1, name),
                 email = COALESCE($2, email),
-                auth_method = COALESCE($3, auth_method),
-                auth_value = COALESCE($4, auth_value),
                 updated_at = NOW()
-            WHERE id = $5
+            WHERE id = $3
             RETURNING
                 id,
                 name as "name: Name",
                 email as "email?: Email",
                 auth_method as "auth_method: AuthMethod",
-                auth_value,
+                password_hash,
+                role as "role?: UserRole",
                 created_at,
                 updated_at
             "#,
             update_user.name.as_ref().map(|n| n.as_ref()),
             update_user.email.as_ref().map(|e| e.to_string()),
-            update_user.auth_method.as_ref().map(|a| a.to_string()),
-            update_user.auth_value,
             update_user.id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    /// Upgrade a NameWithCookie user to a Password user.
+    ///
+    /// Sets auth_method, password_hash, email, and role in a single UPDATE.
+    pub async fn upgrade_to_password(
+        &self,
+        user_id: Uuid,
+        email: Email,
+        password_hash: String,
+        role: UserRole,
+    ) -> Result<Option<User>> {
+        let user = sqlx::query_as!(
+            UserRow,
+            r#"
+            UPDATE users
+            SET auth_method = $1,
+                email = $2,
+                password_hash = $3,
+                role = $4,
+                updated_at = NOW()
+            WHERE id = $5
+              AND auth_method = 'NameWithCookie'
+            RETURNING
+                id,
+                name as "name: Name",
+                email as "email?: Email",
+                auth_method as "auth_method: AuthMethod",
+                password_hash,
+                role as "role?: UserRole",
+                created_at,
+                updated_at
+            "#,
+            AuthMethod::Password.to_string(),
+            email.to_string(),
+            password_hash,
+            role.to_string(),
+            user_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    /// Change a user's role.
+    pub async fn update_role(
+        &self,
+        user_id: Uuid,
+        role: UserRole,
+    ) -> Result<Option<User>> {
+        let user = sqlx::query_as!(
+            UserRow,
+            r#"
+            UPDATE users
+            SET role = $1,
+                updated_at = NOW()
+            WHERE id = $2
+              AND auth_method = 'Password'
+            RETURNING
+                id,
+                name as "name: Name",
+                email as "email?: Email",
+                auth_method as "auth_method: AuthMethod",
+                password_hash,
+                role as "role?: UserRole",
+                created_at,
+                updated_at
+            "#,
+            role.to_string(),
+            user_id
         )
         .fetch_optional(&self.pool)
         .await?;

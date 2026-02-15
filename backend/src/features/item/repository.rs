@@ -3,18 +3,16 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    features::item::{
+    features::{item::{
         db_model::ItemRow,
         domain::{
             item::Item,
-            tag::{Tag,
-                EitherTag,
-                UpdateTag
+            tag::{EitherTag, Tag, UpdateTag
             }
         },
         dto::{CreateItemRequest, UpdateItemRequest},
-    },
-    types::{url::UrlString, price::PriceCents, name::Name}
+    }, user::domain::User},
+    types::{name::Name, price::PriceCents, url::UrlString}
 };
 
 #[derive(Clone)]
@@ -29,7 +27,7 @@ impl ItemRepository {
 
     // ==================== ITEM OPERATIONS ====================
 
-    pub async fn create(&self, request: CreateItemRequest) -> Result<Item> {
+    pub async fn create(&self, user_id: Uuid, request: CreateItemRequest) -> Result<Item> {
         let row = sqlx::query_as!(
             ItemRow,
             r#"
@@ -53,8 +51,8 @@ impl ItemRepository {
             request.description,
             request.base_price_cents.as_ref(),
             request.image_url.as_ref().map(|u| u.to_string()),
-            request.created_by,
-            request.created_by
+            user_id,
+            user_id,
         )
         .fetch_one(&self.pool)
         .await?;
@@ -161,7 +159,7 @@ impl ItemRepository {
     }
 
     /// Update an item
-    pub async fn update(&self, request: UpdateItemRequest) -> Result<Option<Item>> {
+    pub async fn update(&self, user_id: Uuid, request: UpdateItemRequest) -> Result<Option<Item>> {
         let row = sqlx::query_as!(
             ItemRow,
             r#"
@@ -193,7 +191,7 @@ impl ItemRepository {
             request.image_url.as_ref().map(|u| u.to_string()),
             request.active,
             request.id,
-            request.updated_by
+            user_id
         )
         .fetch_optional(&self.pool)
         .await?;

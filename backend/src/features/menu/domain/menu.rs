@@ -32,10 +32,9 @@ pub struct Menu {
     // pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]
     pub updated_at: DateTime<Utc>,
+    #[derived_domain_ignore]
     pub created_by: Uuid,
-    #[create_ignore]
-    #[unit_create_ignore]
-    #[update_required]
+    #[derived_domain_ignore]
     pub updated_by: Uuid,
 
     #[serde(default)]

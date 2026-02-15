@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::features::restaurant::{
     domain::Restaurant,
     dto::{CreateRestaurantRequest, UpdateRestaurantRequest},
-    repository::RestaurantRepository
+    repository::RestaurantRepository,
 };
 
 #[derive(Clone)]
@@ -19,8 +19,8 @@ impl RestaurantService {
 
     /// Create a new restaurant
     /// Note: Name validation happens automatically during deserialization via validated_type
-    pub async fn create_restaurant(&self, request: CreateRestaurantRequest) -> Result<Restaurant> {
-        self.repository.create(request).await
+    pub async fn create_restaurant(&self, request: CreateRestaurantRequest, operator_id: Uuid) -> Result<Restaurant> {
+        self.repository.create(request, operator_id).await
     }
 
     /// Get a restaurant by ID
@@ -40,12 +40,12 @@ impl RestaurantService {
 
     /// Update a restaurant
     /// Note: Name validation happens automatically during deserialization via validated_type
-    pub async fn update_restaurant(&self, request: UpdateRestaurantRequest) -> Result<Option<Restaurant>> {
+    pub async fn update_restaurant(&self, request: UpdateRestaurantRequest, operator_id: Uuid) -> Result<Option<Restaurant>> {
         if !self.repository.get_by_id(request.id).await?.is_some() {
             return Ok(None);
         }
 
-        self.repository.update(request).await
+        self.repository.update(request, operator_id).await
     }
 
 

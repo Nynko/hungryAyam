@@ -16,21 +16,34 @@ use crate::{app::build_app, state::build_state};
 // Test helpers
 // ═══════════════════════════════════════════════════════════════════
 
-/// Seed the database with app_settings, a user, and a restaurant.
-/// Returns (user_id, restaurant_id).
-async fn seed(pool: &PgPool) -> (Uuid, Uuid) {
+/// Seed the database with app_settings, a user (with session), and a restaurant.
+/// Returns (user_id, restaurant_id, session_token).
+async fn seed(pool: &PgPool) -> (Uuid, Uuid, String) {
     // app_settings (needed by get_max_menu_nesting_depth)
-    sqlx::query("INSERT INTO app_settings (id, title) VALUES (1, 'Test App')")
+    let access_hash = crate::auth::password::sha256_hex("test_access_code");
+    sqlx::query("INSERT INTO app_settings (id, title, access_hash) VALUES (1, 'Test App', $1)")
+        .bind(&access_hash)
         .execute(pool)
         .await
         .unwrap();
 
     // user
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name, auth_method) VALUES ('tester', 'Password') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('tester', 'Password', 'User') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();
+
+    // session
+    let token: String = sqlx::query_scalar(
+        "INSERT INTO user_sessions (user_id, token, expires_at) \
+         VALUES ($1, gen_random_uuid()::text, NOW() + INTERVAL '1 day') \
+         RETURNING token",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
 
     // restaurant
     let rest_id: Uuid = sqlx::query_scalar(
@@ -41,7 +54,7 @@ async fn seed(pool: &PgPool) -> (Uuid, Uuid) {
     .await
     .unwrap();
 
-    (user_id, rest_id)
+    (user_id, rest_id, token)
 }
 
 /// Build a fully-wired Router backed by the given pool.
@@ -52,23 +65,39 @@ fn app(pool: PgPool) -> Router {
 }
 
 /// Fire a request and return (status, parsed JSON body).
+/// No authentication header is sent.
 async fn send(
     router: &Router,
     method: Method,
     uri: &str,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
+    send_with_auth(router, method, uri, body, None).await
+}
+
+/// Fire a request with an optional Bearer token.
+async fn send_with_auth(
+    router: &Router,
+    method: Method,
+    uri: &str,
+    body: Option<Value>,
+    token: Option<&str>,
+) -> (StatusCode, Value) {
     let req_body = match body {
         Some(v) => Body::from(serde_json::to_vec(&v).unwrap()),
         None => Body::empty(),
     };
 
-    let req = Request::builder()
+    let mut builder = Request::builder()
         .method(method)
         .uri(uri)
-        .header("content-type", "application/json")
-        .body(req_body)
-        .unwrap();
+        .header("content-type", "application/json");
+
+    if let Some(t) = token {
+        builder = builder.header("authorization", format!("Bearer {}", t));
+    }
+
+    let req = builder.body(req_body).unwrap();
 
     let resp = router.clone().oneshot(req).await.unwrap();
     let status = resp.status();
@@ -77,30 +106,39 @@ async fn send(
     (status, json)
 }
 
-/// Convenience: POST with JSON body.
+/// Convenience: POST with JSON body (no auth).
 async fn post(router: &Router, uri: &str, body: Value) -> (StatusCode, Value) {
     send(router, Method::POST, uri, Some(body)).await
 }
 
-/// Convenience: GET.
+/// Convenience: POST with JSON body and auth token.
+async fn post_auth(router: &Router, uri: &str, body: Value, token: &str) -> (StatusCode, Value) {
+    send_with_auth(router, Method::POST, uri, Some(body), Some(token)).await
+}
+
+/// Convenience: GET (no auth — public routes).
 async fn get(router: &Router, uri: &str) -> (StatusCode, Value) {
     send(router, Method::GET, uri, None).await
 }
 
-/// Convenience: DELETE.
+/// Convenience: DELETE (no auth).
 async fn del(router: &Router, uri: &str) -> (StatusCode, Value) {
     send(router, Method::DELETE, uri, None).await
 }
 
+/// Convenience: DELETE with auth token.
+async fn del_auth(router: &Router, uri: &str, token: &str) -> (StatusCode, Value) {
+    send_with_auth(router, Method::DELETE, uri, None, Some(token)).await
+}
+
 /// Build a CreateMenuRequest JSON with one section containing one item.
-fn full_menu_json(user_id: Uuid, restaurant_id: Uuid) -> Value {
+fn full_menu_json(restaurant_id: Uuid) -> Value {
     json!({
         "restaurant_id": restaurant_id,
         "name": "Lunch Menu",
         "description": "Our lunch offerings",
         "is_active": true,
         "permanent": false,
-        "created_by": user_id,
         "sections": [
             {
                 "menu_id": restaurant_id,
@@ -109,22 +147,18 @@ fn full_menu_json(user_id: Uuid, restaurant_id: Uuid) -> Value {
                 "description": "Mains",
                 "position": 0,
                 "is_active": true,
-                "created_by": user_id,
                 "items": [
                     {
                         "section_id": restaurant_id,
                         "position": 0,
                         "price_override_cents": null,
                         "is_available": true,
-                        "created_by": user_id,
-                        "updated_by": user_id,
                         "item": {
                             "restaurant_id": restaurant_id,
                             "name": "Nasi Goreng",
                             "description": "Indonesian fried rice",
                             "base_price_cents": 1500,
                             "image_url": null,
-                            "created_by": user_id,
                             "tags": []
                         }
                     }
@@ -136,8 +170,8 @@ fn full_menu_json(user_id: Uuid, restaurant_id: Uuid) -> Value {
 }
 
 /// Create a menu via the API and return the response data object.
-async fn create_menu(router: &Router, user_id: Uuid, restaurant_id: Uuid) -> Value {
-    let (status, body) = post(router, "/api/menus", full_menu_json(user_id, restaurant_id)).await;
+async fn create_menu(router: &Router, restaurant_id: Uuid, token: &str) -> Value {
+    let (status, body) = post_auth(router, "/api/menus", full_menu_json(restaurant_id), token).await;
     assert_eq!(status, StatusCode::CREATED, "create menu failed: {body}");
     assert_eq!(body["success"], true);
     body["data"].clone()
@@ -151,7 +185,7 @@ async fn create_menu(router: &Router, user_id: Uuid, restaurant_id: Uuid) -> Val
 
 #[sqlx::test]
 async fn test_create_empty_menu(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
@@ -160,11 +194,10 @@ async fn test_create_empty_menu(pool: PgPool) {
         "description": null,
         "is_active": false,
         "permanent": true,
-        "created_by": user_id,
         "sections": []
     });
 
-    let (status, body) = post(&router, "/api/menus", payload).await;
+    let (status, body) = post_auth(&router, "/api/menus", payload, &token).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["success"], true);
 
@@ -178,9 +211,9 @@ async fn test_create_empty_menu(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_create_menu_with_sections_and_items(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let data = create_menu(&router, user_id, restaurant_id).await;
+    let data = create_menu(&router, restaurant_id, &token).await;
 
     assert_eq!(data["name"], "Lunch Menu");
     let sections = data["sections"].as_array().unwrap();
@@ -196,7 +229,7 @@ async fn test_create_menu_with_sections_and_items(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_create_menu_with_subsections(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
@@ -205,7 +238,6 @@ async fn test_create_menu_with_subsections(pool: PgPool) {
         "description": null,
         "is_active": true,
         "permanent": false,
-        "created_by": user_id,
         "sections": [
             {
                 "menu_id": restaurant_id,
@@ -214,7 +246,6 @@ async fn test_create_menu_with_subsections(pool: PgPool) {
                 "description": null,
                 "position": 0,
                 "is_active": true,
-                "created_by": user_id,
                 "items": [],
                 "subsections": [
                     {
@@ -224,7 +255,6 @@ async fn test_create_menu_with_subsections(pool: PgPool) {
                         "description": null,
                         "position": 0,
                         "is_active": true,
-                        "created_by": user_id,
                         "items": [],
                         "subsections": []
                     }
@@ -233,7 +263,7 @@ async fn test_create_menu_with_subsections(pool: PgPool) {
         ]
     });
 
-    let (status, body) = post(&router, "/api/menus", payload).await;
+    let (status, body) = post_auth(&router, "/api/menus", payload, &token).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
     let sections = body["data"]["sections"].as_array().unwrap();
@@ -249,9 +279,9 @@ async fn test_create_menu_with_subsections(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_menu(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
 
     let (status, body) = get(&router, &format!("/api/menus/{menu_id}")).await;
@@ -279,11 +309,11 @@ async fn test_get_menu_not_found(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_menus_for_restaurant(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create two menus.
-    create_menu(&router, user_id, restaurant_id).await;
+    create_menu(&router, restaurant_id, &token).await;
 
     let payload2 = json!({
         "restaurant_id": restaurant_id,
@@ -291,10 +321,9 @@ async fn test_list_menus_for_restaurant(pool: PgPool) {
         "description": null,
         "is_active": false,
         "permanent": false,
-        "created_by": user_id,
         "sections": []
     });
-    let (s, _) = post(&router, "/api/menus", payload2).await;
+    let (s, _) = post_auth(&router, "/api/menus", payload2, &token).await;
     assert_eq!(s, StatusCode::CREATED);
 
     let (status, body) = get(
@@ -308,11 +337,11 @@ async fn test_list_menus_for_restaurant(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_active_menus_for_restaurant(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Lunch menu is created with is_active: true (via full_menu_json).
-    create_menu(&router, user_id, restaurant_id).await;
+    create_menu(&router, restaurant_id, &token).await;
 
     // Dinner menu is created with is_active: false.
     let payload2 = json!({
@@ -321,10 +350,9 @@ async fn test_list_active_menus_for_restaurant(pool: PgPool) {
         "description": null,
         "is_active": false,
         "permanent": false,
-        "created_by": user_id,
         "sections": []
     });
-    let (s, _) = post(&router, "/api/menus", payload2).await;
+    let (s, _) = post_auth(&router, "/api/menus", payload2, &token).await;
     assert_eq!(s, StatusCode::CREATED);
 
     let (status, body) = get(
@@ -343,12 +371,12 @@ async fn test_list_active_menus_for_restaurant(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_delete_menu(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
 
-    let (status, body) = del(&router, &format!("/api/menus/{menu_id}")).await;
+    let (status, body) = del_auth(&router, &format!("/api/menus/{menu_id}"), &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
 
@@ -359,11 +387,11 @@ async fn test_delete_menu(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_delete_menu_not_found(pool: PgPool) {
-    let _ = seed(&pool).await;
+    let (_user_id, _restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
     let fake_id = Uuid::new_v4();
 
-    let (status, body) = del(&router, &format!("/api/menus/{fake_id}")).await;
+    let (status, body) = del_auth(&router, &format!("/api/menus/{fake_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
 
@@ -371,9 +399,9 @@ async fn test_delete_menu_not_found(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_reset_menu(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
 
     // All items should be available after creation.
@@ -381,10 +409,11 @@ async fn test_reset_menu(pool: PgPool) {
     assert_eq!(section_items[0]["is_available"], true);
 
     // Reset — sets all items to is_available = false.
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/reset-menu",
-        json!({ "id": menu_id, "updated_by": user_id }),
+        json!({ "id": menu_id }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -408,28 +437,27 @@ async fn test_reset_menu(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_menu_metadata(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "UpdateMenu": {
                         "id": menu_id,
                         "name": "Brunch Menu",
                         "is_active": false,
-                        "updated_by": user_id
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -441,18 +469,17 @@ async fn test_update_menu_metadata(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_menu_section(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let section_id = created["sections"][0]["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "UpdateMenuSection": {
@@ -460,12 +487,12 @@ async fn test_update_menu_section(pool: PgPool) {
                         "update": {
                             "name": "Renamed Section",
                             "is_active": false,
-                            "updated_by": user_id
                         }
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -479,18 +506,17 @@ async fn test_update_menu_section(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_menu_section_item(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let item_id = created["sections"][0]["items"][0]["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "UpdateMenuSectionItem": {
@@ -498,12 +524,12 @@ async fn test_update_menu_section_item(pool: PgPool) {
                         "update": {
                             "is_available": false,
                             "price_override_cents": 2000,
-                            "updated_by": user_id
                         }
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -517,32 +543,29 @@ async fn test_update_menu_section_item(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_menu_section_item_with_catalog_and_tags(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let msi_id = created["sections"][0]["items"][0]["id"].as_str().unwrap();
     let catalog_item_id = created["sections"][0]["items"][0]["item"]["id"]
         .as_str()
         .unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "UpdateMenuSectionItem": {
                         "item_id": msi_id,
                         "update": {
-                            "updated_by": user_id,
                             "item": {
                                 "id": catalog_item_id,
                                 "name": "Special Nasi Goreng",
                                 "base_price_cents": 1800,
-                                "updated_by": user_id,
                                 "tags": [
                                     { "name": "spicy" },
                                     { "name": "rice" }
@@ -553,6 +576,7 @@ async fn test_update_menu_section_item_with_catalog_and_tags(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -575,17 +599,16 @@ async fn test_update_menu_section_item_with_catalog_and_tags(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_add_section(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "AddSection": {
@@ -597,12 +620,12 @@ async fn test_update_add_section(pool: PgPool) {
                             "description": "Beverages",
                             "position": 1,
                             "is_active": true,
-                            "created_by": user_id
                         }
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -617,18 +640,17 @@ async fn test_update_add_section(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_add_subsection(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let parent_section_id = created["sections"][0]["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "AddSection": {
@@ -640,12 +662,12 @@ async fn test_update_add_subsection(pool: PgPool) {
                             "description": null,
                             "position": 0,
                             "is_active": true,
-                            "created_by": user_id
                         }
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -661,18 +683,17 @@ async fn test_update_add_subsection(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_add_item(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let section_id = created["sections"][0]["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "AddItem": {
@@ -682,8 +703,6 @@ async fn test_update_add_item(pool: PgPool) {
                             "position": 1,
                             "price_override_cents": 1200,
                             "is_available": true,
-                            "created_by": user_id,
-                            "updated_by": user_id,
                             "item": {
                                 "restaurant_id": restaurant_id,
                                 "name": "Mie Goreng",
@@ -691,8 +710,6 @@ async fn test_update_add_item(pool: PgPool) {
                                 "base_price_cents": 1300,
                                 "image_url": null,
                                 "active": true,
-                                "created_by": user_id,
-                                "updated_by": user_id,
                                 "tags": []
                             }
                         }
@@ -700,6 +717,7 @@ async fn test_update_add_item(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -717,17 +735,16 @@ async fn test_update_add_item(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_add_section_then_add_item_via_created_by(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 // Action 0: create a new section — its ID will be available via CreatedBy(0)
                 {
@@ -740,7 +757,6 @@ async fn test_update_add_section_then_add_item_via_created_by(pool: PgPool) {
                             "description": null,
                             "position": 2,
                             "is_active": true,
-                            "created_by": user_id
                         }
                     }
                 },
@@ -753,8 +769,6 @@ async fn test_update_add_section_then_add_item_via_created_by(pool: PgPool) {
                             "position": 0,
                             "price_override_cents": null,
                             "is_available": true,
-                            "created_by": user_id,
-                            "updated_by": user_id,
                             "item": {
                                 "restaurant_id": restaurant_id,
                                 "name": "Es Cendol",
@@ -762,8 +776,6 @@ async fn test_update_add_section_then_add_item_via_created_by(pool: PgPool) {
                                 "base_price_cents": 800,
                                 "image_url": null,
                                 "active": true,
-                                "created_by": user_id,
-                                "updated_by": user_id,
                                 "tags": []
                             }
                         }
@@ -771,6 +783,7 @@ async fn test_update_add_section_then_add_item_via_created_by(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -792,18 +805,17 @@ async fn test_update_add_section_then_add_item_via_created_by(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_change_position_section(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let section_id = created["sections"][0]["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "ChangePositionSection": {
@@ -813,6 +825,7 @@ async fn test_update_change_position_section(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -823,18 +836,17 @@ async fn test_update_change_position_section(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_change_position_item(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let item_id = created["sections"][0]["items"][0]["id"].as_str().unwrap();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "ChangePositionItem": {
@@ -844,6 +856,7 @@ async fn test_update_change_position_item(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -854,19 +867,18 @@ async fn test_update_change_position_item(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_move_item_to_another_section(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let item_id = created["sections"][0]["items"][0]["id"].as_str().unwrap();
 
     // First, add a second section.
-    let (_, add_body) = post(
+    let (_, add_body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "AddSection": {
@@ -878,12 +890,12 @@ async fn test_update_move_item_to_another_section(pool: PgPool) {
                             "description": null,
                             "position": 1,
                             "is_active": true,
-                            "created_by": user_id
                         }
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
 
@@ -898,12 +910,11 @@ async fn test_update_move_item_to_another_section(pool: PgPool) {
         .to_string();
 
     // Now move the item to the new section.
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "ChangeSectionForItem": {
@@ -913,6 +924,7 @@ async fn test_update_move_item_to_another_section(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -933,7 +945,7 @@ async fn test_update_move_item_to_another_section(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_move_subsection(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
 
     // Create menu with two top-level sections, one having a subsection.
@@ -943,7 +955,6 @@ async fn test_update_move_subsection(pool: PgPool) {
         "description": null,
         "is_active": true,
         "permanent": false,
-        "created_by": user_id,
         "sections": [
             {
                 "menu_id": restaurant_id,
@@ -952,7 +963,6 @@ async fn test_update_move_subsection(pool: PgPool) {
                 "description": null,
                 "position": 0,
                 "is_active": true,
-                "created_by": user_id,
                 "items": [],
                 "subsections": [
                     {
@@ -962,7 +972,6 @@ async fn test_update_move_subsection(pool: PgPool) {
                         "description": null,
                         "position": 0,
                         "is_active": true,
-                        "created_by": user_id,
                         "items": [],
                         "subsections": []
                     }
@@ -975,14 +984,13 @@ async fn test_update_move_subsection(pool: PgPool) {
                 "description": null,
                 "position": 1,
                 "is_active": true,
-                "created_by": user_id,
                 "items": [],
                 "subsections": []
             }
         ]
     });
 
-    let (s, created) = post(&router, "/api/menus", payload).await;
+    let (s, created) = post_auth(&router, "/api/menus", payload, &token).await;
     assert_eq!(s, StatusCode::CREATED, "{created}");
 
     let sections = created["data"]["sections"].as_array().unwrap();
@@ -994,12 +1002,11 @@ async fn test_update_move_subsection(pool: PgPool) {
     let section_b_id = section_b["id"].as_str().unwrap();
 
     // Move Sub A1 under Section B.
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "ChangeSectionForSubSection": {
@@ -1009,6 +1016,7 @@ async fn test_update_move_subsection(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -1032,19 +1040,18 @@ async fn test_update_move_subsection(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_move_subsection_to_top_level(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let section_id = created["sections"][0]["id"].as_str().unwrap();
 
     // Add a subsection first.
-    let (_, add_body) = post(
+    let (_, add_body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "AddSection": {
@@ -1056,12 +1063,12 @@ async fn test_update_move_subsection_to_top_level(pool: PgPool) {
                             "description": null,
                             "position": 0,
                             "is_active": true,
-                            "created_by": user_id
                         }
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
 
@@ -1071,12 +1078,11 @@ async fn test_update_move_subsection_to_top_level(pool: PgPool) {
         .to_string();
 
     // Move it to top-level by referencing menu_id as the new parent.
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "ChangeSectionForSubSection": {
@@ -1086,6 +1092,7 @@ async fn test_update_move_subsection_to_top_level(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -1102,71 +1109,38 @@ async fn test_update_move_subsection_to_top_level(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_menu_not_found(pool: PgPool) {
-    let (user_id, _) = seed(&pool).await;
+    let (user_id, _, token) = seed(&pool).await;
     let router = app(pool);
     let fake = Uuid::new_v4();
 
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": fake,
-            "user_id": user_id,
             "actions": []
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
 
 #[sqlx::test]
-async fn test_update_user_id_mismatch_rejected(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
-    let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
-    let menu_id = created["id"].as_str().unwrap();
-    let other_user = Uuid::new_v4();
-
-    // The action's updated_by doesn't match the request user_id.
-    let (status, body) = post(
-        &router,
-        "/api/update-menu",
-        json!({
-            "menu_id": menu_id,
-            "user_id": user_id,
-            "actions": [
-                {
-                    "UpdateMenu": {
-                        "id": menu_id,
-                        "name": "Hacked",
-                        "updated_by": other_user
-                    }
-                }
-            ]
-        }),
-    )
-    .await;
-    // Should fail with 500 (internal because it's an anyhow error from the service).
-    assert_ne!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["success"], false);
-}
-
-#[sqlx::test]
 async fn test_update_nesting_depth_exceeded(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     // Default max_menu_nesting_depth is 2.
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
     let section_id = created["sections"][0]["id"].as_str().unwrap();
 
     // Add sub-section under the existing section (depth 2 — allowed).
-    let (_, mid) = post(
+    let (_, mid) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "AddSection": {
@@ -1178,12 +1152,12 @@ async fn test_update_nesting_depth_exceeded(pool: PgPool) {
                             "description": null,
                             "position": 0,
                             "is_active": true,
-                            "created_by": user_id
                         }
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
 
@@ -1193,12 +1167,11 @@ async fn test_update_nesting_depth_exceeded(pool: PgPool) {
         .to_string();
 
     // Try adding sub-sub-section under depth-2 section (depth 3 — should fail).
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 {
                     "AddSection": {
@@ -1210,12 +1183,12 @@ async fn test_update_nesting_depth_exceeded(pool: PgPool) {
                             "description": null,
                             "position": 0,
                             "is_active": true,
-                            "created_by": user_id
                         }
                     }
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_ne!(status, StatusCode::OK, "{body}");
@@ -1226,25 +1199,23 @@ async fn test_update_nesting_depth_exceeded(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_update_multiple_actions_in_batch(pool: PgPool) {
-    let (user_id, restaurant_id) = seed(&pool).await;
+    let (_user_id, restaurant_id, token) = seed(&pool).await;
     let router = app(pool);
-    let created = create_menu(&router, user_id, restaurant_id).await;
+    let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
 
     // Batch: rename menu + add a section + add an item into that new section.
-    let (status, body) = post(
+    let (status, body) = post_auth(
         &router,
         "/api/update-menu",
         json!({
             "menu_id": menu_id,
-            "user_id": user_id,
             "actions": [
                 // 0: rename menu
                 {
                     "UpdateMenu": {
                         "id": menu_id,
                         "name": "Updated Menu",
-                        "updated_by": user_id
                     }
                 },
                 // 1: add section (produced id referenced below)
@@ -1258,7 +1229,6 @@ async fn test_update_multiple_actions_in_batch(pool: PgPool) {
                             "description": null,
                             "position": 5,
                             "is_active": true,
-                            "created_by": user_id
                         }
                     }
                 },
@@ -1271,8 +1241,6 @@ async fn test_update_multiple_actions_in_batch(pool: PgPool) {
                             "position": 0,
                             "price_override_cents": null,
                             "is_available": true,
-                            "created_by": user_id,
-                            "updated_by": user_id,
                             "item": {
                                 "restaurant_id": restaurant_id,
                                 "name": "Spring Rolls",
@@ -1280,8 +1248,6 @@ async fn test_update_multiple_actions_in_batch(pool: PgPool) {
                                 "base_price_cents": 600,
                                 "image_url": null,
                                 "active": true,
-                                "created_by": user_id,
-                                "updated_by": user_id,
                                 "tags": []
                             }
                         }
@@ -1289,6 +1255,7 @@ async fn test_update_multiple_actions_in_batch(pool: PgPool) {
                 }
             ]
         }),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");

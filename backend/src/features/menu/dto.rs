@@ -12,7 +12,6 @@ pub type CreateMenuRequest = CreateMenu;
 #[ts(export)]
 pub struct UpdateMenuActionsRequest {
     pub menu_id: Uuid,
-    pub user_id: Uuid,
     pub actions: Vec<UpdateMenuAction>,
 }
 
@@ -29,5 +28,4 @@ pub struct ResetMenuResponse {
 #[ts(export)]
 pub struct ResetMenuRequest {
     pub id: Uuid,
-    pub updated_by: Uuid,
 }

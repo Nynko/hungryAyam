@@ -4,6 +4,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
+    auth::middleware::AuthUser,
     errors::{
         api_errors::ApiError,
         json_extractor::ApiJson,
@@ -23,12 +24,13 @@ pub fn restaurant_routes() -> Router<AppState> {
         .route("/api/update-restaurant", post(update_restaurant))
 }
 
-/// Create a new restaurant
+/// Create a new restaurant (requires authenticated user)
 pub async fn create_restaurant(
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateRestaurant>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<Restaurant>>), ApiError> {
-    let restaurant = app_state.restaurant_service.create_restaurant(request).await?;
+    let restaurant = app_state.restaurant_service.create_restaurant(request, user.id).await?;
     Ok((StatusCode::CREATED, ApiJson(ApiResponse::success(restaurant))))
 }
 
@@ -60,22 +62,24 @@ pub async fn get_restaurant(
     Ok(ApiJson(ApiResponse::success(restaurant)))
 }
 
-/// Update a restaurant
+/// Update a restaurant (requires authenticated user)
 pub async fn update_restaurant(
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateRestaurant>,
 ) -> Result<ApiJson<ApiResponse<Restaurant>>, ApiError> {
     let restaurant = app_state.restaurant_service
-        .update_restaurant(request)
+        .update_restaurant(request, user.id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(restaurant)))
 }
 
-/// Delete a restaurant
+/// Delete a restaurant (requires authenticated user)
 /// Returns success on deletion, 404 if not found
 /// Returns 400 if restaurant has active order sessions
 pub async fn delete_restaurant(
+    AuthUser(_user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {

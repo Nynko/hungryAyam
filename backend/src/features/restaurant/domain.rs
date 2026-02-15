@@ -19,9 +19,9 @@ pub struct Restaurant {
     pub id: Uuid,
     pub name: Name,
     pub image_url: Option<UrlString>,
-    #[update_ignore]
+    #[derived_domain_ignore]
     pub created_by: Uuid,
-    #[create_ignore]
+    #[derived_domain_ignore]
     pub updated_by: Uuid,
     #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,

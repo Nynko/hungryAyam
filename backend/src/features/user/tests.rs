@@ -10,7 +10,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use crate::{app::build_app, state::build_state};
+use crate::{app::build_app, auth::password::sha256_hex, state::build_state};
 
 // ═══════════════════════════════════════════════════════════════════
 // Test helpers
@@ -18,10 +18,43 @@ use crate::{app::build_app, state::build_state};
 
 /// Seed the database with app_settings so the setup middleware allows requests.
 async fn seed(pool: &PgPool) {
-    sqlx::query("INSERT INTO app_settings (id, title) VALUES (1, 'Test App')")
+    let access_hash = sha256_hex("test_access_code");
+    sqlx::query("INSERT INTO app_settings (id, title, access_hash) VALUES (1, 'Test App', $1)")
+        .bind(&access_hash)
         .execute(pool)
         .await
         .unwrap();
+}
+
+/// Seed the database AND create an admin user.
+/// Returns (admin_user_id, admin_session_token).
+async fn seed_with_admin(pool: &PgPool) -> (Uuid, String) {
+    seed(pool).await;
+
+    let router = app(pool.clone());
+
+    // Create admin user directly in DB (bootstrap — no admin exists yet)
+    let admin_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO users (name, email, auth_method, password_hash, role) \
+         VALUES ('admin', 'admin@example.com', 'Password', '$argon2id$v=19$m=19456,t=2,p=1$fake$fake', 'Admin') \
+         RETURNING id",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+
+    // Create a session for the admin
+    let token: String = sqlx::query_scalar(
+        "INSERT INTO user_sessions (user_id, token, expires_at) \
+         VALUES ($1, gen_random_uuid()::text, NOW() + INTERVAL '1 day') \
+         RETURNING token",
+    )
+    .bind(admin_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+
+    (admin_id, token)
 }
 
 /// Build a fully-wired Router backed by the given pool.
@@ -38,17 +71,36 @@ async fn send(
     uri: &str,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
+    send_with_auth(router, method, uri, body, None).await
+}
+
+/// Fire a request with an optional Bearer token.
+/// Always includes the `site_access` cookie so SiteAccess-protected
+/// routes work even without a Bearer token.
+async fn send_with_auth(
+    router: &Router,
+    method: Method,
+    uri: &str,
+    body: Option<Value>,
+    token: Option<&str>,
+) -> (StatusCode, Value) {
     let req_body = match body {
         Some(v) => Body::from(serde_json::to_vec(&v).unwrap()),
         None => Body::empty(),
     };
 
-    let req = Request::builder()
+    let site_access_hash = sha256_hex("test_access_code");
+    let mut builder = Request::builder()
         .method(method)
         .uri(uri)
         .header("content-type", "application/json")
-        .body(req_body)
-        .unwrap();
+        .header("cookie", format!("site_access={}", site_access_hash));
+
+    if let Some(t) = token {
+        builder = builder.header("authorization", format!("Bearer {}", t));
+    }
+
+    let req = builder.body(req_body).unwrap();
 
     let resp = router.clone().oneshot(req).await.unwrap();
     let status = resp.status();
@@ -62,47 +114,103 @@ async fn post(router: &Router, uri: &str, body: Value) -> (StatusCode, Value) {
     send(router, Method::POST, uri, Some(body)).await
 }
 
+/// Convenience: POST with JSON body and auth token.
+async fn post_auth(
+    router: &Router,
+    uri: &str,
+    body: Value,
+    token: &str,
+) -> (StatusCode, Value) {
+    send_with_auth(router, Method::POST, uri, Some(body), Some(token)).await
+}
+
+/// Convenience: PUT with JSON body and auth token.
+async fn put_auth(
+    router: &Router,
+    uri: &str,
+    body: Value,
+    token: &str,
+) -> (StatusCode, Value) {
+    send_with_auth(router, Method::PUT, uri, Some(body), Some(token)).await
+}
+
 /// Convenience: GET.
 async fn get(router: &Router, uri: &str) -> (StatusCode, Value) {
     send(router, Method::GET, uri, None).await
 }
 
-/// Convenience: DELETE.
+/// Convenience: GET with auth token.
+async fn get_auth(router: &Router, uri: &str, token: &str) -> (StatusCode, Value) {
+    send_with_auth(router, Method::GET, uri, None, Some(token)).await
+}
+
+/// Convenience: DELETE (no auth).
 async fn del(router: &Router, uri: &str) -> (StatusCode, Value) {
     send(router, Method::DELETE, uri, None).await
 }
 
-/// Create a user via the API and return the response data object.
-async fn create_user(router: &Router, name: &str, email: Option<&str>) -> Value {
-    let mut payload = json!({
+/// Convenience: DELETE with auth token.
+async fn del_auth(router: &Router, uri: &str, token: &str) -> (StatusCode, Value) {
+    send_with_auth(router, Method::DELETE, uri, None, Some(token)).await
+}
+
+/// Create a NameWithCookie (guest) user via the API and return the response data.
+async fn create_guest(router: &Router, name: &str) -> Value {
+    let payload = json!({
         "name": name,
         "email": null,
-        "auth_method": "Password",
-        "auth_value": null
+        "auth_method": "NameWithCookie",
+        "role": "User"
     });
-    if let Some(e) = email {
-        payload["email"] = json!(e);
-    }
     let (status, body) = post(router, "/api/user", payload).await;
-    assert_eq!(status, StatusCode::CREATED, "create user failed: {body}");
+    assert_eq!(status, StatusCode::CREATED, "create guest failed: {body}");
     assert_eq!(body["success"], true);
     body["data"].clone()
 }
 
+/// Create a guest user via the auth endpoint and return (data, session_token).
+async fn create_guest_via_auth(router: &Router, name: &str) -> (Value, String) {
+    let payload = json!({ "name": name });
+    let (status, body) = post(router, "/api/auth/guest", payload).await;
+    assert_eq!(status, StatusCode::CREATED, "create guest via auth failed: {body}");
+    assert_eq!(body["success"], true);
+    let token = body["data"]["token"].as_str().unwrap().to_string();
+    let user = body["data"]["user"].clone();
+    (user, token)
+}
+
+/// Admin-register a password user and return the response data.
+async fn admin_create_password_user(
+    router: &Router,
+    token: &str,
+    name: &str,
+    email: &str,
+    password: &str,
+    role: &str,
+) -> (StatusCode, Value) {
+    let payload = json!({
+        "name": name,
+        "email": email,
+        "password": password,
+        "role": role,
+    });
+    post_auth(router, "/api/admin/users/register", payload, token).await
+}
+
 // ═══════════════════════════════════════════════════════════════════
-// Tests — Create
+// Tests — Guest (NameWithCookie) creation via /api/user
 // ═══════════════════════════════════════════════════════════════════
 
 #[sqlx::test]
-async fn test_create_user_minimal(pool: PgPool) {
+async fn test_create_guest_user_minimal(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
-        "name": "MinimalUser",
+        "name": "GuestBob",
         "email": null,
-        "auth_method": "NoneWithCookie",
-        "auth_value": null
+        "auth_method": "NameWithCookie",
+        "role": "User"
     });
 
     let (status, body) = post(&router, "/api/user", payload).await;
@@ -111,101 +219,35 @@ async fn test_create_user_minimal(pool: PgPool) {
 
     let data = &body["data"];
     assert!(data["id"].is_string());
-    assert_eq!(data["name"], "MinimalUser");
+    assert_eq!(data["name"], "GuestBob");
     assert_eq!(data["email"], Value::Null);
-    assert_eq!(data["auth_method"], "NoneWithCookie");
-    assert_eq!(data["auth_value"], Value::Null);
+    assert_eq!(data["auth_method"], "NameWithCookie");
+    assert_eq!(data["role"], "User");
+    // password_hash is #[serde(skip)] — should not appear in response
+    assert_eq!(data.get("password_hash"), None);
     assert!(data["created_at"].is_string());
     assert!(data["updated_at"].is_string());
 }
 
 #[sqlx::test]
-async fn test_create_user_with_all_fields(pool: PgPool) {
+async fn test_create_password_user_via_public_endpoint_rejected(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
+    // Attempting to create a Password user via the public endpoint should fail
     let payload = json!({
-        "name": "Alice",
-        "email": "alice@example.com",
+        "name": "NotAllowed",
+        "email": "na@example.com",
         "auth_method": "Password",
-        "auth_value": "hashed_password_abc"
-    });
-
-    let (status, body) = post(&router, "/api/user", payload).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    assert_eq!(body["success"], true);
-
-    let data = &body["data"];
-    assert_eq!(data["name"], "Alice");
-    assert_eq!(data["email"], "alice@example.com");
-    assert_eq!(data["auth_method"], "Password");
-    assert_eq!(data["auth_value"], "hashed_password_abc");
-}
-
-#[sqlx::test]
-async fn test_create_user_duplicate_email_rejected(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    // Create first user with email
-    create_user(&router, "User1", Some("dup@example.com")).await;
-
-    // Try creating another user with the same email
-    let payload = json!({
-        "name": "User2",
-        "email": "dup@example.com",
-        "auth_method": "Password",
-        "auth_value": null
-    });
-
-    let (status, body) = post(&router, "/api/user", payload).await;
-    // The service returns an error for duplicate email
-    assert_ne!(status, StatusCode::CREATED, "should reject duplicate email");
-    assert!(
-        status == StatusCode::BAD_REQUEST || status == StatusCode::INTERNAL_SERVER_ERROR,
-        "expected error status, got {status}: {body}"
-    );
-}
-
-#[sqlx::test]
-async fn test_create_user_with_invalid_email_rejected(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    let payload = json!({
-        "name": "BadEmail",
-        "email": "not-an-email",
-        "auth_method": "Password",
-        "auth_value": null
+        "role": "User"
     });
 
     let (status, _body) = post(&router, "/api/user", payload).await;
-    // Invalid email should fail validation during deserialization
-    assert_ne!(status, StatusCode::CREATED);
+    assert_ne!(status, StatusCode::CREATED, "should reject Password creation");
 }
 
 #[sqlx::test]
-async fn test_create_user_none_with_cookie(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    let payload = json!({
-        "name": "GuestUser",
-        "email": null,
-        "auth_method": "NoneWithCookie",
-        "auth_value": "guest_session_xyz"
-    });
-
-    let (status, body) = post(&router, "/api/user", payload).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-
-    let data = &body["data"];
-    assert_eq!(data["auth_method"], "NoneWithCookie");
-    assert_eq!(data["auth_value"], "guest_session_xyz");
-}
-
-#[sqlx::test]
-async fn test_create_user_with_invalid_auth_method_rejected(pool: PgPool) {
+async fn test_create_guest_with_invalid_auth_method_rejected(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
@@ -213,12 +255,107 @@ async fn test_create_user_with_invalid_auth_method_rejected(pool: PgPool) {
         "name": "BadAuth",
         "email": null,
         "auth_method": "invalid_method",
-        "auth_value": null
+        "role": null
     });
 
     let (status, _body) = post(&router, "/api/user", payload).await;
-    // Invalid AuthMethod variant should fail during deserialization
     assert_ne!(status, StatusCode::CREATED);
+}
+
+#[sqlx::test]
+async fn test_create_guest_with_email(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let payload = json!({
+        "name": "EmailGuest",
+        "email": "guest@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
+    });
+
+    let (status, body) = post(&router, "/api/user", payload).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["data"]["email"], "guest@example.com");
+}
+
+#[sqlx::test]
+async fn test_create_guest_with_invalid_email_rejected(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let payload = json!({
+        "name": "BadEmail",
+        "email": "not-an-email",
+        "auth_method": "NameWithCookie",
+        "role": null
+    });
+
+    let (status, _body) = post(&router, "/api/user", payload).await;
+    assert_ne!(status, StatusCode::CREATED);
+}
+
+#[sqlx::test]
+async fn test_create_guest_duplicate_email_rejected(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let payload1 = json!({
+        "name": "Guest1",
+        "email": "dup@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
+    });
+    let (status, _) = post(&router, "/api/user", payload1).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let payload2 = json!({
+        "name": "Guest2",
+        "email": "dup@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
+    });
+    let (status, _body) = post(&router, "/api/user", payload2).await;
+    assert_ne!(status, StatusCode::CREATED, "should reject duplicate email");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests — Guest creation via /api/auth/guest
+// ═══════════════════════════════════════════════════════════════════
+
+#[sqlx::test]
+async fn test_auth_guest_creates_user_and_session(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let (user, token) = create_guest_via_auth(&router, "AuthGuest").await;
+    assert_eq!(user["name"], "AuthGuest");
+    assert_eq!(user["auth_method"], "NameWithCookie");
+    assert_eq!(user["role"], "User");
+    assert!(!token.is_empty());
+
+    // Session should be valid — /api/auth/me should work
+    let (status, body) = get_auth(&router, "/api/auth/me", &token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["name"], "AuthGuest");
+}
+
+#[sqlx::test]
+async fn test_auth_me_without_session_returns_401(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let (status, _body) = get(&router, "/api/auth/me").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn test_auth_me_with_invalid_token_returns_401(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let (status, _body) = get_auth(&router, "/api/auth/me", "invalid-token").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -230,17 +367,15 @@ async fn test_get_user_by_id(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "GetMe", Some("getme@example.com")).await;
+    // GET /api/user/:id requires SiteAccess — cookie is included automatically
+    let created = create_guest(&router, "GetMe").await;
     let user_id = created["id"].as_str().unwrap();
 
     let (status, body) = get(&router, &format!("/api/user/{user_id}")).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
-
-    let data = &body["data"];
-    assert_eq!(data["id"], user_id);
-    assert_eq!(data["name"], "GetMe");
-    assert_eq!(data["email"], "getme@example.com");
+    assert_eq!(body["data"]["id"], user_id);
+    assert_eq!(body["data"]["name"], "GetMe");
 }
 
 #[sqlx::test]
@@ -255,76 +390,43 @@ async fn test_get_user_not_found(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_user_by_email(pool: PgPool) {
-    seed(&pool).await;
+    // GET /api/user/email/:email requires AdminUser
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "EmailLookup", Some("lookup@example.com")).await;
-    let user_id = created["id"].as_str().unwrap();
+    let payload = json!({
+        "name": "EmailLookup",
+        "email": "lookup@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
+    });
+    let (status, body) = post(&router, "/api/user", payload).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let user_id = body["data"]["id"].as_str().unwrap().to_string();
 
-    let (status, body) = get(&router, "/api/user/email/lookup@example.com").await;
+    let (status, body) = get_auth(&router, "/api/user/email/lookup@example.com", &admin_token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["success"], true);
     assert_eq!(body["data"]["id"], user_id);
     assert_eq!(body["data"]["email"], "lookup@example.com");
 }
 
 #[sqlx::test]
 async fn test_get_user_by_email_not_found(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let (status, _body) = get_auth(&router, "/api/user/email/nobody@example.com", &admin_token).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn test_get_user_by_email_without_admin_rejected(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
+    // Without admin auth, should get 401
     let (status, _body) = get(&router, "/api/user/email/nobody@example.com").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
-
-#[sqlx::test]
-async fn test_get_user_by_cookie(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    let payload = json!({
-        "name": "CookieUser",
-        "email": null,
-        "auth_method": "NoneWithCookie",
-        "auth_value": "my_unique_cookie"
-    });
-    let (status, body) = post(&router, "/api/user", payload).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let user_id = body["data"]["id"].as_str().unwrap().to_string();
-
-    let (status, body) = get(&router, "/api/user/cookie/my_unique_cookie").await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["data"]["id"], user_id);
-    assert_eq!(body["data"]["auth_value"], "my_unique_cookie");
-}
-
-#[sqlx::test]
-async fn test_get_user_by_cookie_not_found(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    let (status, _body) = get(&router, "/api/user/cookie/nonexistent_cookie").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
-
-#[sqlx::test]
-async fn test_get_user_by_cookie_only_matches_none_with_cookie_auth(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    // Create a Password user with an auth_value
-    let payload = json!({
-        "name": "PasswordUser",
-        "email": null,
-        "auth_method": "Password",
-        "auth_value": "some_password_hash"
-    });
-    let (status, _body) = post(&router, "/api/user", payload).await;
-    assert_eq!(status, StatusCode::CREATED);
-
-    // Cookie lookup should NOT find a Password user even if auth_value matches
-    let (status, _body) = get(&router, "/api/user/cookie/some_password_hash").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[sqlx::test]
@@ -332,7 +434,8 @@ async fn test_get_user_by_name(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "FindByName", None).await;
+    // GET /api/user/name/:name requires SiteAccess — cookie is included automatically
+    let created = create_guest(&router, "FindByName").await;
     let user_id = created["id"].as_str().unwrap().to_string();
 
     let (status, body) = get(&router, "/api/user/name/FindByName").await;
@@ -355,53 +458,83 @@ async fn test_get_user_by_name_not_found(pool: PgPool) {
 // ═══════════════════════════════════════════════════════════════════
 
 #[sqlx::test]
-async fn test_list_users_empty(pool: PgPool) {
+async fn test_list_users_requires_admin(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let (status, body) = get(&router, "/api/users").await;
+    // GET /api/users requires AdminUser — without auth, should get 401
+    let (status, _body) = get(&router, "/api/users").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn test_list_users_no_extra_users(pool: PgPool) {
+    // GET /api/users requires AdminUser
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let (status, body) = get_auth(&router, "/api/users", &admin_token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
-    assert!(body["data"].as_array().unwrap().is_empty());
+    // Only the admin user exists
+    let users = body["data"].as_array().unwrap();
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0]["name"], "admin");
 }
 
 #[sqlx::test]
 async fn test_list_users_multiple(pool: PgPool) {
-    seed(&pool).await;
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
-    create_user(&router, "UserA", Some("a@example.com")).await;
-    create_user(&router, "UserB", Some("b@example.com")).await;
-    create_user(&router, "UserC", None).await;
+    create_guest(&router, "UserA").await;
+    create_guest(&router, "UserB").await;
+    create_guest(&router, "UserC").await;
 
-    let (status, body) = get(&router, "/api/users").await;
+    let (status, body) = get_auth(&router, "/api/users", &admin_token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["success"], true);
 
     let users = body["data"].as_array().unwrap();
-    assert_eq!(users.len(), 3);
+    assert_eq!(users.len(), 4); // 3 guests + 1 admin
 
-    // Users are ordered by created_at DESC, so newest first
-    let names: Vec<&str> = users
-        .iter()
-        .filter_map(|u| u["name"].as_str())
-        .collect();
-    assert_eq!(names.len(), 3);
+    let names: Vec<&str> = users.iter().filter_map(|u| u["name"].as_str()).collect();
     assert!(names.contains(&"UserA"));
     assert!(names.contains(&"UserB"));
     assert!(names.contains(&"UserC"));
+    assert!(names.contains(&"admin"));
+}
+
+#[sqlx::test]
+async fn test_list_users_order(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    create_guest(&router, "First").await;
+    create_guest(&router, "Second").await;
+    create_guest(&router, "Third").await;
+
+    let (status, body) = get_auth(&router, "/api/users", &admin_token).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let users = body["data"].as_array().unwrap();
+    assert_eq!(users.len(), 4); // 3 guests + 1 admin
+    // Users are ordered by created_at DESC (newest first)
+    assert_eq!(users[0]["name"], "Third");
+    assert_eq!(users[1]["name"], "Second");
+    assert_eq!(users[2]["name"], "First");
+    assert_eq!(users[3]["name"], "admin");
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Tests — Update
+// Tests — Update (name and email only)
 // ═══════════════════════════════════════════════════════════════════
 
 #[sqlx::test]
-async fn test_update_user_name(pool: PgPool) {
+async fn test_update_user_requires_auth(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "OldName", Some("update@example.com")).await;
+    let created = create_guest(&router, "OldName").await;
     let user_id = created["id"].as_str().unwrap();
 
     let update_payload = json!({
@@ -409,63 +542,59 @@ async fn test_update_user_name(pool: PgPool) {
         "name": "NewName"
     });
 
-    let (status, body) = post(&router, "/api/update-user", update_payload).await;
+    // POST /api/update-user requires AuthUser — without auth, should get 401
+    let (status, _body) = post(&router, "/api/update-user", update_payload).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn test_update_user_name(pool: PgPool) {
+    // POST /api/update-user requires AuthUser
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let created = create_guest(&router, "OldName").await;
+    let user_id = created["id"].as_str().unwrap();
+
+    let update_payload = json!({
+        "id": user_id,
+        "name": "NewName"
+    });
+
+    let (status, body) = post_auth(&router, "/api/update-user", update_payload, &admin_token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["success"], true);
     assert_eq!(body["data"]["name"], "NewName");
-    // Email should remain unchanged
-    assert_eq!(body["data"]["email"], "update@example.com");
 }
 
 #[sqlx::test]
 async fn test_update_user_email(pool: PgPool) {
-    seed(&pool).await;
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "EmailUpdate", Some("old@example.com")).await;
-    let user_id = created["id"].as_str().unwrap();
+    let payload = json!({
+        "name": "EmailUpdate",
+        "email": "old@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
+    });
+    let (status, body) = post(&router, "/api/user", payload).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let user_id = body["data"]["id"].as_str().unwrap().to_string();
 
     let update_payload = json!({
         "id": user_id,
         "email": "new@example.com"
     });
 
-    let (status, body) = post(&router, "/api/update-user", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-user", update_payload, &admin_token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["email"], "new@example.com");
-    // Name should remain unchanged
     assert_eq!(body["data"]["name"], "EmailUpdate");
 }
 
 #[sqlx::test]
-async fn test_update_user_multiple_fields(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    let created = create_user(&router, "MultiUpdate", Some("multi@example.com")).await;
-    let user_id = created["id"].as_str().unwrap();
-
-    let update_payload = json!({
-        "id": user_id,
-        "name": "UpdatedMulti",
-        "email": "updated_multi@example.com",
-        "auth_method": "NoneWithCookie",
-        "auth_value": "new_cookie_value"
-    });
-
-    let (status, body) = post(&router, "/api/update-user", update_payload).await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-
-    let data = &body["data"];
-    assert_eq!(data["name"], "UpdatedMulti");
-    assert_eq!(data["email"], "updated_multi@example.com");
-    assert_eq!(data["auth_method"], "NoneWithCookie");
-    assert_eq!(data["auth_value"], "new_cookie_value");
-}
-
-#[sqlx::test]
 async fn test_update_user_not_found(pool: PgPool) {
-    seed(&pool).await;
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
@@ -474,73 +603,67 @@ async fn test_update_user_not_found(pool: PgPool) {
         "name": "Ghost"
     });
 
-    let (status, _body) = post(&router, "/api/update-user", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-user", update_payload, &admin_token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
 async fn test_update_user_duplicate_email_rejected(pool: PgPool) {
-    seed(&pool).await;
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
-    create_user(&router, "Holder", Some("taken@example.com")).await;
-    let second = create_user(&router, "Stealer", Some("original@example.com")).await;
-    let second_id = second["id"].as_str().unwrap();
+    let payload1 = json!({
+        "name": "Holder",
+        "email": "taken@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
+    });
+    let (status, _) = post(&router, "/api/user", payload1).await;
+    assert_eq!(status, StatusCode::CREATED);
 
-    // Try to update second user's email to the first user's email
+    let payload2 = json!({
+        "name": "Stealer",
+        "email": "original@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
+    });
+    let (status, body) = post(&router, "/api/user", payload2).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let second_id = body["data"]["id"].as_str().unwrap().to_string();
+
     let update_payload = json!({
         "id": second_id,
         "email": "taken@example.com"
     });
-
-    let (status, _body) = post(&router, "/api/update-user", update_payload).await;
+    let (status, _body) = post_auth(&router, "/api/update-user", update_payload, &admin_token).await;
     assert_ne!(status, StatusCode::OK, "should reject duplicate email");
-    assert!(
-        status == StatusCode::BAD_REQUEST || status == StatusCode::INTERNAL_SERVER_ERROR,
-        "expected error status, got {status}"
-    );
 }
 
 #[sqlx::test]
 async fn test_update_user_same_email_allowed(pool: PgPool) {
-    seed(&pool).await;
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "SameEmail", Some("same@example.com")).await;
-    let user_id = created["id"].as_str().unwrap();
+    let payload = json!({
+        "name": "SameEmail",
+        "email": "same@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
+    });
+    let (status, body) = post(&router, "/api/user", payload).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let user_id = body["data"]["id"].as_str().unwrap().to_string();
 
-    // Update with the same email should succeed (common in "save" operations)
     let update_payload = json!({
         "id": user_id,
         "email": "same@example.com",
         "name": "SameEmailRenamed"
     });
 
-    let (status, body) = post(&router, "/api/update-user", update_payload).await;
+    let (status, body) = post_auth(&router, "/api/update-user", update_payload, &admin_token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["name"], "SameEmailRenamed");
     assert_eq!(body["data"]["email"], "same@example.com");
-}
-
-#[sqlx::test]
-async fn test_update_user_auth_method(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    let created = create_user(&router, "AuthSwitch", None).await;
-    let user_id = created["id"].as_str().unwrap();
-    assert_eq!(created["auth_method"], "Password");
-
-    let update_payload = json!({
-        "id": user_id,
-        "auth_method": "NoneWithCookie",
-        "auth_value": "new_cookie"
-    });
-
-    let (status, body) = post(&router, "/api/update-user", update_payload).await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["data"]["auth_method"], "NoneWithCookie");
-    assert_eq!(body["data"]["auth_value"], "new_cookie");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -548,47 +671,83 @@ async fn test_update_user_auth_method(pool: PgPool) {
 // ═══════════════════════════════════════════════════════════════════
 
 #[sqlx::test]
-async fn test_delete_user(pool: PgPool) {
+async fn test_delete_user_requires_admin(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "ToDelete", None).await;
+    let created = create_guest(&router, "ToDelete").await;
     let user_id = created["id"].as_str().unwrap();
 
-    let (status, body) = del(&router, &format!("/api/user/{user_id}")).await;
+    // DELETE /api/user/:id requires AdminUser — without auth, should get 401
+    let (status, _body) = del(&router, &format!("/api/user/{user_id}")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn test_delete_user(pool: PgPool) {
+    // DELETE /api/user/:id requires AdminUser
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let created = create_guest(&router, "ToDelete").await;
+    let user_id = created["id"].as_str().unwrap();
+
+    let (status, body) = del_auth(&router, &format!("/api/user/{user_id}"), &admin_token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
 
-    // Verify it's gone
     let (status, _body) = get(&router, &format!("/api/user/{user_id}")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
 async fn test_delete_user_not_found(pool: PgPool) {
-    seed(&pool).await;
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
-    let (status, _body) = del(&router, &format!("/api/user/{fake_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/user/{fake_id}"), &admin_token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
 async fn test_delete_user_idempotent(pool: PgPool) {
-    seed(&pool).await;
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "DeleteTwice", None).await;
+    let created = create_guest(&router, "DeleteTwice").await;
     let user_id = created["id"].as_str().unwrap();
 
-    // First delete succeeds
-    let (status, _body) = del(&router, &format!("/api/user/{user_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/user/{user_id}"), &admin_token).await;
     assert_eq!(status, StatusCode::OK);
 
-    // Second delete returns not found
-    let (status, _body) = del(&router, &format!("/api/user/{user_id}")).await;
+    let (status, _body) = del_auth(&router, &format!("/api/user/{user_id}"), &admin_token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test]
+async fn test_delete_removes_from_list(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let _keep = create_guest(&router, "KeepUser").await;
+    let remove = create_guest(&router, "RemoveUser").await;
+    let remove_id = remove["id"].as_str().unwrap();
+
+    let (status, body) = get_auth(&router, "/api/users", &admin_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"].as_array().unwrap().len(), 3); // admin + 2 guests
+
+    let (status, _body) = del_auth(&router, &format!("/api/user/{remove_id}"), &admin_token).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, body) = get_auth(&router, "/api/users", &admin_token).await;
+    assert_eq!(status, StatusCode::OK);
+    let users = body["data"].as_array().unwrap();
+    assert_eq!(users.len(), 2); // admin + KeepUser
+    let names: Vec<&str> = users.iter().filter_map(|u| u["name"].as_str()).collect();
+    assert!(names.contains(&"KeepUser"));
+    assert!(names.contains(&"admin"));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -596,166 +755,584 @@ async fn test_delete_user_idempotent(pool: PgPool) {
 // ═══════════════════════════════════════════════════════════════════
 
 #[sqlx::test]
-async fn test_create_and_retrieve_preserves_all_fields(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    let payload = json!({
-        "name": "FullUser",
-        "email": "full@example.com",
-        "auth_method": "NoneWithCookie",
-        "auth_value": "session_token_full"
-    });
-
-    let (status, body) = post(&router, "/api/user", payload).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    let user_id = body["data"]["id"].as_str().unwrap();
-
-    // Fetch by ID and verify all fields match
-    let (status, body) = get(&router, &format!("/api/user/{user_id}")).await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-
-    let data = &body["data"];
-    assert_eq!(data["name"], "FullUser");
-    assert_eq!(data["email"], "full@example.com");
-    assert_eq!(data["auth_method"], "NoneWithCookie");
-    assert_eq!(data["auth_value"], "session_token_full");
-
-    // Also verify via email lookup
-    let (status, body) = get(&router, "/api/user/email/full@example.com").await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["id"], user_id);
-
-    // Also verify via cookie lookup (NoneWithCookie auth)
-    let (status, body) = get(&router, "/api/user/cookie/session_token_full").await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["id"], user_id);
-
-    // Also verify via name lookup
-    let (status, body) = get(&router, "/api/user/name/FullUser").await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["id"], user_id);
-}
-
-#[sqlx::test]
 async fn test_user_timestamps_are_set(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "Timestamped", None).await;
+    let created = create_guest(&router, "Timestamped").await;
     let created_at = created["created_at"].as_str().unwrap();
     let updated_at = created["updated_at"].as_str().unwrap();
 
-    // Both timestamps should be set and equal at creation
     assert!(!created_at.is_empty());
     assert!(!updated_at.is_empty());
 }
 
 #[sqlx::test]
-async fn test_list_users_order(pool: PgPool) {
-    seed(&pool).await;
+async fn test_password_hash_never_in_response(pool: PgPool) {
+    let (admin_id, admin_token) = seed_with_admin(&pool).await;
     let router = app(pool);
 
-    // Create users in sequence
-    create_user(&router, "First", None).await;
-    create_user(&router, "Second", None).await;
-    create_user(&router, "Third", None).await;
-
-    let (status, body) = get(&router, "/api/users").await;
-    assert_eq!(status, StatusCode::OK);
-
-    let users = body["data"].as_array().unwrap();
-    assert_eq!(users.len(), 3);
-
-    // Users are ordered by created_at DESC (newest first)
-    assert_eq!(users[0]["name"], "Third");
-    assert_eq!(users[1]["name"], "Second");
-    assert_eq!(users[2]["name"], "First");
-}
-
-#[sqlx::test]
-async fn test_create_user_password_auth(pool: PgPool) {
-    seed(&pool).await;
-    let router = app(pool);
-
-    let payload = json!({
-        "name": "PasswordUser",
-        "email": "pw@example.com",
-        "auth_method": "Password",
-        "auth_value": "hashed_pw_value"
-    });
-
-    let (status, body) = post(&router, "/api/user", payload).await;
+    // Admin creates a password user
+    let (status, body) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "PwUser",
+        "pw@example.com",
+        "securepass123",
+        "User",
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
+    // password_hash must not appear in the response
+    assert_eq!(body["data"].get("password_hash"), None);
+
+    // Also verify via GET
+    let user_id = body["data"]["id"].as_str().unwrap();
+    let (status, body) = get(&router, &format!("/api/user/{user_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"].get("password_hash"), None);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests — Admin: register password user
+// ═══════════════════════════════════════════════════════════════════
+
+#[sqlx::test]
+async fn test_admin_register_password_user(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let (status, body) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "NewUser",
+        "newuser@example.com",
+        "password123",
+        "User",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["success"], true);
+
     let data = &body["data"];
+    assert_eq!(data["name"], "NewUser");
+    assert_eq!(data["email"], "newuser@example.com");
     assert_eq!(data["auth_method"], "Password");
-    assert_eq!(data["auth_value"], "hashed_pw_value");
+    assert_eq!(data["role"], "User");
 }
 
 #[sqlx::test]
-async fn test_create_user_none_with_cookie_auth(pool: PgPool) {
+async fn test_admin_register_password_user_as_admin_role(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let (status, body) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "NewAdmin",
+        "newadmin@example.com",
+        "password123",
+        "Admin",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["data"]["role"], "Admin");
+}
+
+#[sqlx::test]
+async fn test_admin_register_password_user_duplicate_email_rejected(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    // First user
+    let (status, _) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "First",
+        "dup@example.com",
+        "password123",
+        "User",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // Second user with same email
+    let (status, _body) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "Second",
+        "dup@example.com",
+        "password123",
+        "User",
+    )
+    .await;
+    assert_ne!(status, StatusCode::CREATED, "should reject duplicate email");
+}
+
+#[sqlx::test]
+async fn test_admin_register_password_user_short_password_rejected(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let (status, _body) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "ShortPw",
+        "short@example.com",
+        "abc",
+        "User",
+    )
+    .await;
+    assert_ne!(status, StatusCode::CREATED, "should reject short password");
+}
+
+#[sqlx::test]
+async fn test_register_password_user_without_admin_rejected(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    // No auth token — should be rejected
+    let payload = json!({
+        "name": "Sneaky",
+        "email": "sneaky@example.com",
+        "password": "password123",
+        "role": "User"
+    });
+    let (status, _body) = post(&router, "/api/admin/users/register", payload).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn test_register_password_user_with_non_admin_session_rejected(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    // Create a guest with a session — they're a User, not Admin
+    let (_user, token) = create_guest_via_auth(&router, "NotAdmin").await;
+
+    let (status, _body) = admin_create_password_user(
+        &router,
+        &token,
+        "Attempt",
+        "attempt@example.com",
+        "password123",
+        "User",
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests — Admin: upgrade guest to password
+// ═══════════════════════════════════════════════════════════════════
+
+#[sqlx::test]
+async fn test_admin_upgrade_guest_to_password(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    // Create a guest user
+    let guest = create_guest(&router, "UpgradeMe").await;
+    let guest_id = guest["id"].as_str().unwrap();
+    assert_eq!(guest["auth_method"], "NameWithCookie");
+
+    // Admin upgrades the guest
+    let payload = json!({
+        "email": "upgraded@example.com",
+        "password": "newpassword123",
+        "role": "User"
+    });
+    let (status, body) = post_auth(
+        &router,
+        &format!("/api/admin/users/{guest_id}/upgrade"),
+        payload,
+        &admin_token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let data = &body["data"];
+    assert_eq!(data["id"], guest_id);
+    assert_eq!(data["name"], "UpgradeMe");
+    assert_eq!(data["auth_method"], "Password");
+    assert_eq!(data["email"], "upgraded@example.com");
+    assert_eq!(data["role"], "User");
+}
+
+#[sqlx::test]
+async fn test_admin_upgrade_already_password_user_rejected(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    // Create a password user
+    let (status, body) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "AlreadyPw",
+        "already@example.com",
+        "password123",
+        "User",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let user_id = body["data"]["id"].as_str().unwrap();
+
+    // Try to upgrade — should fail
+    let payload = json!({
+        "email": "new@example.com",
+        "password": "newpassword123",
+        "role": "Admin"
+    });
+    let (status, _body) = post_auth(
+        &router,
+        &format!("/api/admin/users/{user_id}/upgrade"),
+        payload,
+        &admin_token,
+    )
+    .await;
+    assert_ne!(status, StatusCode::OK, "should reject upgrading a Password user");
+}
+
+#[sqlx::test]
+async fn test_upgrade_without_admin_rejected(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let guest = create_guest(&router, "CantUpgrade").await;
+    let guest_id = guest["id"].as_str().unwrap();
+
+    let payload = json!({
+        "email": "nope@example.com",
+        "password": "password123",
+        "role": "User"
+    });
+    let (status, _body) = post(&router, &format!("/api/admin/users/{guest_id}/upgrade"), payload).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests — Admin: change role
+// ═══════════════════════════════════════════════════════════════════
+
+#[sqlx::test]
+async fn test_admin_change_role(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    // Create a password user with role User
+    let (status, body) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "Promotable",
+        "promotable@example.com",
+        "password123",
+        "User",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let user_id = body["data"]["id"].as_str().unwrap();
+    assert_eq!(body["data"]["role"], "User");
+
+    // Admin promotes to Admin
+    let payload = json!({ "role": "Admin" });
+    let (status, body) = put_auth(
+        &router,
+        &format!("/api/admin/users/{user_id}/role"),
+        payload,
+        &admin_token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["role"], "Admin");
+}
+
+#[sqlx::test]
+async fn test_admin_change_role_of_guest_rejected(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let guest = create_guest(&router, "GuestNoRole").await;
+    let guest_id = guest["id"].as_str().unwrap();
+
+    let payload = json!({ "role": "Admin" });
+    let (status, _body) = put_auth(
+        &router,
+        &format!("/api/admin/users/{guest_id}/role"),
+        payload,
+        &admin_token,
+    )
+    .await;
+    assert_ne!(
+        status,
+        StatusCode::OK,
+        "should reject role change for NameWithCookie user"
+    );
+}
+
+#[sqlx::test]
+async fn test_change_role_without_admin_rejected(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let payload = json!({ "role": "Admin" });
+    let fake_id = Uuid::new_v4();
+    let (status, _body) = send_with_auth(
+        &router,
+        Method::PUT,
+        &format!("/api/admin/users/{fake_id}/role"),
+        Some(payload),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests — Login / Logout
+// ═══════════════════════════════════════════════════════════════════
+
+#[sqlx::test]
+async fn test_login_with_valid_credentials(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    // Admin creates a password user
+    let (status, _body) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "LoginUser",
+        "login@example.com",
+        "mypassword123",
+        "User",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // Login
+    let payload = json!({
+        "email": "login@example.com",
+        "password": "mypassword123"
+    });
+    let (status, body) = post(&router, "/api/auth/login", payload).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["success"], true);
+    assert_eq!(body["data"]["user"]["name"], "LoginUser");
+    assert!(body["data"]["token"].is_string());
+
+    // The token should work for /api/auth/me
+    let token = body["data"]["token"].as_str().unwrap();
+    let (status, body) = get_auth(&router, "/api/auth/me", token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["name"], "LoginUser");
+}
+
+#[sqlx::test]
+async fn test_login_with_wrong_password_rejected(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    let (status, _) = admin_create_password_user(
+        &router,
+        &admin_token,
+        "WrongPw",
+        "wrongpw@example.com",
+        "correctpassword",
+        "User",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let payload = json!({
+        "email": "wrongpw@example.com",
+        "password": "incorrectpassword"
+    });
+    let (status, _body) = post(&router, "/api/auth/login", payload).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn test_login_with_nonexistent_email_rejected(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
     let payload = json!({
-        "name": "CookieAuthUser",
-        "email": null,
-        "auth_method": "NoneWithCookie",
-        "auth_value": "browser_cookie_abc"
+        "email": "nobody@example.com",
+        "password": "password123"
     });
-
-    let (status, body) = post(&router, "/api/user", payload).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-
-    let data = &body["data"];
-    assert_eq!(data["auth_method"], "NoneWithCookie");
-    assert_eq!(data["auth_value"], "browser_cookie_abc");
+    let (status, _body) = post(&router, "/api/auth/login", payload).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[sqlx::test]
-async fn test_update_preserves_auth_method_when_not_specified(pool: PgPool) {
+async fn test_login_with_guest_email_rejected(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let created = create_user(&router, "KeepAuth", None).await;
-    let user_id = created["id"].as_str().unwrap();
-    assert_eq!(created["auth_method"], "Password");
-
-    // Update only the name — auth_method should remain Password
-    let update_payload = json!({
-        "id": user_id,
-        "name": "KeepAuthRenamed"
+    // Create a guest with an email
+    let payload = json!({
+        "name": "GuestWithEmail",
+        "email": "guest@example.com",
+        "auth_method": "NameWithCookie",
+        "role": "User"
     });
+    let (status, _) = post(&router, "/api/user", payload).await;
+    assert_eq!(status, StatusCode::CREATED);
 
-    let (status, body) = post(&router, "/api/update-user", update_payload).await;
+    // Try to login with that email — should fail (not a Password user)
+    let payload = json!({
+        "email": "guest@example.com",
+        "password": "anything"
+    });
+    let (status, _body) = post(&router, "/api/auth/login", payload).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
+async fn test_logout_clears_cookies(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/api/auth/logout")
+        .header("content-type", "application/json")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Check that Set-Cookie headers are present to clear cookies
+    let set_cookies: Vec<&str> = resp
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .collect();
+
+    assert!(
+        set_cookies.iter().any(|c| c.contains("session_token=;") && c.contains("Max-Age=0")),
+        "Expected session_token clearing cookie, got: {:?}",
+        set_cookies
+    );
+    assert!(
+        set_cookies.iter().any(|c| c.contains("site_access=;") && c.contains("Max-Age=0")),
+        "Expected site_access clearing cookie, got: {:?}",
+        set_cookies
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests — Site access
+// ═══════════════════════════════════════════════════════════════════
+
+#[sqlx::test]
+async fn test_site_access_with_correct_code(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let payload = json!({ "code": "test_access_code" });
+    let (status, body) = post(&router, "/api/auth/site-access", payload).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["data"]["name"], "KeepAuthRenamed");
-    assert_eq!(body["data"]["auth_method"], "Password");
+    assert_eq!(body["data"]["granted"], true);
 }
 
 #[sqlx::test]
-async fn test_delete_removes_from_list(pool: PgPool) {
+async fn test_site_access_with_wrong_code(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let keep = create_user(&router, "KeepUser", None).await;
-    let remove = create_user(&router, "RemoveUser", None).await;
-    let remove_id = remove["id"].as_str().unwrap();
+    let payload = json!({ "code": "wrong_code" });
+    let (status, _body) = post(&router, "/api/auth/site-access", payload).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
 
-    // Verify both listed
-    let (status, body) = get(&router, "/api/users").await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"].as_array().unwrap().len(), 2);
+#[sqlx::test]
+async fn test_site_access_via_url_hash(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
 
-    // Delete one
-    let (status, _body) = del(&router, &format!("/api/user/{remove_id}")).await;
-    assert_eq!(status, StatusCode::OK);
+    let hash = sha256_hex("test_access_code");
+    let (status, body) = get(&router, &format!("/api/auth/site-access/{hash}")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["granted"], true);
+}
 
-    // Verify only one remains
-    let (status, body) = get(&router, "/api/users").await;
+#[sqlx::test]
+async fn test_site_access_via_url_wrong_hash(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    let (status, _body) = get(&router, "/api/auth/site-access/badhash").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests — Full flow
+// ═══════════════════════════════════════════════════════════════════
+
+#[sqlx::test]
+async fn test_full_guest_flow(pool: PgPool) {
+    seed(&pool).await;
+    let router = app(pool);
+
+    // 1. Create guest via auth endpoint (gets session)
+    let (user, token) = create_guest_via_auth(&router, "FullFlowGuest").await;
+    assert_eq!(user["auth_method"], "NameWithCookie");
+    assert_eq!(user["role"], "User");
+
+    // 2. Can access /api/auth/me
+    let (status, body) = get_auth(&router, "/api/auth/me", &token).await;
     assert_eq!(status, StatusCode::OK);
-    let users = body["data"].as_array().unwrap();
-    assert_eq!(users.len(), 1);
-    assert_eq!(users[0]["name"], "KeepUser");
+    assert_eq!(body["data"]["name"], "FullFlowGuest");
+
+    // 3. Can be found by name
+    let (status, body) = get(&router, "/api/user/name/FullFlowGuest").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["id"], user["id"]);
+}
+
+#[sqlx::test]
+async fn test_full_admin_upgrade_flow(pool: PgPool) {
+    let (_admin_id, admin_token) = seed_with_admin(&pool).await;
+    let router = app(pool);
+
+    // 1. Create a guest
+    let guest = create_guest(&router, "WillUpgrade").await;
+    let guest_id = guest["id"].as_str().unwrap();
+
+    // 2. Admin upgrades the guest to a password user
+    let payload = json!({
+        "email": "willupgrade@example.com",
+        "password": "securepass123",
+        "role": "User"
+    });
+    let (status, body) = post_auth(
+        &router,
+        &format!("/api/admin/users/{guest_id}/upgrade"),
+        payload,
+        &admin_token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["auth_method"], "Password");
+    assert_eq!(body["data"]["role"], "User");
+    // User ID should be preserved
+    assert_eq!(body["data"]["id"], guest_id);
+    assert_eq!(body["data"]["name"], "WillUpgrade");
+
+    // 3. The upgraded user can now login with password
+    let login_payload = json!({
+        "email": "willupgrade@example.com",
+        "password": "securepass123"
+    });
+    let (status, body) = post(&router, "/api/auth/login", login_payload).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let user_token = body["data"]["token"].as_str().unwrap();
+
+    // 4. Can access /api/auth/me with new session
+    let (status, body) = get_auth(&router, "/api/auth/me", user_token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["name"], "WillUpgrade");
 }

@@ -1,0 +1,6 @@
+{
+  "allowScripts": {
+    "allow": [],
+    "deny": ["npm:@parcel/watcher@2.5.6", "npm:esbuild@0.25.12", "npm:fsevents@2.3.3"]
+  }
+}

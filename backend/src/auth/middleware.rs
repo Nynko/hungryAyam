@@ -201,7 +201,7 @@ impl FromRequestParts<AppState> for SiteAccess {
             .map_err(|_| ApiError::Forbidden)?
             .ok_or(ApiError::Forbidden)?;
 
-        if cookie_value == stored_hash {
+        if cookie_value == *stored_hash {
             Ok(SiteAccess)
         } else {
             Err(ApiError::Forbidden)

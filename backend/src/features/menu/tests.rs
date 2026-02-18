@@ -10,7 +10,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use crate::{app::build_app, state::build_state};
+use crate::{app::build_app, state::build_state, utils::password::sha256_hex};
 
 // ═══════════════════════════════════════════════════════════════════
 // Test helpers
@@ -20,8 +20,8 @@ use crate::{app::build_app, state::build_state};
 /// Returns (user_id, restaurant_id, session_token).
 async fn seed(pool: &PgPool) -> (Uuid, Uuid, String) {
     // app_settings (needed by get_max_menu_nesting_depth)
-    let access_hash = crate::auth::password::sha256_hex("test_access_code");
-    sqlx::query("INSERT INTO app_settings (id, title, access_hash) VALUES (1, 'Test App', $1)")
+    let access_hash = sha256_hex("test_access_code");
+    sqlx::query("INSERT INTO app_settings (id, access_hash) VALUES (1, $1)")
         .bind(&access_hash)
         .execute(pool)
         .await

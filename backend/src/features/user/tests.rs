@@ -10,7 +10,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use crate::{app::build_app, auth::password::sha256_hex, state::build_state};
+use crate::{app::build_app, utils::password::sha256_hex, state::build_state};
 
 // ═══════════════════════════════════════════════════════════════════
 // Test helpers
@@ -19,7 +19,7 @@ use crate::{app::build_app, auth::password::sha256_hex, state::build_state};
 /// Seed the database with app_settings so the setup middleware allows requests.
 async fn seed(pool: &PgPool) {
     let access_hash = sha256_hex("test_access_code");
-    sqlx::query("INSERT INTO app_settings (id, title, access_hash) VALUES (1, 'Test App', $1)")
+    sqlx::query("INSERT INTO app_settings (id, access_hash) VALUES (1, $1)")
         .bind(&access_hash)
         .execute(pool)
         .await

@@ -53,7 +53,7 @@ pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
     let menu_repository = MenuRepository::new(db.clone(), item_repository.clone());
     let session_repository = SessionRepository::new(db.clone());
 
-    // Create services (auth_service must be created before setup_service)
+    // Create services
     let auth_service = AuthService::new(user_repository.clone(), session_repository.clone());
     let setup_service = AppSetupService::new(setup_repository.clone(), auth_service.clone());
     let restaurant_service = RestaurantService::new(restaurant_repository);

@@ -11,13 +11,11 @@ use uuid::Uuid;
 
 use crate::{
     auth::middleware::{
-        build_clear_session_cookie, build_session_cookie,
-        build_site_access_cookie, build_clear_site_access_cookie,
-        AdminUser, AuthUser,
+        AdminUser, AuthUser, SiteAccess, build_clear_session_cookie, build_clear_site_access_cookie, build_session_cookie, build_site_access_cookie
     },
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     state::AppState,
-    types::{email::Email, name::Name, response::ApiResponse, role::UserRole},
+    types::{email::Email, name::Name, password::ClearPassword, response::ApiResponse, role::UserRole}, utils::password::sha256_hex,
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -82,7 +80,7 @@ pub struct LoginRequest {
 pub struct RegisterPasswordUserRequest {
     pub name: Name,
     pub email: Email,
-    pub password: String,
+    pub password: ClearPassword,
     pub role: UserRole,
 }
 
@@ -91,7 +89,7 @@ pub struct RegisterPasswordUserRequest {
 #[ts(export)]
 pub struct UpgradeUserRequest {
     pub email: Email,
-    pub password: String,
+    pub password: ClearPassword,
     pub role: UserRole,
 }
 
@@ -111,6 +109,10 @@ pub struct ChangeRoleRequest {
 pub struct AuthResponseDto {
     pub user: crate::features::user::domain::User,
     pub token: String,
+    /// `true` if this was an existing user (reconnected), `false` if newly created.
+    /// Only relevant for guest creation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub existing_user: Option<bool>,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -138,10 +140,10 @@ pub async fn verify_site_access(
         .ok_or(ApiError::Unauthorized)?;
 
     // Hash the incoming plaintext code and compare
-    let input_hash = crate::auth::password::sha256_hex(&request.code);
+    let input_hash = sha256_hex(&request.code);
 
-    if input_hash != stored_hash {
-        return Err(ApiError::Unauthorized);
+    if input_hash != *stored_hash {
+        return Err(ApiError::InvalidPassword);
     }
 
     let cookie = build_site_access_cookie(&stored_hash, 365);
@@ -168,7 +170,7 @@ pub async fn verify_site_access_token(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or(ApiError::Unauthorized)?;
 
-    if hash != stored_hash {
+    if hash != *stored_hash {
         return Err(ApiError::Unauthorized);
     }
 
@@ -186,21 +188,31 @@ pub async fn verify_site_access_token(
 ///
 /// Create a new guest (NameWithCookie) user and issue a session.
 ///
+/// Requires site access (the `site_access` cookie must be set).
+///
 /// Returns the user, a session token, and sets the `session_token` cookie.
 pub async fn create_guest(
+    _site: SiteAccess,
     State(state): State<AppState>,
     ApiJson(request): ApiJson<CreateGuestRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let auth_response = state.auth_service.create_guest(request.name).await?;
+    let (auth_response, existing) = state.auth_service.create_guest(request.name).await?;
 
     let cookie = build_session_cookie(&auth_response.token, 30);
     let body = ApiJson(ApiResponse::success(AuthResponseDto {
         user: auth_response.user,
         token: auth_response.token,
+        existing_user: Some(existing),
     }));
 
+    let status = if existing {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+
     Ok((
-        StatusCode::CREATED,
+        status,
         [(header::SET_COOKIE, cookie)],
         body,
     ))
@@ -225,6 +237,7 @@ pub async fn login(
     let body = ApiJson(ApiResponse::success(AuthResponseDto {
         user: auth_response.user,
         token: auth_response.token,
+        existing_user: None,
     }));
 
     Ok((

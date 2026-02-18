@@ -12,6 +12,9 @@ pub enum ApiError {
     #[error("unauthorized")]
     Unauthorized,
 
+    #[error("invalid password")]
+    InvalidPassword,
+
     #[error("forbidden")]
     Forbidden,
 
@@ -29,6 +32,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = match self {
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
+            ApiError::InvalidPassword => StatusCode::UNAUTHORIZED,
             ApiError::Forbidden => StatusCode::FORBIDDEN,
             ApiError::NotFound => StatusCode::NOT_FOUND,
             ApiError::BadRequest(_) => StatusCode::BAD_REQUEST,

@@ -2,10 +2,7 @@ use anyhow::{anyhow, Result};
 use uuid::Uuid;
 
 use crate::{
-    auth::{
-        password::{hash_password, verify_password},
-        session::SessionRepository,
-    },
+    auth::session::SessionRepository,
     features::user::{
         domain::{CreateUser, User},
         repository::UserRepository,
@@ -14,12 +11,14 @@ use crate::{
         auth::AuthMethod,
         email::Email,
         name::Name,
+        password::ClearPassword,
         role::UserRole,
     },
+    utils::password::{
+        hash_password,
+        verify_password
+    },
 };
-
-/// Minimum password length enforced during registration/upgrade.
-const MIN_PASSWORD_LENGTH: usize = 8;
 
 #[derive(Clone)]
 pub struct AuthService {
@@ -49,11 +48,42 @@ impl AuthService {
     // Public (unauthenticated) operations
     // ═══════════════════════════════════════════════════════════════
 
-    /// Create a new guest (NameWithCookie) user and a session.
+    /// Create a new guest (NameWithCookie) user and a session, or log in
+    /// as an existing guest with the same name.
     ///
     /// The guest only needs to provide a name. They get a long-lived session
     /// cookie so they can be remembered across visits.
-    pub async fn create_guest(&self, name: Name) -> Result<AuthResponse> {
+    ///
+    /// Returns `(AuthResponse, bool)` where the bool indicates if this was
+    /// an existing user (`true`) or a newly created one (`false`).
+    pub async fn create_guest(&self, name: Name) -> Result<(AuthResponse, bool)> {
+        // Check if a user with this name already exists
+        if let Some(existing) = self.user_repository.get_by_name(name.as_ref()).await? {
+            // If they're a guest (NameWithCookie), reconnect them
+            if existing.auth_method == AuthMethod::NameWithCookie {
+                let session = self
+                    .session_repository
+                    .create_guest_session(existing.id)
+                    .await?;
+
+                return Ok((
+                    AuthResponse {
+                        user: existing,
+                        token: session.token,
+                    },
+                    true, // existing user
+                ));
+            }
+
+            // If they're a password user, they need to log in with their password
+            if existing.auth_method == AuthMethod::Password {
+                return Err(anyhow!(
+                    "A user with this name already exists. Please log in with your password."
+                ));
+            }
+        }
+
+        // Create new guest user
         let create = CreateUser {
             name,
             email: None,
@@ -71,10 +101,13 @@ impl AuthService {
             .create_guest_session(user.id)
             .await?;
 
-        Ok(AuthResponse {
-            user,
-            token: session.token,
-        })
+        Ok((
+            AuthResponse {
+                user,
+                token: session.token,
+            },
+            false, // new user
+        ))
     }
 
     /// Authenticate a password user with email and password.
@@ -147,16 +180,15 @@ impl AuthService {
 
     /// Register a new password-authenticated user (admin action).
     ///
-    /// The admin provides the name, email, plaintext password, and role.
+    /// The admin provides the name, email, validated password, and role.
     /// The password is hashed before storage.
     pub async fn register_password_user(
         &self,
         name: Name,
         email: Email,
-        password: &str,
+        password: &ClearPassword,
         role: UserRole,
     ) -> Result<User> {
-        validate_password(password)?;
 
         // Check email uniqueness
         if self
@@ -168,7 +200,7 @@ impl AuthService {
             return Err(anyhow!("A user with this email already exists"));
         }
 
-        let password_hash = hash_password(password)?;
+        let password_hash = hash_password(password.as_ref())?;
 
         let create = CreateUser {
             name,
@@ -190,10 +222,9 @@ impl AuthService {
         &self,
         user_id: Uuid,
         email: Email,
-        password: &str,
+        password: &ClearPassword,
         role: UserRole,
     ) -> Result<User> {
-        validate_password(password)?;
 
         // Verify user exists and is currently a guest
         let existing = self
@@ -215,7 +246,7 @@ impl AuthService {
             }
         }
 
-        let password_hash = hash_password(password)?;
+        let password_hash = hash_password(password.as_ref())?;
 
         // Update the user
         let user = self
@@ -263,9 +294,8 @@ impl AuthService {
         &self,
         name: Name,
         email: Email,
-        password: &str,
+        password: &ClearPassword,
     ) -> Result<User> {
-        validate_password(password)?;
 
         // Check email uniqueness
         if self
@@ -277,7 +307,7 @@ impl AuthService {
             return Err(anyhow!("A user with this email already exists"));
         }
 
-        let password_hash = hash_password(password)?;
+        let password_hash = hash_password(password.as_ref())?;
 
         let create = CreateUser {
             name,
@@ -290,18 +320,4 @@ impl AuthService {
             .create(create, Some(password_hash))
             .await
     }
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════
-
-fn validate_password(password: &str) -> Result<()> {
-    if password.len() < MIN_PASSWORD_LENGTH {
-        return Err(anyhow!(
-            "Password must be at least {} characters",
-            MIN_PASSWORD_LENGTH
-        ));
-    }
-    Ok(())
 }

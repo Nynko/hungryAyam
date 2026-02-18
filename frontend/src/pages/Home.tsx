@@ -1,11 +1,16 @@
 import { A } from "@solidjs/router";
+import { appImageUrl, appTitle } from "../env";
+import { Show } from "solid-js";
 
 export default function Home() {
   return (
     <section class="hero is-medium is-primary">
       <div class="hero-body">
         <div class="container has-text-centered">
-          <p class="title is-1">🐔 HungryAyam</p>
+          <Show when={appImageUrl} fallback={<span class="title is-1">🐔</span>}>
+            <img src={appImageUrl} alt={appTitle}/>
+          </Show>
+          <p class="title is-1">{appTitle}</p>
           <p class="subtitle is-4">
             Group food ordering made simple.
           </p>

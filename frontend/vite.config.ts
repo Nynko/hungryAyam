@@ -10,6 +10,8 @@ export default defineConfig({
     alias: {
       // @ts-expect-error process is a nodejs global
       "@": path.resolve(process.cwd(), "src"),
+      // @ts-expect-error process is a nodejs global
+      "@bindings": path.resolve(process.cwd(), "../backend/bindings"),
     },
   },
   css: {

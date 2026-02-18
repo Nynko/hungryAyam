@@ -1,4 +1,5 @@
 import { Router, Route } from "@solidjs/router";
+import { onMount, Show, Switch, Match } from "solid-js";
 import MainLayout from "./layouts/MainLayout";
 import Home from "./pages/Home";
 import Restaurants from "./pages/Restaurants";
@@ -7,17 +8,47 @@ import Statistics from "./pages/Statistics";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import Setup from "./pages/Setup";
+import { setupCompleted, setupLoading, checkSetupStatus } from "./stores/setupStore";
+import { checkAuth } from "./stores/authStore";
+
+function SetupLayout(props: { children?: any }) {
+  return <>{props.children}</>;
+}
 
 export default function App() {
+  onMount(() => {
+    checkSetupStatus();
+    checkAuth();
+  });
+
   return (
-    <Router root={MainLayout}>
-      <Route path="/" component={Home} />
-      <Route path="/restaurants" component={Restaurants} />
-      <Route path="/orders" component={Orders} />
-      <Route path="/statistics" component={Statistics} />
-      <Route path="/admin" component={Admin} />
-      <Route path="/login" component={Login} />
-      <Route path="*404" component={NotFound} />
-    </Router>
+    <Switch fallback={
+      <div class="hero is-fullheight">
+        <div class="hero-body is-justify-content-center">
+          <div class="has-text-centered">
+            <p class="title">🐔</p>
+            <progress class="progress is-primary is-small" max="100" />
+          </div>
+        </div>
+      </div>
+    }>
+      <Match when={!setupLoading() && setupCompleted() === false}>
+        <Router root={SetupLayout}>
+          <Route path="*" component={Setup} />
+        </Router>
+      </Match>
+      <Match when={!setupLoading() && setupCompleted() === true}>
+        <Router root={MainLayout}>
+          <Route path="/" component={Home} />
+          <Route path="/restaurants" component={Restaurants} />
+          <Route path="/orders" component={Orders} />
+          <Route path="/statistics" component={Statistics} />
+          <Route path="/admin" component={Admin} />
+          <Route path="/login" component={Login} />
+          <Route path="*404" component={NotFound} />
+        </Router>
+      </Match>
+    </Switch>
   );
 }

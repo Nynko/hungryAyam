@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        UPDATE menu_section_items\n                        SET position   = $1,\n                            updated_at = NOW(),\n                            updated_by = $3\n                        WHERE id = $2\n                        RETURNING id\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2f90b743458ad6e5b5133f16494c4ea9fde50f129951a4a9fc27ce5efb724dfd"
+}

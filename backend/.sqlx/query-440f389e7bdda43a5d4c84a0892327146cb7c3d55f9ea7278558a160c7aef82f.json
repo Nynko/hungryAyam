@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH RECURSIVE ancestors AS (\n                SELECT id, parent_id, 1 AS depth\n                FROM menu_sections\n                WHERE id = $1\n                UNION ALL\n                SELECT a.id, ms.parent_id, a.depth + 1\n                FROM ancestors a\n                JOIN menu_sections ms ON a.parent_id = ms.id\n            )\n            SELECT MAX(depth) as \"depth!\"\n            FROM ancestors\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "depth!",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "440f389e7bdda43a5d4c84a0892327146cb7c3d55f9ea7278558a160c7aef82f"
+}

@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT DISTINCT\n                r.id,\n                r.name as \"name: Name\",\n                r.image_url as \"image_url?: UrlString\",\n                r.created_at,\n                r.created_by,\n                r.updated_at,\n                r.updated_by\n            FROM restaurants r\n            INNER JOIN order_sessions os ON os.restaurant_id = r.id\n            WHERE os.end_date > NOW()\n            ORDER BY r.created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name: Name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "image_url?: UrlString",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9eb7cb8cef90505c365cd2300f29c30ad6fc46454634e697881286db1e1fd8b8"
+}

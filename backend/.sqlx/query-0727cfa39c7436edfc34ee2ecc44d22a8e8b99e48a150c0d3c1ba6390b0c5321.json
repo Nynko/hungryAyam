@@ -1,0 +1,68 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE users\n            SET auth_method = $1,\n                email = $2,\n                password_hash = $3,\n                role = $4,\n                updated_at = NOW()\n            WHERE id = $5\n              AND auth_method = 'NameWithCookie'\n            RETURNING\n                id,\n                name as \"name: Name\",\n                email as \"email?: Email\",\n                auth_method as \"auth_method: AuthMethod\",\n                password_hash,\n                role as \"role?: UserRole\",\n                created_at,\n                updated_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name: Name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "email?: Email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "auth_method: AuthMethod",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "password_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "role?: UserRole",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "0727cfa39c7436edfc34ee2ecc44d22a8e8b99e48a150c0d3c1ba6390b0c5321"
+}

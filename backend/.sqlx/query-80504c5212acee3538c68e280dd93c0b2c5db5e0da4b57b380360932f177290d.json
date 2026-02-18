@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        UPDATE menu_section_items\n                        SET section_id           = COALESCE($1, section_id),\n                            position             = COALESCE($2, position),\n                            price_override_cents  = COALESCE($3, price_override_cents),\n                            is_available          = COALESCE($4, is_available),\n                            updated_at            = NOW(),\n                            updated_by            = $6\n                        WHERE id = $5\n                        RETURNING id\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Int4",
+        "Bool",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "80504c5212acee3538c68e280dd93c0b2c5db5e0da4b57b380360932f177290d"
+}

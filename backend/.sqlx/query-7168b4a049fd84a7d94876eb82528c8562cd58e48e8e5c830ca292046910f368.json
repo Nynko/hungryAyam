@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        INSERT INTO menu_section_items\n                            (section_id, item_id, position, price_override_cents,\n                             is_available, created_by, updated_by)\n                        VALUES ($1, $2, $3, $4, $5, $6, $7)\n                        RETURNING id\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Int4",
+        "Bool",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7168b4a049fd84a7d94876eb82528c8562cd58e48e8e5c830ca292046910f368"
+}

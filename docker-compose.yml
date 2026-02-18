@@ -1,0 +1,50 @@
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hungryayam}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hungryayam}
+      POSTGRES_DB: ${POSTGRES_DB:-hungryayam}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hungryayam} -d ${POSTGRES_DB:-hungryayam}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Backend (Rust / Axum) ────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-hungryayam}:${POSTGRES_PASSWORD:-hungryayam}@db:5432/${POSTGRES_DB:-hungryayam}
+      BIND_ADDR: 0.0.0.0:3000
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  # ── Frontend (nginx serving Vite static build) ───────────────────
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_TITLE: ${VITE_APP_TITLE:-HungryAyam}
+        VITE_APP_IMAGE_URL: ${VITE_APP_IMAGE_URL:-}
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

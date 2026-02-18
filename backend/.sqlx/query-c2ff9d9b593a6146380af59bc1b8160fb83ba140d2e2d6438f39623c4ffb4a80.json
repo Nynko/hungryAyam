@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                max_menu_nesting_depth,\n                access_hash as \"access_hash: HashedPassword\",\n                created_at,\n                updated_at\n            FROM app_settings\n            WHERE id = 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 1,
+        "name": "max_menu_nesting_depth",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 2,
+        "name": "access_hash: HashedPassword",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c2ff9d9b593a6146380af59bc1b8160fb83ba140d2e2d6438f39623c4ffb4a80"
+}

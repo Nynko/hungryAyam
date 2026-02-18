@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                name as \"name: Name\",\n                email as \"email?: Email\",\n                auth_method as \"auth_method: AuthMethod\",\n                password_hash,\n                role as \"role?: UserRole\",\n                created_at,\n                updated_at\n            FROM users WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name: Name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "email?: Email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "auth_method: AuthMethod",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "password_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "role?: UserRole",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "16cf7992ed21508a23a085e6ed9f1cfb4d2995183967f3053453bb7f434582e0"
+}

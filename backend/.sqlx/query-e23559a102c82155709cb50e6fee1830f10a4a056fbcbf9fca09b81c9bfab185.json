@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT it.item_id, t.id as tag_id, t.name as \"tag_name: Name\"\n            FROM item_tags it\n            INNER JOIN tags t ON t.id = it.tag_id\n            WHERE it.item_id = ANY($1)\n            ORDER BY t.name ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tag_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "tag_name: Name",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e23559a102c82155709cb50e6fee1830f10a4a056fbcbf9fca09b81c9bfab185"
+}

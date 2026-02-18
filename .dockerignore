@@ -1,0 +1,34 @@
+# Version control
+.git
+.gitignore
+
+# Build artifacts
+target/
+dist/
+node_modules/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env*.local
+
+# Documentation
+README.md
+PROJECT_CONTEXT_LLM.md
+
+# Frontend build artifacts (not needed for backend context)
+frontend/dist/
+frontend/node_modules/
+
+# Rust build cache
+backend/target/
+
+# Misc
+*.log

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                            WITH RECURSIVE ancestors AS (\n                                SELECT id, parent_id FROM menu_sections WHERE id = $1\n                                UNION ALL\n                                SELECT ms.id, ms.parent_id\n                                FROM menu_sections ms\n                                JOIN ancestors a ON a.parent_id = ms.id\n                            )\n                            SELECT EXISTS(\n                                SELECT 1 FROM ancestors WHERE id = $2\n                            ) as \"exists!\"\n                            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3ce6e7233dff62e070897766f31f0334541f8e91c06e3375025baa8fbdbd2fb0"
+}

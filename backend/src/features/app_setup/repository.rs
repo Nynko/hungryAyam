@@ -6,7 +6,7 @@ use crate::{
         domain::{AppSetup, CreateAppSetup, UpdateAppSetup},
         db_model::AppSetupRow,
     },
-    types::url::UrlString,
+    types::password::HashedPassword
 };
 
 #[derive(Clone)]
@@ -24,20 +24,16 @@ impl AppSetupRepository {
         let setup = sqlx::query_as!(
             AppSetupRow,
             r#"
-            INSERT INTO app_settings (id, title, image_url, access_hash)
-            VALUES (1, $1, $2, $3)
+            INSERT INTO app_settings (id, access_hash)
+            VALUES (1, $1)
             RETURNING
                 id,
-                title,
-                image_url as "image_url?: UrlString",
                 max_menu_nesting_depth,
-                access_hash,
+                access_hash as "access_hash: HashedPassword",
                 created_at,
                 updated_at
             "#,
-            request.title,
-            request.image_url.as_ref().map(|u| u.to_string()),
-            request.access_hash
+            request.access_hash.as_ref()
         )
         .fetch_one(&self.pool)
         .await?;
@@ -52,10 +48,8 @@ impl AppSetupRepository {
             r#"
             SELECT
                 id,
-                title,
-                image_url as "image_url?: UrlString",
                 max_menu_nesting_depth,
-                access_hash,
+                access_hash as "access_hash: HashedPassword",
                 created_at,
                 updated_at
             FROM app_settings
@@ -74,25 +68,19 @@ impl AppSetupRepository {
             AppSetupRow,
             r#"
             UPDATE app_settings
-            SET title = COALESCE($1, title),
-                image_url = COALESCE($2, image_url),
-                max_menu_nesting_depth = COALESCE($3, max_menu_nesting_depth),
-                access_hash = COALESCE($4, access_hash),
+            SET max_menu_nesting_depth = COALESCE($1, max_menu_nesting_depth),
+                access_hash = COALESCE($2, access_hash),
                 updated_at = NOW()
             WHERE id = 1
             RETURNING
                 id,
-                title,
-                image_url as "image_url?: UrlString",
                 max_menu_nesting_depth,
-                access_hash,
+                access_hash as "access_hash: HashedPassword",
                 created_at,
                 updated_at
             "#,
-            request.title,
-            request.image_url.as_ref().map(|u| u.to_string()),
             request.max_menu_nesting_depth,
-            request.access_hash
+            request.access_hash.as_ref().map(|h| h.as_ref())
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -120,10 +108,10 @@ impl AppSetupRepository {
     ///
     /// This is the SHA-256 hex hash of the shared site access code.
     /// Returns `None` if app settings have not been configured yet.
-    pub async fn get_access_hash(&self) -> Result<Option<String>> {
-        let result = sqlx::query_scalar!(
+    pub async fn get_access_hash(&self) -> Result<Option<HashedPassword>> {
+        let result: Option<HashedPassword> = sqlx::query_scalar!(
             r#"
-            SELECT access_hash
+            SELECT access_hash as "access_hash: HashedPassword"
             FROM app_settings
             WHERE id = 1
             "#

@@ -1,15 +1,12 @@
-use anyhow::Result;
-
 use crate::{
-    auth::{
-        password::sha256_hex,
-        service::AuthService,
-    },
+    auth::service::AuthService,
     features::app_setup::{
         domain::{AppSetup, CreateAppSetup},
         dto::AppSetupRequest,
         repository::AppSetupRepository,
     },
+    types::password::parse_hashed_password,
+    utils::password::sha256_hex,
 };
 
 #[derive(Clone)]
@@ -26,30 +23,14 @@ impl AppSetupService {
         }
     }
 
-    pub async fn setup_app(&self, request: AppSetupRequest) -> Result<AppSetup, anyhow::Error> {
-        // Validate app name
-        if request.app_name.trim().is_empty() {
-            anyhow::bail!("App name cannot be empty");
-        }
-
-        if request.app_name.len() > 100 {
-            anyhow::bail!("App name cannot exceed 100 characters");
-        }
-
-        // Validate access code
-        if request.access_code.trim().is_empty() {
-            anyhow::bail!("Access code cannot be empty");
-        }
-
+    pub async fn setup_app(&self, request: AppSetupRequest) -> anyhow::Result<AppSetup> {
         // Hash the access code with SHA-256 before storing
-        let access_hash = sha256_hex(&request.access_code);
+        // (ClearPassword is already validated by serde deserialization)
+        let access_hash_str = sha256_hex(request.access_code.as_ref());
+        let access_hash = parse_hashed_password(access_hash_str)?;
 
         // Create the app settings
-        let create_setup = CreateAppSetup {
-            title: request.app_name,
-            image_url: request.image_url,
-            access_hash,
-        };
+        let create_setup = CreateAppSetup { access_hash };
 
         let setup = self.repository.create(create_setup).await?;
 

@@ -15,6 +15,7 @@ mod auth;
 mod setup_middleware;
 mod types;
 mod traits;
+mod utils;
 
 use crate::{
     state::build_state,
@@ -73,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
     // --------------------------------------------------
     // App state
     // --------------------------------------------------
-    let state = build_state(setup_completed,db);
+    let state = build_state(setup_completed, db);
 
     // --------------------------------------------------
     // Router

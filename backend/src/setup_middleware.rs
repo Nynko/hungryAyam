@@ -17,18 +17,21 @@ pub async fn setup_redirect_guard(
     let path = req.uri().path();
     let setup_completed = state.setup_completed.load(Ordering::SeqCst);
 
-     // Allow GET /setup always
-    if path == "/setup" && req.method() ==  Method::GET {
-        return Ok(next.run(req).await);
-    }
-
-    if !setup_completed && path != "/setup" {
-        // Redirect all requests to /setup if setup is not completed
+    // Before setup is completed: allow GET and POST /setup, block everything else
+    if !setup_completed {
+        if path == "/setup" {
+            return Ok(next.run(req).await);
+        }
         return Ok(Redirect::to("/setup").into_response());
     }
-    if setup_completed && path == "/setup" {
-        // Redirect /setup to / if setup is completed
+
+    // After setup is completed: allow GET /setup (status check), block POST /setup
+    if path == "/setup" {
+        if req.method() == Method::GET {
+            return Ok(next.run(req).await);
+        }
         return Ok(Redirect::to("/").into_response());
     }
+
     Ok(next.run(req).await)
 }

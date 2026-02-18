@@ -9,8 +9,8 @@ dist
 .vinxi
 app.config.timestamp_*.js
 
-# SQLX Cache
-.sqlx
+# SQLX Cache — committed for Docker offline builds (cargo sqlx prepare)
+# .sqlx
 
 # Environment
 .env

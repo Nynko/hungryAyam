@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::{
     features::app_setup::{
         domain::AppSetup,
-        dto::AppSetupRequest
+        dto::AppSetupRequest,
     },
     state::AppState,
     errors::{

@@ -1,11 +1,12 @@
+pub mod actions;
+pub mod auth;
 pub mod email;
 pub mod name;
+pub mod password;
+pub mod position;
 pub mod price;
 pub mod response;
+pub mod role;
 pub mod url;
 pub mod utils;
 pub mod validated;
-pub mod actions;
-pub mod position;
-pub mod auth;
-pub mod role;

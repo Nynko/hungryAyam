@@ -3,6 +3,8 @@ import { onMount, Show, Switch, Match } from "solid-js";
 import MainLayout from "./layouts/MainLayout";
 import Home from "./pages/Home";
 import Restaurants from "./pages/Restaurants";
+import RestaurantPage from "./pages/RestaurantPage";
+import MenuEditor from "./pages/MenuEditor";
 import Orders from "./pages/Orders";
 import Statistics from "./pages/Statistics";
 import Admin from "./pages/Admin";
@@ -42,6 +44,9 @@ export default function App() {
         <Router root={MainLayout}>
           <Route path="/" component={Home} />
           <Route path="/restaurants" component={Restaurants} />
+          <Route path="/restaurants/:id" component={RestaurantPage} />
+          <Route path="/restaurants/:id/menus/new" component={MenuEditor} />
+          <Route path="/restaurants/:id/menus/:menuId/edit" component={MenuEditor} />
           <Route path="/orders" component={Orders} />
           <Route path="/statistics" component={Statistics} />
           <Route path="/admin" component={Admin} />

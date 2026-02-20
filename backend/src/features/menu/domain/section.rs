@@ -17,7 +17,9 @@ use super::section_item::{MenuSectionItem, CreateMenuSectionItem};
 pub struct MenuSection {
     #[derived_domain_ignore] // Updates needs to pass by actions and will contains the id (potentially as a previous ref (RefEntity))
     pub id: Uuid,
+    #[create_ignore]
     pub menu_id: Uuid,
+    #[create_ignore]
     pub parent_id: Option<Uuid>,
     pub name: Name,
     pub description: Option<String>,

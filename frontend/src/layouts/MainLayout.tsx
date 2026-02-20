@@ -9,6 +9,7 @@ import {
   currentUser,
   logout,
 } from "@/stores/authStore";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 const MainLayout: ParentComponent = (props) => {
   const [burgerActive, setBurgerActive] = createSignal(false);
@@ -117,6 +118,8 @@ const MainLayout: ParentComponent = (props) => {
           </p>
         </div>
       </footer>
+
+      <ConfirmDialog />
     </>
   );
 };

@@ -12,6 +12,7 @@ import {
   saveMenu,
   discardChanges,
 } from "@/stores/menuEditorStore";
+import { showConfirm } from "@/stores/confirmStore";
 
 interface MenuEditorToolbarProps {
   onSaved?: () => void;
@@ -26,17 +27,38 @@ export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
     }
   };
 
-  const handleDiscard = () => {
-    if (!dirty() || confirm("Discard all unsaved changes?")) {
+  const handleDiscard = async () => {
+    if (!dirty()) {
+      discardChanges();
+      return;
+    }
+    const confirmed = await showConfirm({
+      title: "Discard changes?",
+      message: "All unsaved changes will be lost. This cannot be undone.",
+      confirmText: "Discard",
+      cancelText: "Stay",
+      danger: true,
+    });
+    if (confirmed) {
       discardChanges();
     }
   };
 
-  const handleCancel = () => {
-    if (dirty() && !confirm("You have unsaved changes. Leave anyway?")) {
+  const handleCancel = async () => {
+    if (!dirty()) {
+      props.onCancel();
       return;
     }
-    props.onCancel();
+    const confirmed = await showConfirm({
+      title: "Leave editor?",
+      message: "You have unsaved changes. Are you sure you want to leave?",
+      confirmText: "Leave",
+      cancelText: "Stay",
+      danger: true,
+    });
+    if (confirmed) {
+      props.onCancel();
+    }
   };
 
   return (

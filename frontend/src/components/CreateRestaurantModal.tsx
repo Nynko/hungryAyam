@@ -145,7 +145,7 @@ export default function CreateRestaurantModal(props: CreateRestaurantModalProps)
                     class="image is-3by2"
                     style={{
                       "max-width": "240px",
-                      "background-color": "#f5f5f5",
+                      "background-color": "var(--bulma-scheme-main-bis)",
                       overflow: "hidden",
                       "border-radius": "4px",
                     }}

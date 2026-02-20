@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { A } from "@solidjs/router";
 import type { Restaurant } from "@bindings/Restaurant";
+import { ClickableCard } from "@/components/Card";
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -12,12 +13,12 @@ export default function RestaurantCard(props: RestaurantCardProps) {
       href={`/restaurants/${props.restaurant.id}`}
       style={{ "text-decoration": "none", color: "inherit" }}
     >
-      <div class="card" style={{ cursor: "pointer", height: "100%" }}>
+      <ClickableCard onClick={() => {}} style={{ height: "100%" }}>
         <div class="card-image">
           <figure
             class="image is-4by3"
             style={{
-              "background-color": "#f5f5f5",
+              "background-color": "var(--bulma-scheme-main-bis)",
               display: "flex",
               "align-items": "center",
               "justify-content": "center",
@@ -53,7 +54,7 @@ export default function RestaurantCard(props: RestaurantCardProps) {
             {props.restaurant.name}
           </p>
         </div>
-      </div>
+      </ClickableCard>
     </A>
   );
 }

@@ -13,8 +13,38 @@ $beige-lighter: #eff0eb;
     $primary: $purple,
     $link: $pink,
     $control-border-width: 2px,
-    $input-shadow: none
+    $input-shadow: none,
+    // Offset body background from card/box surfaces for contrast
+    $body-background-color: hsl(0, 0%, 96%),
+    // Remove default heavy shadows — we use borders instead
+    $box-shadow: none,
+    $card-shadow: none
 );
 
 // Import the Google Font
 @import url("https://fonts.googleapis.com/css?family=Nunito:400,700");
+
+// Dark mode: make body background slightly darker than card surfaces
+// so cards visually "float" above the page
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bulma-body-background-color: hsl(0, 0%, 7%);
+    }
+}
+
+// Replace shadows with subtle theme-aware borders on cards and boxes
+.card,
+.box {
+    border: 1px solid var(--bulma-border-weak);
+}
+
+// Clickable card: pure-CSS hover shadow transition
+.card-clickable {
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+        box-shadow: 0 0.5em 1em hsla(0, 0%, 0%, 0.12);
+        border-color: var(--bulma-border);
+    }
+}

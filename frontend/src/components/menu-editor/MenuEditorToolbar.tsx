@@ -1,0 +1,191 @@
+import { Show } from "solid-js";
+import {
+  editorState,
+  actionQueue,
+  editorSaving,
+  editorError,
+  dirty,
+  updateMenuName,
+  updateMenuDescription,
+  updateMenuIsActive,
+  updateMenuPermanent,
+  saveMenu,
+  discardChanges,
+} from "@/stores/menuEditorStore";
+
+interface MenuEditorToolbarProps {
+  onSaved?: () => void;
+  onCancel: () => void;
+}
+
+export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
+  const handleSave = async () => {
+    const result = await saveMenu();
+    if (result && props.onSaved) {
+      props.onSaved();
+    }
+  };
+
+  const handleDiscard = () => {
+    if (!dirty() || confirm("Discard all unsaved changes?")) {
+      discardChanges();
+    }
+  };
+
+  const handleCancel = () => {
+    if (dirty() && !confirm("You have unsaved changes. Leave anyway?")) {
+      return;
+    }
+    props.onCancel();
+  };
+
+  return (
+    <div class="box mb-5">
+      {/* ── Error banner ──────────────────────────────────── */}
+      <Show when={editorError()}>
+        <div class="notification is-danger is-light mb-4">
+          <button class="delete" onClick={() => {}} />
+          <strong>Error:</strong> {editorError()}
+        </div>
+      </Show>
+
+      {/* ── Menu metadata fields ──────────────────────────── */}
+      <div class="columns is-multiline">
+        {/* Name */}
+        <div class="column is-6">
+          <div class="field">
+            <label class="label">Menu name</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                placeholder="e.g. Lunch Menu"
+                value={editorState.draft.name}
+                onInput={(e) => updateMenuName(e.currentTarget.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Description */}
+        <div class="column is-6">
+          <div class="field">
+            <label class="label">Description</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                placeholder="Optional description"
+                value={editorState.draft.description ?? ""}
+                onInput={(e) =>
+                  updateMenuDescription(e.currentTarget.value || null)
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Toggles */}
+        <div class="column is-6">
+          <div class="field is-grouped">
+            <div class="control">
+              <label class="checkbox">
+                <input
+                  type="checkbox"
+                  checked={editorState.draft.is_active}
+                  onChange={(e) => updateMenuIsActive(e.currentTarget.checked)}
+                />{" "}
+                Active
+              </label>
+              <p class="help has-text-grey">
+                Active menus are visible to users
+              </p>
+            </div>
+
+            <div class="control ml-5">
+              <label class="checkbox">
+                <input
+                  type="checkbox"
+                  checked={editorState.draft.permanent}
+                  onChange={(e) => updateMenuPermanent(e.currentTarget.checked)}
+                />{" "}
+                Permanent
+              </label>
+              <p class="help has-text-grey">
+                Permanent menus keep items between resets
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Action count (edit mode only) */}
+        <Show when={!editorState.isNewMenu && actionQueue().length > 0}>
+          <div class="column is-6">
+            <div class="field">
+              <label class="label">Pending changes</label>
+              <p class="is-size-7 has-text-grey">
+                <span class="tag is-info is-light mr-1">
+                  {actionQueue().length}
+                </span>
+                action{actionQueue().length !== 1 ? "s" : ""} queued
+              </p>
+            </div>
+          </div>
+        </Show>
+      </div>
+
+      {/* ── Action buttons ────────────────────────────────── */}
+      <hr class="my-3" />
+      <div class="is-flex is-justify-content-space-between is-align-items-center">
+        <div class="buttons">
+          <button
+            class="button is-primary"
+            classList={{ "is-loading": editorSaving() }}
+            disabled={
+              editorSaving() ||
+              !editorState.draft.name.trim() ||
+              (!editorState.isNewMenu && !dirty())
+            }
+            onClick={handleSave}
+          >
+            <span class="icon is-small">
+              <span>💾</span>
+            </span>
+            <span>
+              {editorState.isNewMenu ? "Create Menu" : "Save Changes"}
+            </span>
+          </button>
+
+          <Show when={dirty()}>
+            <button
+              class="button is-warning is-outlined"
+              disabled={editorSaving()}
+              onClick={handleDiscard}
+            >
+              <span class="icon is-small">
+                <span>↩️</span>
+              </span>
+              <span>Discard</span>
+            </button>
+          </Show>
+        </div>
+
+        <button
+          class="button is-light"
+          disabled={editorSaving()}
+          onClick={handleCancel}
+        >
+          <span class="mr-1">←</span>
+          Cancel
+        </button>
+      </div>
+
+      {/* ── Dirty indicator ───────────────────────────────── */}
+      <Show when={dirty()}>
+        <p class="has-text-warning is-size-7 mt-2">
+          ⚠ You have unsaved changes
+        </p>
+      </Show>
+    </div>
+  );
+}

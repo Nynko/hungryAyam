@@ -20,6 +20,7 @@ pub struct MenuSection {
     #[create_ignore]
     pub menu_id: Uuid,
     #[create_ignore]
+    #[unit_create_ignore]
     pub parent_id: Option<Uuid>,
     pub name: Name,
     pub description: Option<String>,

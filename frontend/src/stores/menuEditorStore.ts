@@ -361,6 +361,8 @@ const [editorState, setEditorState] = createStore<MenuEditorState>({
 });
 
 const [actionQueue, setActionQueue] = createSignal<UpdateMenuAction[]>([]);
+/** Maps temp IDs (sections and items) to the action queue index that created them. */
+const tempIdToActionIndex = new Map<string, number>();
 const [editorLoading, setEditorLoading] = createSignal(false);
 const [editorError, setEditorError] = createSignal<string | null>(null);
 const [editorSaving, setEditorSaving] = createSignal(false);
@@ -387,6 +389,7 @@ function initNewMenu(restaurantId: string): void {
       })
     );
     setActionQueue([]);
+    tempIdToActionIndex.clear();
     setEditorError(null);
     setDirty(false);
   });
@@ -405,6 +408,7 @@ function loadMenuForEditing(menu: Menu): void {
       })
     );
     setActionQueue([]);
+    tempIdToActionIndex.clear();
     setEditorError(null);
     setDirty(false);
   });
@@ -474,6 +478,7 @@ function pushAction(action: UpdateMenuAction): void {
  */
 function clearActions(): void {
   setActionQueue([]);
+  tempIdToActionIndex.clear();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -663,6 +668,11 @@ function addSection(parentId: string | null, name: string): DraftSection {
         ? { Existing: editorState.draft.id } as const
         : { Existing: "__draft__" } as const; // shouldn't happen in edit mode
 
+    // Record the mapping BEFORE pushAction so we know the index.
+    // AddSection never merges (actionMergeKey returns null), so it always appends.
+    const actionIndex = actionQueue().length;
+    tempIdToActionIndex.set(id, actionIndex);
+
     pushAction({
       AddSection: {
         parent_id: parentRef,
@@ -815,6 +825,11 @@ function addItemToSection(
     const sectionRef = isTempId(sectionId)
       ? ({ CreatedByAction: findActionIndexForTempSection(sectionId) } as const)
       : ({ Existing: sectionId } as const);
+
+    // Record the mapping BEFORE pushAction so we know the index.
+    // AddItem never merges (actionMergeKey returns null), so it always appends.
+    const actionIndex = actionQueue().length;
+    tempIdToActionIndex.set(id, actionIndex);
 
     pushAction({
       AddItem: {
@@ -1051,21 +1066,25 @@ function getSectionItemById(sectionId: string, itemId: string): DraftSectionItem
  * Used for building `CreatedByAction` references.
  */
 function findActionIndexForTempSection(tempSectionId: string): number {
-  const queue = actionQueue();
-  for (let i = 0; i < queue.length; i++) {
-    const action = queue[i];
-    if ("AddSection" in action && action.AddSection.section.name) {
-      // We match by checking if this is the add that created our section.
-      // Since temp IDs are unique, we look at the queue order.
-      // This is a simplification — in a real system we'd track the mapping.
-    }
-  }
-  // Fallback: return current queue length (next action index)
-  return queue.length;
+  const index = tempIdToActionIndex.get(tempSectionId);
+  if (index !== undefined) return index;
+  console.error(
+    `[menuEditorStore] No action index found for temp section ID "${tempSectionId}". ` +
+    `This means the section was never recorded via an AddSection action. ` +
+    `Known temp IDs:`, [...tempIdToActionIndex.keys()]
+  );
+  throw new Error(`No action index found for temp section "${tempSectionId}"`);
 }
 
-function findActionIndexForTempItem(_tempItemId: string): number {
-  return actionQueue().length;
+function findActionIndexForTempItem(tempItemId: string): number {
+  const index = tempIdToActionIndex.get(tempItemId);
+  if (index !== undefined) return index;
+  console.error(
+    `[menuEditorStore] No action index found for temp item ID "${tempItemId}". ` +
+    `This means the item was never recorded via an AddItem action. ` +
+    `Known temp IDs:`, [...tempIdToActionIndex.keys()]
+  );
+  throw new Error(`No action index found for temp item "${tempItemId}"`);
 }
 
 // ═══════════════════════════════════════════════════════════════════

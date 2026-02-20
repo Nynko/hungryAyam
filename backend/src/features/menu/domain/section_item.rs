@@ -15,6 +15,7 @@ pub struct MenuSectionItem {
     #[derived_domain_ignore]
     pub id: Uuid,
     #[create_ignore]
+    #[unit_create_ignore]
     pub section_id: Uuid,
     // pub item_id: Uuid,
     pub position: i32,

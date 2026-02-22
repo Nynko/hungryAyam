@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_restaurant_order_settings_restaurant;
+DROP TABLE IF EXISTS restaurant_order_settings;

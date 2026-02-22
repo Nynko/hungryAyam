@@ -1,0 +1,1 @@
+ALTER TABLE restaurant_order_settings ADD COLUMN timezone text NOT NULL DEFAULT 'UTC';

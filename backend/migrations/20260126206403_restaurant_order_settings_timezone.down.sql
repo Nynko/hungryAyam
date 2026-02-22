@@ -1,0 +1,1 @@
+ALTER TABLE restaurant_order_settings DROP COLUMN timezone;

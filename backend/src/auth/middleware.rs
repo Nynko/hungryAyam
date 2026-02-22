@@ -102,41 +102,6 @@ impl FromRequestParts<AppState> for AdminUser {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// OptionalAuthUser — user may or may not be authenticated
-// ═══════════════════════════════════════════════════════════════════
-
-/// Extractor that optionally resolves the current user.
-///
-/// Never rejects — if there's no valid session, returns `None`.
-/// Useful for endpoints that behave differently for guests vs. logged-in users.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// async fn maybe_auth(OptionalAuthUser(user): OptionalAuthUser) -> impl IntoResponse {
-///     match user {
-///         Some(u) => format!("Hello, {}!", u.name),
-///         None => "Hello, stranger!".to_string(),
-///     }
-/// }
-/// ```
-pub struct OptionalAuthUser(pub Option<User>);
-
-#[async_trait]
-impl FromRequestParts<AppState> for OptionalAuthUser {
-    type Rejection = ApiError;
-
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
-        match AuthUser::from_request_parts(parts, state).await {
-            Ok(AuthUser(user)) => Ok(OptionalAuthUser(Some(user))),
-            Err(_) => Ok(OptionalAuthUser(None)),
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // SiteAccess — verifies the visitor passed the site-level password gate

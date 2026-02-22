@@ -1,10 +1,15 @@
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, createEffect, onCleanup } from "solid-js";
 import type { DraftSectionItem } from "@/stores/menuEditorStore";
 import { updateSectionItem, removeItem } from "@/stores/menuEditorStore";
+import { setupSortableItem } from "@/lib/dnd";
+import type { SortableItemState } from "@/lib/dnd";
+import DropIndicator from "./DropIndicator";
 
 interface SectionItemEditorProps {
   sectionId: string;
   sectionItem: DraftSectionItem;
+  /** Index of this item in the sorted list (needed for drag data). */
+  sortedIndex: number;
 }
 
 /**
@@ -29,6 +34,38 @@ function parsePriceCents(value: string): number | null {
 export default function SectionItemEditor(props: SectionItemEditorProps) {
   const [expanded, setExpanded] = createSignal(false);
   const [confirmRemove, setConfirmRemove] = createSignal(false);
+
+  let containerRef!: HTMLDivElement;
+  let handleRef!: HTMLSpanElement;
+
+  const [isDragging, setIsDragging] = createSignal(false);
+  const [closestEdge, setClosestEdge] = createSignal<ReturnType<SortableItemState["closestEdge"]>>(null);
+
+  // Set up DnD inside createEffect so onCleanup works properly
+  createEffect(() => {
+    const el = containerRef;
+    const handle = handleRef;
+    if (!el || !handle) return;
+
+    const state = setupSortableItem({
+      element: el,
+      dragHandle: handle,
+      getData: () => ({
+        type: "item" as const,
+        id: props.sectionItem.id,
+        sectionId: props.sectionId,
+        index: props.sortedIndex,
+      }),
+      acceptType: "item",
+      canDrop: (src) => src.sectionId === props.sectionId,
+    });
+
+    // Bridge the returned signals into our local ones
+    createEffect(() => setIsDragging(state.isDragging()));
+    createEffect(() => setClosestEdge(state.closestEdge()));
+
+    onCleanup(state.cleanup);
+  });
 
   const item = () => props.sectionItem.item;
   const displayPrice = () => {
@@ -101,12 +138,15 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
 
   return (
     <div
+      ref={(el) => { containerRef = el; }}
       class="box p-3 mb-2"
       style={{
-        opacity: props.sectionItem.is_available ? "1" : "0.6",
+        position: "relative",
+        opacity: isDragging() ? "0.4" : props.sectionItem.is_available ? "1" : "0.6",
         "border-left": props.sectionItem.isNew ? "3px solid hsl(204, 86%, 53%)" : "3px solid transparent",
       }}
     >
+      <DropIndicator edge={closestEdge()} gap="0.5rem" />
       {/* ── Collapsed row ──────────────────────────────────── */}
       <div class="is-flex is-justify-content-space-between is-align-items-center">
         <div
@@ -114,10 +154,10 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
           style={{ flex: "1", "min-width": "0", cursor: "pointer" }}
           onClick={() => setExpanded(!expanded())}
         >
-          {/* Drag handle placeholder */}
+          {/* Drag handle */}
           <span
-            class="has-text-grey-light mr-2"
-            style={{ cursor: "grab", "user-select": "none" }}
+            ref={(el) => { handleRef = el; }}
+            class="drag-handle has-text-grey-light mr-2"
             title="Drag to reorder"
           >
             ⠿

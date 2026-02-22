@@ -34,8 +34,9 @@ async function checkSetupStatus(): Promise<boolean> {
     const msg = e instanceof Error ? e.message : String(e);
     setSetupError(msg);
     console.error("[setupStore] Failed to check setup status:", msg);
-    // Assume not completed on error so the user sees the setup page
-    setSetupCompleted(false);
+    // Network error (backend unreachable) → keep setupCompleted as null
+    // so the app stays on the loading screen instead of showing setup.
+    // Only a real response from the backend should set it to false.
     return false;
   } finally {
     setSetupLoading(false);

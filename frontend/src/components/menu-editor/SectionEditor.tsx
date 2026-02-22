@@ -1,4 +1,4 @@
-import { Show, For, createSignal } from "solid-js";
+import { Show, For, createSignal, createEffect, onMount, onCleanup } from "solid-js";
 import type { DraftSection } from "@/stores/menuEditorStore";
 import {
   addSection,
@@ -9,6 +9,9 @@ import {
   moveItemToIndex,
 } from "@/stores/menuEditorStore";
 import SectionItemEditor from "./SectionItemEditor";
+import { setupSortableItem, setupSortableMonitor } from "@/lib/dnd";
+import type { SortableItemState } from "@/lib/dnd";
+import DropIndicator from "./DropIndicator";
 
 interface SectionEditorProps {
   section: DraftSection;
@@ -21,10 +24,13 @@ interface SectionEditorProps {
   /** Callback when user requests moving this section up/down. */
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  /** Whether section-level drag-and-drop is enabled (default true). */
+  draggable?: boolean;
 }
 
 export default function SectionEditor(props: SectionEditorProps) {
   const depth = () => props.depth ?? 0;
+  const isDraggable = () => props.draggable !== false;
 
   const [collapsed, setCollapsed] = createSignal(false);
   const [editingName, setEditingName] = createSignal(false);
@@ -40,6 +46,66 @@ export default function SectionEditor(props: SectionEditorProps) {
   const [newSubsectionName, setNewSubsectionName] = createSignal("");
 
   const [confirmRemove, setConfirmRemove] = createSignal(false);
+
+  // ── Drag-and-drop state ────────────────────────────────────────
+  let sectionContainerRef!: HTMLDivElement;
+  let sectionHandleRef!: HTMLSpanElement;
+
+  const [sectionIsDragging, setSectionIsDragging] = createSignal(false);
+  const [sectionClosestEdge, setSectionClosestEdge] = createSignal<ReturnType<SortableItemState["closestEdge"]>>(null);
+
+  // Set up this section as a draggable + drop target inside createEffect
+  // so that onCleanup properly tears down listeners when the component unmounts.
+  createEffect(() => {
+    const el = sectionContainerRef;
+    const handle = sectionHandleRef;
+    if (!el || !handle || !isDraggable()) return;
+
+    const state = setupSortableItem({
+      element: el,
+      dragHandle: handle,
+      getData: () => ({
+        type: "section" as const,
+        id: props.section.id,
+        parentId: props.section.parent_id,
+        index: props.sortedIndex,
+      }),
+      acceptType: "section",
+      // Only allow drops from sections with the same parent
+      canDrop: (src) => src.parentId === props.section.parent_id,
+    });
+
+    // Bridge the returned signals into our local ones
+    createEffect(() => setSectionIsDragging(state.isDragging()));
+    createEffect(() => setSectionClosestEdge(state.closestEdge()));
+
+    onCleanup(state.cleanup);
+  });
+
+  // Set up item reorder monitor for this section's items
+  onMount(() => {
+    const cleanup = setupSortableMonitor({
+      type: "item",
+      canMonitor: (src) => src.sectionId === props.section.id,
+      onReorder: (sourceId, _sourceIndex, destinationIndex) => {
+        moveItemToIndex(props.section.id, sourceId, destinationIndex);
+      },
+    });
+    onCleanup(cleanup);
+  });
+
+  // Set up subsection reorder monitor for this section's subsections
+  onMount(() => {
+    const cleanup = setupSortableMonitor({
+      type: "section",
+      // Only handle subsections whose parent is this section
+      canMonitor: (src) => src.parentId === props.section.id,
+      onReorder: (sourceId, _sourceIndex, destinationIndex) => {
+        moveSectionToIndex(sourceId, destinationIndex);
+      },
+    });
+    onCleanup(cleanup);
+  });
 
   // ── Sorted children ────────────────────────────────────────────
   const sortedItems = () =>
@@ -113,23 +179,6 @@ export default function SectionEditor(props: SectionEditorProps) {
     }
   };
 
-  // ── Move item up/down within this section ──────────────────────
-  const handleMoveItemUp = (itemId: string) => {
-    const sorted = sortedItems();
-    const idx = sorted.findIndex((i) => i.id === itemId);
-    if (idx > 0) {
-      moveItemToIndex(props.section.id, itemId, idx - 1);
-    }
-  };
-
-  const handleMoveItemDown = (itemId: string) => {
-    const sorted = sortedItems();
-    const idx = sorted.findIndex((i) => i.id === itemId);
-    if (idx < sorted.length - 1) {
-      moveItemToIndex(props.section.id, itemId, idx + 1);
-    }
-  };
-
   // ── Heading size based on depth ────────────────────────────────
   const headingClass = () => {
     switch (depth()) {
@@ -156,21 +205,25 @@ export default function SectionEditor(props: SectionEditorProps) {
 
   return (
     <div
+      ref={(el) => { sectionContainerRef = el; }}
       class="box mb-4 p-3"
       style={{
+        position: "relative",
         "border-left": `4px solid ${borderColor()}`,
-        opacity: props.section.is_active ? "1" : "0.6",
+        opacity: sectionIsDragging() ? "0.4" : props.section.is_active ? "1" : "0.6",
         "margin-left": depth() > 0 ? "0.75rem" : "0",
       }}
     >
+      <DropIndicator edge={sectionClosestEdge()} gap="1rem" />
       {/* ── Section header ──────────────────────────────────── */}
       <div class="is-flex is-justify-content-space-between is-align-items-flex-start">
         {/* Left: drag handle + name + badges */}
         <div class="is-flex is-align-items-center" style={{ flex: "1", "min-width": "0" }}>
-          {/* Drag handle placeholder */}
+          {/* Drag handle */}
           <span
-            class="has-text-grey-light mr-2"
-            style={{ cursor: "grab", "user-select": "none", "font-size": "1.1rem" }}
+            ref={(el) => { sectionHandleRef = el; }}
+            class="drag-handle has-text-grey-light mr-2"
+            style={{ "font-size": "1.1rem" }}
             title="Drag to reorder"
           >
             ⠿
@@ -362,39 +415,11 @@ export default function SectionEditor(props: SectionEditorProps) {
           <div class="mt-3">
             <For each={sortedItems()}>
               {(sectionItem, index) => (
-                <div class="is-flex is-align-items-start mb-1">
-                  {/* Item move buttons */}
-                  <div
-                    class="is-flex is-flex-direction-column mr-1 mt-2"
-                    style={{ "flex-shrink": "0" }}
-                  >
-                    <button
-                      class="button is-small is-white px-1 py-0"
-                      style={{ "min-height": "1.2rem", "font-size": "0.65rem" }}
-                      disabled={index() === 0}
-                      onClick={() => handleMoveItemUp(sectionItem.id)}
-                      title="Move item up"
-                    >
-                      ▲
-                    </button>
-                    <button
-                      class="button is-small is-white px-1 py-0"
-                      style={{ "min-height": "1.2rem", "font-size": "0.65rem" }}
-                      disabled={index() === sortedItems().length - 1}
-                      onClick={() => handleMoveItemDown(sectionItem.id)}
-                      title="Move item down"
-                    >
-                      ▼
-                    </button>
-                  </div>
-
-                  <div style={{ flex: "1", "min-width": "0" }}>
-                    <SectionItemEditor
-                      sectionId={props.section.id}
-                      sectionItem={sectionItem}
-                    />
-                  </div>
-                </div>
+                <SectionItemEditor
+                  sectionId={props.section.id}
+                  sectionItem={sectionItem}
+                  sortedIndex={index()}
+                />
               )}
             </For>
           </div>
@@ -493,6 +518,7 @@ export default function SectionEditor(props: SectionEditorProps) {
                   depth={depth() + 1}
                   siblingCount={sortedSubsections().length}
                   sortedIndex={index()}
+                  draggable={true}
                   onMoveUp={() => moveSectionToIndex(subsection.id, index() - 1)}
                   onMoveDown={() => moveSectionToIndex(subsection.id, index() + 1)}
                 />

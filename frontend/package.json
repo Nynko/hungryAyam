@@ -22,6 +22,8 @@
     "vite-plugin-solid": "^2.11.8"
   },
   "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "^1.7.7",
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
     "@solidjs/router": "^0.15.4",
     "bulma": "^1.0.4",
     "sass": "^1.97.3",

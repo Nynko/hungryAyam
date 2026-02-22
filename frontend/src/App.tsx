@@ -1,5 +1,5 @@
 import { Router, Route } from "@solidjs/router";
-import { onMount, Show, Switch, Match } from "solid-js";
+import { onMount, Switch, Match } from "solid-js";
 import MainLayout from "./layouts/MainLayout";
 import Home from "./pages/Home";
 import Restaurants from "./pages/Restaurants";
@@ -11,7 +11,7 @@ import Admin from "./pages/Admin";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Setup from "./pages/Setup";
-import { setupCompleted, setupLoading, checkSetupStatus } from "./stores/setupStore";
+import { setupCompleted, setupLoading, setupError, checkSetupStatus } from "./stores/setupStore";
 import { checkAuth } from "./stores/authStore";
 
 function SetupLayout(props: { children?: any }) {
@@ -35,6 +35,20 @@ export default function App() {
         </div>
       </div>
     }>
+      <Match when={!setupLoading() && setupCompleted() === null && setupError()}>
+        <div class="hero is-fullheight">
+          <div class="hero-body is-justify-content-center">
+            <div class="has-text-centered">
+              <p class="title">🐔</p>
+              <p class="subtitle has-text-danger">Unable to reach the server</p>
+              <p class="mb-4">{setupError()}</p>
+              <button class="button is-primary" onClick={() => checkSetupStatus()}>
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </Match>
       <Match when={!setupLoading() && setupCompleted() === false}>
         <Router root={SetupLayout}>
           <Route path="*" component={Setup} />

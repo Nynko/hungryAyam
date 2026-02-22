@@ -1,0 +1,52 @@
+// ── Bulma (with theme overrides) ─────────────────────────────────
+@use "bulma.scss";
+
+// ══════════════════════════════════════════════════════════════════
+// Custom styles
+// ══════════════════════════════════════════════════════════════════
+
+// ── Layout ───────────────────────────────────────────────────────
+
+// Replace shadows with subtle theme-aware borders on cards and boxes
+.card,
+.box {
+    border: 1px solid var(--bulma-border-weak);
+}
+
+// Clickable card: pure-CSS hover shadow transition
+.card-clickable {
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+        box-shadow: 0 0.5em 1em hsla(0, 0%, 0%, 0.12);
+        border-color: var(--bulma-border);
+    }
+}
+
+// ── Drag-and-drop ────────────────────────────────────────────────
+
+// Drag handle: visible grab cursor, subtle hover highlight
+.drag-handle {
+    cursor: grab;
+    user-select: none;
+    border-radius: 4px;
+    padding: 2px 4px;
+    transition: background-color 0.12s ease, color 0.12s ease;
+
+    &:hover {
+        background-color: var(--bulma-scheme-main-bis);
+        color: var(--bulma-text);
+    }
+
+    &:active {
+        cursor: grabbing;
+    }
+}
+
+// While an element is being dragged, the browser creates a ghost image
+// from the element. This class can be toggled on the source element
+// to dim it in-place while dragging.
+.is-dragging {
+    opacity: 0.4;
+}

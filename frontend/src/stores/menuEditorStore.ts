@@ -973,18 +973,14 @@ function moveSectionToIndex(sectionId: string, newIndex: number): void {
   }
 
   const sorted = [...siblings].sort((a, b) => a.position - b.position);
-  const clampedIndex = Math.max(0, Math.min(newIndex, sorted.length - 1));
 
-  // Compute new position
-  const before = clampedIndex > 0 ? sorted[clampedIndex - 1].position : null;
-  // Skip self when looking at "after" — if section is currently at clampedIndex
-  const currentSortedIndex = sorted.findIndex((s) => s.id === sectionId);
-  let afterIndex = clampedIndex;
-  if (currentSortedIndex >= 0 && currentSortedIndex < clampedIndex) {
-    afterIndex = clampedIndex; // After the item at clampedIndex
-  }
-  const afterItem = sorted[afterIndex + (afterIndex === clampedIndex && currentSortedIndex > clampedIndex ? 0 : 0)];
-  const after = afterItem && afterItem.id !== sectionId ? afterItem.position : null;
+  // Remove the source from the list so before/after are computed correctly
+  const withoutSource = sorted.filter((s) => s.id !== sectionId);
+  const clampedIndex = Math.max(0, Math.min(newIndex, withoutSource.length));
+
+  // Compute new position based on neighbours in the filtered list
+  const before = clampedIndex > 0 ? withoutSource[clampedIndex - 1].position : null;
+  const after = clampedIndex < withoutSource.length ? withoutSource[clampedIndex].position : null;
 
   const newPosition = computePosition(before, after);
 
@@ -1020,12 +1016,14 @@ function moveItemToIndex(sectionId: string, itemId: string, newIndex: number): v
   if (!section) return;
 
   const sorted = [...section.items].sort((a, b) => a.position - b.position);
-  const clampedIndex = Math.max(0, Math.min(newIndex, sorted.length - 1));
 
-  const before = clampedIndex > 0 ? sorted[clampedIndex - 1].position : null;
-  const afterItem = sorted.find((_, i) => i === clampedIndex && sorted[i].id !== itemId)
-    ?? sorted[clampedIndex];
-  const after = afterItem && afterItem.id !== itemId ? afterItem.position : null;
+  // Remove the source from the list so before/after are computed correctly
+  const withoutSource = sorted.filter((item) => item.id !== itemId);
+  const clampedIndex = Math.max(0, Math.min(newIndex, withoutSource.length));
+
+  // Compute new position based on neighbours in the filtered list
+  const before = clampedIndex > 0 ? withoutSource[clampedIndex - 1].position : null;
+  const after = clampedIndex < withoutSource.length ? withoutSource[clampedIndex].position : null;
 
   const newPosition = computePosition(before, after);
 

@@ -17,6 +17,7 @@ import {
   moveSectionToIndex,
 } from "@/stores/menuEditorStore";
 import { isAuthenticated } from "@/stores/authStore";
+import { setupSortableMonitor } from "@/lib/dnd";
 
 // ── Data fetchers ─────────────────────────────────────────────────
 
@@ -67,6 +68,19 @@ export default function MenuEditor() {
   onMount(() => window.addEventListener("beforeunload", handleBeforeUnload));
   onCleanup(() => window.removeEventListener("beforeunload", handleBeforeUnload));
 
+  // ── Drag-and-drop monitor for top-level sections ────────────────
+  onMount(() => {
+    const cleanup = setupSortableMonitor({
+      type: "section",
+      // Only handle top-level sections (parentId === null)
+      canMonitor: (src) => src.parentId === null,
+      onReorder: (sourceId, _sourceIndex, destinationIndex) => {
+        moveSectionToIndex(sourceId, destinationIndex);
+      },
+    });
+    onCleanup(cleanup);
+  });
+
   // ── Handlers ────────────────────────────────────────────────────
 
   const handleSelectManual = () => {
@@ -75,12 +89,7 @@ export default function MenuEditor() {
   };
 
   const handleSaved = () => {
-    // After saving a new menu, redirect to edit mode with the new ID
-    if (editorState.draft.id && editorState.draft.id !== "__draft__") {
-      navigate(`/restaurants/${params.id}/menus/${editorState.draft.id}/edit`, {
-        replace: true,
-      });
-    }
+    navigate(`/restaurants/${params.id}`, { replace: true });
   };
 
   const handleCancel = () => {
@@ -212,6 +221,7 @@ export default function MenuEditor() {
                     depth={0}
                     siblingCount={sortedSections().length}
                     sortedIndex={index()}
+                    draggable={true}
                     onMoveUp={() => moveSectionToIndex(section.id, index() - 1)}
                     onMoveDown={() => moveSectionToIndex(section.id, index() + 1)}
                   />

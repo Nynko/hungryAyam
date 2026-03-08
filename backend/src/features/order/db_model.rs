@@ -31,6 +31,7 @@ pub struct OrderSessionRow {
 pub struct OrderRow {
     pub id: Uuid,
     pub user_id: Uuid,
+    pub user_name: String,
     pub restaurant_id: Uuid,
     pub session_id: Uuid,
     pub offer_id: Option<Uuid>,
@@ -45,6 +46,8 @@ pub struct OrderItemRow {
     pub id: Uuid,
     pub order_id: Uuid,
     pub item_id: Uuid,
+    pub item_name: String,
+    pub item_price_cents: PriceCents,
     pub slot_id: Option<Uuid>,
     pub notes: Option<String>,
 }

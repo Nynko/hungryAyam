@@ -12,7 +12,8 @@ use crate::{
         user::routes::user_routes,
         item::routes::item_routes,
         menu::routes::menu_routes,
-        order::routes::order_routes
+        order::routes::order_routes,
+        offer::routes::offer_routes
     },
     state::AppState
 };
@@ -25,6 +26,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(item_routes())
         .merge(menu_routes())
         .merge(order_routes())
+        .merge(offer_routes())
         .merge(auth_routes())
         .merge(admin_auth_routes())
         // Add CORS middleware

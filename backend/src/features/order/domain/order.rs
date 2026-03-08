@@ -23,8 +23,13 @@ pub struct OrderItem {
     #[create_ignore]
     pub order_id: Uuid,
     pub item_id: Uuid,
-    /// Offer slot reference — reserved for future offer support, currently always None.
+    /// Display name of the item (loaded via JOIN with items table).
     #[create_ignore]
+    pub item_name: String,
+    /// Base price of the item in cents (loaded via JOIN with items table).
+    #[create_ignore]
+    pub item_price_cents: PriceCents,
+    /// Offer slot reference — links this item to an offer slot when ordering from an offer.
     pub slot_id: Option<Uuid>,
     pub notes: Option<String>,
 }
@@ -53,6 +58,9 @@ pub struct Order {
     /// Assigned from the authenticated user; not provided by the client.
     #[create_ignore]
     pub user_id: Uuid,
+    /// Display name of the user who placed the order (loaded via JOIN).
+    #[create_ignore]
+    pub user_name: String,
     /// The restaurant this order belongs to.
     /// Loaded from the parent session; used at creation time to resolve the session.
     pub restaurant_id: Uuid,
@@ -60,8 +68,8 @@ pub struct Order {
     /// Always `Some` when loaded from DB. Optional at creation time — when
     /// `None`, the service resolves or auto-creates a session.
     pub session_id: Option<Uuid>,
-    /// Offer reference — reserved for future offer support, currently always None.
-    #[create_ignore]
+    /// Offer reference — when set, the order is priced using the offer's fixed price
+    /// and all items must satisfy the offer's slot constraints.
     pub offer_id: Option<Uuid>,
     /// Computed server-side from the order items' prices.
     #[create_ignore]

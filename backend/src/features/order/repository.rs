@@ -161,10 +161,12 @@ impl OrderRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|r| self.session_row_to_domain(r, vec![]))
-            .collect())
+        let mut sessions = Vec::with_capacity(rows.len());
+        for r in rows {
+            let orders = self.load_orders_for_session(r.id).await?;
+            sessions.push(self.session_row_to_domain(r, orders));
+        }
+        Ok(sessions)
     }
 
     /// Get the currently active (Open) session for a restaurant, if any.
@@ -199,7 +201,13 @@ impl OrderRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| self.session_row_to_domain(r, vec![])))
+        match row {
+            Some(r) => {
+                let orders = self.load_orders_for_session(r.id).await?;
+                Ok(Some(self.session_row_to_domain(r, orders)))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Update mutable fields on an order session (start_date, end_date, allow_late).
@@ -298,6 +306,7 @@ impl OrderRepository {
         session_id: Uuid,
         user_id: Uuid,
         total_price_cents: i32,
+        offer_id: Option<Uuid>,
         items: &[CreateOrderItem],
     ) -> Result<Order> {
         let mut tx = self.pool.begin().await?;
@@ -306,13 +315,14 @@ impl OrderRepository {
             OrderRow,
             r#"
             WITH inserted AS (
-                INSERT INTO orders (user_id, session_id, total_price_cents)
-                VALUES ($1, $2, $3)
+                INSERT INTO orders (user_id, session_id, offer_id, total_price_cents)
+                VALUES ($1, $2, $3, $4)
                 RETURNING *
             )
             SELECT
                 i.id,
                 i.user_id,
+                u.name as user_name,
                 os.restaurant_id,
                 i.session_id,
                 i.offer_id,
@@ -320,9 +330,11 @@ impl OrderRepository {
                 i.created_at
             FROM inserted i
             JOIN order_sessions os ON os.id = i.session_id
+            JOIN users u ON u.id = i.user_id
             "#,
             user_id,
             session_id,
+            offer_id,
             total_price_cents,
         )
         .fetch_one(&mut *tx)
@@ -333,12 +345,25 @@ impl OrderRepository {
             let item_row = sqlx::query_as!(
                 OrderItemRow,
                 r#"
-                INSERT INTO order_items (order_id, item_id, notes)
-                VALUES ($1, $2, $3)
-                RETURNING id, order_id, item_id, slot_id, notes
+                WITH inserted AS (
+                    INSERT INTO order_items (order_id, item_id, slot_id, notes)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id, order_id, item_id, slot_id, notes
+                )
+                SELECT
+                    ins.id,
+                    ins.order_id,
+                    ins.item_id,
+                    it.name as item_name,
+                    it.base_price_cents as "item_price_cents: PriceCents",
+                    ins.slot_id,
+                    ins.notes
+                FROM inserted ins
+                JOIN items it ON it.id = ins.item_id
                 "#,
                 order_row.id,
                 item.item_id,
+                item.slot_id,
                 item.notes,
             )
             .fetch_one(&mut *tx)
@@ -360,6 +385,7 @@ impl OrderRepository {
             SELECT
                 o.id,
                 o.user_id,
+                u.name as user_name,
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
@@ -367,6 +393,7 @@ impl OrderRepository {
                 o.created_at
             FROM orders o
             JOIN order_sessions os ON os.id = o.session_id
+            JOIN users u ON u.id = o.user_id
             WHERE o.id = $1
             "#,
             id,
@@ -400,6 +427,7 @@ impl OrderRepository {
             SELECT
                 o.id,
                 o.user_id,
+                u.name as user_name,
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
@@ -407,6 +435,7 @@ impl OrderRepository {
                 o.created_at
             FROM orders o
             JOIN order_sessions os ON os.id = o.session_id
+            JOIN users u ON u.id = o.user_id
             WHERE o.session_id = $1 AND o.user_id = $2
             ORDER BY o.created_at ASC
             "#,
@@ -601,6 +630,7 @@ impl OrderRepository {
             SELECT
                 o.id,
                 o.user_id,
+                u.name as user_name,
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
@@ -608,6 +638,7 @@ impl OrderRepository {
                 o.created_at
             FROM orders o
             JOIN order_sessions os ON os.id = o.session_id
+            JOIN users u ON u.id = o.user_id
             WHERE o.session_id = $1
             ORDER BY o.created_at ASC
             "#,
@@ -624,9 +655,17 @@ impl OrderRepository {
         let item_rows = sqlx::query_as!(
             OrderItemRow,
             r#"
-            SELECT id, order_id, item_id, slot_id, notes
-            FROM order_items
-            WHERE order_id = $1
+            SELECT
+                oi.id,
+                oi.order_id,
+                oi.item_id,
+                it.name as item_name,
+                it.base_price_cents as "item_price_cents: PriceCents",
+                oi.slot_id,
+                oi.notes
+            FROM order_items oi
+            JOIN items it ON it.id = oi.item_id
+            WHERE oi.order_id = $1
             "#,
             order_id,
         )
@@ -650,9 +689,18 @@ impl OrderRepository {
         let item_rows = sqlx::query_as!(
             OrderItemRow,
             r#"
-            SELECT id, order_id, item_id, slot_id, notes
-            FROM order_items
-            WHERE order_id = ANY($1)
+            SELECT
+                oi.id,
+                oi.order_id,
+                oi.item_id,
+                it.name as item_name,
+                it.base_price_cents as "item_price_cents: PriceCents",
+                oi.slot_id,
+                oi.notes
+            FROM order_items oi
+            JOIN items it ON it.id = oi.item_id
+            WHERE oi.order_id = ANY($1)
+            ORDER BY oi.id ASC
             "#,
             &order_ids,
         )
@@ -699,24 +747,31 @@ impl OrderRepository {
     }
 
     /// Check that all item IDs exist and belong to the given restaurant.
+    /// Duplicates are allowed (e.g. ordering the same item twice) so we
+    /// deduplicate before comparing with the DB count.
     pub async fn validate_item_ids(
         &self,
         item_ids: &[Uuid],
         restaurant_id: Uuid,
     ) -> Result<bool> {
+        let unique_ids: Vec<Uuid> = {
+            let mut set = std::collections::HashSet::new();
+            item_ids.iter().filter(|id| set.insert(**id)).copied().collect()
+        };
+
         let count: i64 = sqlx::query_scalar!(
             r#"
             SELECT COUNT(*) as "count!"
             FROM items
             WHERE id = ANY($1) AND restaurant_id = $2
             "#,
-            item_ids,
+            &unique_ids,
             restaurant_id,
         )
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(count as usize == item_ids.len())
+        Ok(count as usize == unique_ids.len())
     }
 
     // ==================== ROW → DOMAIN CONVERSIONS ====================
@@ -741,6 +796,7 @@ impl OrderRepository {
         Order {
             id: row.id,
             user_id: row.user_id,
+            user_name: row.user_name,
             restaurant_id: row.restaurant_id,
             session_id: Some(row.session_id),
             offer_id: row.offer_id,
@@ -755,6 +811,8 @@ impl OrderRepository {
             id: row.id,
             order_id: row.order_id,
             item_id: row.item_id,
+            item_name: row.item_name,
+            item_price_cents: row.item_price_cents,
             slot_id: row.slot_id,
             notes: row.notes,
         }

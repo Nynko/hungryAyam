@@ -245,13 +245,13 @@ pub async fn get_order(
     Ok(ApiJson(ApiResponse::success(order)))
 }
 
-/// Delete an order (only while the parent session is Open; requires authenticated user)
+/// Delete an order (only while the parent session is Open; user must own the order)
 pub async fn delete_order(
-    AuthUser(_user): AuthUser,
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
-    let deleted = app_state.order_service.delete_order(id).await?;
+    let deleted = app_state.order_service.delete_order(id, user.id, user.role).await?;
     if deleted {
         Ok(ApiJson(ApiResponse::success(())))
     } else {

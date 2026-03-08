@@ -2,6 +2,8 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 use uuid::Uuid;
 
+use crate::types::role::UserRole;
+use crate::features::offer::service::OfferService;
 use crate::features::order::{
     domain::{
         order::{CreateOrder, Order},
@@ -17,11 +19,12 @@ use crate::features::order::{
 #[derive(Clone)]
 pub struct OrderService {
     repository: OrderRepository,
+    offer_service: OfferService,
 }
 
 impl OrderService {
-    pub fn new(repository: OrderRepository) -> Self {
-        Self { repository }
+    pub fn new(repository: OrderRepository, offer_service: OfferService) -> Self {
+        Self { repository, offer_service }
     }
 
     // ==================== ORDER SESSION OPERATIONS ====================
@@ -309,14 +312,39 @@ impl OrderService {
             ));
         }
 
-        // Compute total price from item base prices
-        // Note: When offers are implemented, this logic will account for offer pricing.
-        // For items that appear multiple times, we sum each occurrence individually.
-        let total_price_cents = self.compute_order_total(&item_ids).await?;
+        // Compute total price — offer-based or item-sum
+        let (total_price_cents, validated_offer_id) = if let Some(offer_id) = request.offer_id {
+            // Validate the offer and all slot selections
+            let items_with_slots: Vec<(Uuid, Option<Uuid>)> = request
+                .items
+                .iter()
+                .map(|i| (i.item_id, i.slot_id))
+                .collect();
+
+            let offer = self
+                .offer_service
+                .validate_offer_order(offer_id, request.restaurant_id, &items_with_slots)
+                .await?;
+
+            // Use the offer's fixed price instead of summing item prices
+            (*offer.fixed_price_cents, Some(offer_id))
+        } else {
+            // No offer — compute total from item base prices.
+            // For items that appear multiple times, we sum each occurrence individually.
+            let total = self.compute_order_total(&item_ids).await?;
+            (total, None)
+        };
 
         // Create the order with items
         self.repository
-            .create_order(request.restaurant_id, session.id, user_id, total_price_cents, &request.items)
+            .create_order(
+                request.restaurant_id,
+                session.id,
+                user_id,
+                total_price_cents,
+                validated_offer_id,
+                &request.items,
+            )
             .await
     }
 
@@ -355,12 +383,24 @@ impl OrderService {
     ///
     /// Orders can only be deleted while the parent session is still Open.
     /// Once the session is closed/sent, orders become immutable.
-    pub async fn delete_order(&self, order_id: Uuid) -> Result<bool> {
+    pub async fn delete_order(
+        &self,
+        order_id: Uuid,
+        user_id: Uuid,
+        user_role: Option<UserRole>,
+    ) -> Result<bool> {
         let order = self
             .repository
             .get_order_by_id(order_id)
             .await?
             .ok_or_else(|| anyhow!("Order not found"))?;
+
+        // Only the order owner or an admin can delete an order
+        let is_owner = order.user_id == user_id;
+        let is_admin = user_role == Some(UserRole::Admin);
+        if !is_owner && !is_admin {
+            return Err(anyhow!("You can only delete your own orders"));
+        }
 
         let session_id = order
             .session_id
@@ -520,11 +560,10 @@ impl OrderService {
         self.repository.create_session(create_request, user_id).await
     }
 
-    /// Compute the total price for an order.
+    /// Compute the total price for a non-offer order.
     ///
-    /// For now, this sums the base_price_cents of each item. Items that appear
-    /// multiple times in the order are counted multiple times. When offers are
-    /// implemented, this method will account for offer-based pricing.
+    /// Sums the base_price_cents of each item. Items that appear multiple times
+    /// in the order are counted multiple times.
     async fn compute_order_total(&self, item_ids: &[Uuid]) -> Result<i32> {
         // Items may appear multiple times. We need to look up the price of each
         // unique item and then multiply by occurrence count.

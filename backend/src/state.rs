@@ -29,6 +29,10 @@ use crate::{
         order::{
             repository::OrderRepository,
             service::OrderService
+        },
+        offer::{
+            repository::OfferRepository,
+            service::OfferService
         }
     }
 };
@@ -43,6 +47,7 @@ pub struct AppState {
     pub item_service: ItemService,
     pub menu_service: MenuService,
     pub order_service: OrderService,
+    pub offer_service: OfferService,
     pub auth_service: AuthService,
     pub session_repository: SessionRepository,
 }
@@ -57,6 +62,7 @@ pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
     let item_repository = ItemRepository::new(db.clone());
     let menu_repository = MenuRepository::new(db.clone(), item_repository.clone());
     let order_repository = OrderRepository::new(db.clone());
+    let offer_repository = OfferRepository::new(db.clone());
     let session_repository = SessionRepository::new(db.clone());
 
     // Create services
@@ -66,7 +72,8 @@ pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
     let user_service = UserService::new(user_repository);
     let item_service = ItemService::new(item_repository);
     let menu_service = MenuService::new(menu_repository, setup_repository.clone());
-    let order_service = OrderService::new(order_repository);
+    let offer_service = OfferService::new(offer_repository);
+    let order_service = OrderService::new(order_repository, offer_service.clone());
 
     AppState {
         setup_completed,
@@ -77,6 +84,7 @@ pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
         item_service,
         menu_service,
         order_service,
+        offer_service,
         auth_service,
         session_repository,
     }

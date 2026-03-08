@@ -1,0 +1,67 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH inserted AS (\n                INSERT INTO orders (user_id, session_id, offer_id, total_price_cents)\n                VALUES ($1, $2, $3, $4)\n                RETURNING *\n            )\n            SELECT\n                i.id,\n                i.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                i.session_id,\n                i.offer_id,\n                i.total_price_cents as \"total_price_cents: PriceCents\",\n                i.created_at\n            FROM inserted i\n            JOIN order_sessions os ON os.id = i.session_id\n            JOIN users u ON u.id = i.user_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "restaurant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "session_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "offer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "total_price_cents: PriceCents",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c852e64a95a95b1c4359856d0989ef64ae831c3a49b9900be7dec452f4c9d9b8"
+}

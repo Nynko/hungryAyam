@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH allowed_items AS (\n                -- Items directly allowed\n                SELECT allowed_item_id AS item_id\n                FROM offer_slot_constraints\n                WHERE slot_id = $1 AND allowed_item_id IS NOT NULL\n\n                UNION\n\n                -- Items matching an allowed tag\n                SELECT it.item_id\n                FROM offer_slot_constraints osc\n                JOIN item_tags it ON it.tag_id = osc.allowed_tag_id\n                WHERE osc.slot_id = $1 AND osc.allowed_tag_id IS NOT NULL\n\n                UNION\n\n                -- Available items in an allowed section\n                SELECT msi.item_id\n                FROM offer_slot_constraints osc\n                JOIN menu_section_items msi ON msi.section_id = osc.allowed_section_id\n                    AND msi.is_available = true\n                WHERE osc.slot_id = $1 AND osc.allowed_section_id IS NOT NULL\n            )\n            SELECT COUNT(DISTINCT u.id) as \"cnt!\"\n            FROM UNNEST($2::uuid[]) AS u(id)\n            WHERE u.id IN (SELECT item_id FROM allowed_items)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "cnt!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "8055fcaa682e39230ffffa3535420d7ad8d2225df9938c5a66304e93d767e57b"
+}

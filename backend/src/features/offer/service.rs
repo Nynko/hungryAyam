@@ -24,6 +24,7 @@ impl OfferService {
     /// - At least one slot is required.
     /// - Each slot must have `min_items <= max_items`.
     /// - Each slot must have at least one constraint.
+    /// - Supplement values must be non-negative.
     pub async fn create_offer(&self, request: CreateOffer, user_id: Uuid) -> Result<Offer> {
         self.validate_create_slots(&request)?;
         self.repository.create(request, user_id).await
@@ -48,7 +49,7 @@ impl OfferService {
     }
 
     /// Update an offer. Top-level fields are optional (COALESCE).
-    /// If `slots` is provided, the entire set of slots is replaced.
+    /// If `slots` is provided (`Some`), the entire set of slots is replaced.
     ///
     /// When replacing slots, validates the new slot definitions.
     pub async fn update_offer(&self, request: UpdateOffer, user_id: Uuid) -> Result<Option<Offer>> {
@@ -90,6 +91,29 @@ impl OfferService {
                         "Slot '{}': at least one constraint is required when replacing slots",
                         label
                     ));
+                }
+                // Validate supplement_cents if provided
+                if let Some(supplement) = slot.supplement_cents {
+                    if supplement < 0 {
+                        return Err(anyhow!(
+                            "Slot '{}': supplement_cents cannot be negative",
+                            label
+                        ));
+                    }
+                }
+                // Validate constraint supplement_cents
+                if let Some(ref constraints) = slot.constraints {
+                    for (j, c) in constraints.iter().enumerate() {
+                        if let Some(supplement) = c.supplement_cents {
+                            if supplement < 0 {
+                                return Err(anyhow!(
+                                    "Slot '{}', constraint {}: supplement_cents cannot be negative",
+                                    label,
+                                    j
+                                ));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -225,6 +249,65 @@ impl OfferService {
         Ok(offer)
     }
 
+    /// Compute the total price for an offer-based order.
+    ///
+    /// The pricing formula is:
+    ///
+    /// ```text
+    /// total = offer.base_price_cents
+    ///       + Σ slot.supplement_cents   (for each slot the customer used, i.e. selected ≥ 1 item)
+    ///       + Σ constraint.supplement_cents (for each selected item, via its best-matching constraint)
+    /// ```
+    ///
+    /// When an item matches multiple constraints on the same slot, the constraint
+    /// with the **lowest** supplement is used (most favorable to the customer).
+    ///
+    /// This method should be called *after* `validate_offer_order` succeeds.
+    pub async fn compute_offer_price(
+        &self,
+        offer: &Offer,
+        items: &[(Uuid, Option<Uuid>)], // (item_id, slot_id)
+    ) -> Result<i32> {
+        let mut total = *offer.base_price_cents;
+
+        // Build a map of slot_id -> list of item_ids
+        let mut slot_items: std::collections::HashMap<Uuid, Vec<Uuid>> =
+            std::collections::HashMap::new();
+        for (item_id, slot_id) in items {
+            if let Some(sid) = slot_id {
+                slot_items.entry(*sid).or_default().push(*item_id);
+            }
+        }
+
+        for slot in &offer.slots {
+            let items_for_slot = slot_items.get(&slot.id);
+            let count = items_for_slot.map_or(0, |v| v.len());
+
+            if count > 0 {
+                // Add slot-level supplement (flat, once per slot used)
+                total += slot.supplement_cents;
+
+                // Add constraint-level supplements for each item
+                let item_ids = items_for_slot.unwrap();
+                let constraint_supplements = self
+                    .repository
+                    .get_constraint_supplements_for_items(slot.id, item_ids)
+                    .await?;
+
+                for item_id in item_ids {
+                    if let Some(&supplement) = constraint_supplements.get(item_id) {
+                        total += supplement;
+                    }
+                    // If an item has no matched constraint supplement entry, it means
+                    // the constraint supplement is 0 (or the item wasn't matched — but
+                    // validation should have caught that already).
+                }
+            }
+        }
+
+        Ok(total)
+    }
+
     /// Get the resolved list of allowed item IDs for a specific slot.
     /// Useful for the frontend to display eligible items.
     pub async fn get_allowed_items_for_slot(&self, slot_id: Uuid) -> Result<Vec<Uuid>> {
@@ -259,6 +342,21 @@ impl OfferService {
                     "Slot '{}': at least one constraint is required",
                     slot.label
                 ));
+            }
+            if slot.supplement_cents < 0 {
+                return Err(anyhow!(
+                    "Slot '{}': supplement_cents cannot be negative",
+                    slot.label
+                ));
+            }
+            for (j, constraint) in slot.constraints.iter().enumerate() {
+                if constraint.supplement_cents < 0 {
+                    return Err(anyhow!(
+                        "Slot '{}', constraint {}: supplement_cents cannot be negative",
+                        slot.label,
+                        j
+                    ));
+                }
             }
         }
 

@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO offer_slot_constraints (slot_id, allowed_item_id, allowed_tag_id, allowed_section_id, supplement_cents)\n            VALUES ($1, $2, $3, $4, $5)\n            RETURNING id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id, supplement_cents\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "slot_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "allowed_item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "allowed_tag_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "allowed_section_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "supplement_cents",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "927df30007de61ed449a1d0c5a5c26eb2f674c0ca09b8ad2c0225fe58aa40fab"
+}

@@ -77,6 +77,10 @@ impl SlotConstraintKind {
 ///
 /// Each constraint row specifies one allowed source (item, tag, or section).
 /// A slot's effective allowed-item set is the *union* of all its constraints.
+///
+/// `supplement_cents` is an additional surcharge applied when a customer
+/// picks an item that matches *this* constraint (on top of the slot-level
+/// supplement and the offer base price). Default 0 = no extra charge.
 #[domain_struct(create, update(all_optional))]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -93,6 +97,10 @@ pub struct OfferSlotConstraint {
     /// since constraints use replace-all semantics).
     #[update_required]
     pub kind: SlotConstraintKind,
+    /// Additional surcharge (cents) when an item matched by this constraint
+    /// is selected. 0 means no extra charge beyond the slot supplement.
+    #[serde(default)]
+    pub supplement_cents: i32,
 }
 
 // ==================== OfferSlot Domain ====================
@@ -101,6 +109,10 @@ pub struct OfferSlotConstraint {
 ///
 /// `min_items` / `max_items` control how many items the user must/can pick
 /// for this slot. Constraints define which items are eligible.
+///
+/// `supplement_cents` is a flat surcharge applied when the customer uses
+/// this slot (i.e. selects at least one item). 0 = included in the offer
+/// base price.
 #[domain_struct(create, update(all_optional))]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -116,6 +128,10 @@ pub struct OfferSlot {
     pub label: Name,
     pub min_items: i32,
     pub max_items: i32,
+    /// Flat surcharge (cents) when the customer picks at least one item in
+    /// this slot. 0 = included in the offer base price.
+    #[serde(default)]
+    pub supplement_cents: i32,
 
     /// Constraints for this slot (populated when loading a full offer).
     /// On create, nested `CreateOfferSlotConstraint` items are expected.
@@ -134,6 +150,20 @@ pub struct OfferSlot {
 /// daily but the offer structure (slots + constraints) stays the same.
 ///
 /// The `is_active` flag controls whether the offer is currently orderable.
+///
+/// ## Pricing model
+///
+/// The total price for an offer order is computed as:
+///
+/// ```text
+/// total = base_price_cents
+///       + Σ slot.supplement_cents   (for each slot the customer used)
+///       + Σ constraint.supplement_cents (for each item, via the matched constraint)
+/// ```
+///
+/// - `base_price_cents`: the base price of the offer (e.g. $12.50 for a "menu du jour").
+/// - `slot.supplement_cents`: a flat surcharge when the customer uses a slot (e.g. +$3 for dessert).
+/// - `constraint.supplement_cents`: a per-constraint surcharge (e.g. +$2 for premium items matched by a "Premium" tag constraint).
 #[domain_struct(create, update(all_optional))]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -147,7 +177,9 @@ pub struct Offer {
     pub menu_id: Option<Uuid>,
     pub title: Name,
     pub description: Option<String>,
-    pub fixed_price_cents: PriceCents,
+    /// Base price of the offer in cents. The final order price may be higher
+    /// if slots or constraints carry supplements.
+    pub base_price_cents: PriceCents,
     /// Whether this offer is currently available for ordering.
     pub is_active: bool,
     #[derived_domain_ignore]

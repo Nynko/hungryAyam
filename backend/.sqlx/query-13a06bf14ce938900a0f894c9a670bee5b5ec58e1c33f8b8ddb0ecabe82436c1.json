@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                oi.id,\n                oi.order_id,\n                oi.item_id,\n                it.name as item_name,\n                it.base_price_cents as \"item_price_cents: PriceCents\",\n                oi.slot_id,\n                oi.notes\n            FROM order_items oi\n            JOIN items it ON it.id = oi.item_id\n            WHERE oi.order_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "order_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "item_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "item_price_cents: PriceCents",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "slot_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "notes",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "13a06bf14ce938900a0f894c9a670bee5b5ec58e1c33f8b8ddb0ecabe82436c1"
+}

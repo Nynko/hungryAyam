@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                matched.item_id as \"item_id!\",\n                MIN(matched.supplement_cents) as \"supplement_cents!\"\n            FROM (\n                -- Directly allowed items\n                SELECT osc.allowed_item_id AS item_id, osc.supplement_cents\n                FROM offer_slot_constraints osc\n                WHERE osc.slot_id = $1\n                  AND osc.allowed_item_id IS NOT NULL\n                  AND osc.allowed_item_id = ANY($2)\n\n                UNION ALL\n\n                -- Items matching an allowed tag\n                SELECT it.item_id, osc.supplement_cents\n                FROM offer_slot_constraints osc\n                JOIN item_tags it ON it.tag_id = osc.allowed_tag_id\n                WHERE osc.slot_id = $1\n                  AND osc.allowed_tag_id IS NOT NULL\n                  AND it.item_id = ANY($2)\n\n                UNION ALL\n\n                -- Available items in an allowed section\n                SELECT msi.item_id, osc.supplement_cents\n                FROM offer_slot_constraints osc\n                JOIN menu_section_items msi ON msi.section_id = osc.allowed_section_id\n                    AND msi.is_available = true\n                WHERE osc.slot_id = $1\n                  AND osc.allowed_section_id IS NOT NULL\n                  AND msi.item_id = ANY($2)\n            ) AS matched\n            GROUP BY matched.item_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "item_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "supplement_cents!",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "9ee2dc5b7e7e96a6352b2f20771ea7a140a7b3da2caa6364fe15f21e71d28af5"
+}

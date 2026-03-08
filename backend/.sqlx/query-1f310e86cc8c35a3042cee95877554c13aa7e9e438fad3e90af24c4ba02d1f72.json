@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                offer_id,\n                label as \"label: Name\",\n                min_items,\n                max_items,\n                supplement_cents\n            FROM offer_slots\n            WHERE offer_id = $1\n            ORDER BY id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "offer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "label: Name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "min_items",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "max_items",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "supplement_cents",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1f310e86cc8c35a3042cee95877554c13aa7e9e438fad3e90af24c4ba02d1f72"
+}

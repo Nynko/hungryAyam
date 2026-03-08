@@ -32,7 +32,7 @@ impl OfferRepository {
         let offer_row = sqlx::query_as!(
             OfferRow,
             r#"
-            INSERT INTO offers (restaurant_id, menu_id, title, description, fixed_price_cents, is_active, created_by)
+            INSERT INTO offers (restaurant_id, menu_id, title, description, base_price_cents, is_active, created_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING
                 id,
@@ -40,7 +40,7 @@ impl OfferRepository {
                 menu_id,
                 title as "title: Name",
                 description,
-                fixed_price_cents as "fixed_price_cents: PriceCents",
+                base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
                 created_by
@@ -49,7 +49,7 @@ impl OfferRepository {
             request.menu_id,
             request.title.as_ref(),
             request.description,
-            request.fixed_price_cents.as_ref(),
+            request.base_price_cents.as_ref(),
             request.is_active,
             user_id,
         )
@@ -80,7 +80,7 @@ impl OfferRepository {
                 menu_id,
                 title as "title: Name",
                 description,
-                fixed_price_cents as "fixed_price_cents: PriceCents",
+                base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
                 created_by
@@ -112,7 +112,7 @@ impl OfferRepository {
                 menu_id,
                 title as "title: Name",
                 description,
-                fixed_price_cents as "fixed_price_cents: PriceCents",
+                base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
                 created_by
@@ -139,7 +139,7 @@ impl OfferRepository {
                 menu_id,
                 title as "title: Name",
                 description,
-                fixed_price_cents as "fixed_price_cents: PriceCents",
+                base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
                 created_by
@@ -169,7 +169,7 @@ impl OfferRepository {
                 menu_id      = COALESCE($1, menu_id),
                 title        = COALESCE($2, title),
                 description  = COALESCE($3, description),
-                fixed_price_cents = COALESCE($4, fixed_price_cents),
+                base_price_cents = COALESCE($4, base_price_cents),
                 is_active    = COALESCE($5, is_active)
             WHERE id = $6
             RETURNING
@@ -178,7 +178,7 @@ impl OfferRepository {
                 menu_id,
                 title as "title: Name",
                 description,
-                fixed_price_cents as "fixed_price_cents: PriceCents",
+                base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
                 created_by
@@ -186,7 +186,7 @@ impl OfferRepository {
             request.menu_id,
             request.title.as_ref().map(|n| n.as_ref()),
             request.description,
-            request.fixed_price_cents.as_ref().map(|p| p.as_ref()),
+            request.base_price_cents.as_ref().map(|p| p.as_ref()),
             request.is_active,
             request.id,
         )
@@ -245,7 +245,7 @@ impl OfferRepository {
                 menu_id,
                 title as "title: Name",
                 description,
-                fixed_price_cents as "fixed_price_cents: PriceCents",
+                base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
                 created_by
@@ -369,6 +369,70 @@ impl OfferRepository {
         Ok(rows.into_iter().map(|r| r.item_id).collect())
     }
 
+    /// For a given slot and a list of item IDs, resolve the *maximum* constraint
+    /// supplement (cents) that applies to each item. Returns a mapping of
+    /// item_id → supplement_cents.
+    ///
+    /// When an item matches multiple constraints on the same slot, the constraint
+    /// with the **lowest** supplement is used (most favorable to the customer).
+    pub async fn get_constraint_supplements_for_items(
+        &self,
+        slot_id: Uuid,
+        item_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, i32>> {
+        if item_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                matched.item_id as "item_id!",
+                MIN(matched.supplement_cents) as "supplement_cents!"
+            FROM (
+                -- Directly allowed items
+                SELECT osc.allowed_item_id AS item_id, osc.supplement_cents
+                FROM offer_slot_constraints osc
+                WHERE osc.slot_id = $1
+                  AND osc.allowed_item_id IS NOT NULL
+                  AND osc.allowed_item_id = ANY($2)
+
+                UNION ALL
+
+                -- Items matching an allowed tag
+                SELECT it.item_id, osc.supplement_cents
+                FROM offer_slot_constraints osc
+                JOIN item_tags it ON it.tag_id = osc.allowed_tag_id
+                WHERE osc.slot_id = $1
+                  AND osc.allowed_tag_id IS NOT NULL
+                  AND it.item_id = ANY($2)
+
+                UNION ALL
+
+                -- Available items in an allowed section
+                SELECT msi.item_id, osc.supplement_cents
+                FROM offer_slot_constraints osc
+                JOIN menu_section_items msi ON msi.section_id = osc.allowed_section_id
+                    AND msi.is_available = true
+                WHERE osc.slot_id = $1
+                  AND osc.allowed_section_id IS NOT NULL
+                  AND msi.item_id = ANY($2)
+            ) AS matched
+            GROUP BY matched.item_id
+            "#,
+            slot_id,
+            item_ids,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            map.insert(row.item_id, row.supplement_cents);
+        }
+        Ok(map)
+    }
+
     // ==================== PRIVATE HELPERS ====================
 
     /// Create a single slot with its constraints inside an existing transaction.
@@ -381,19 +445,21 @@ impl OfferRepository {
         let slot_row = sqlx::query_as!(
             OfferSlotRow,
             r#"
-            INSERT INTO offer_slots (offer_id, label, min_items, max_items)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO offer_slots (offer_id, label, min_items, max_items, supplement_cents)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING
                 id,
                 offer_id,
                 label as "label: Name",
                 min_items,
-                max_items
+                max_items,
+                supplement_cents
             "#,
             offer_id,
             request.label.as_ref(),
             request.min_items,
             request.max_items,
+            request.supplement_cents,
         )
         .fetch_one(&mut **tx)
         .await?;
@@ -419,14 +485,15 @@ impl OfferRepository {
         let row = sqlx::query_as!(
             OfferSlotConstraintRow,
             r#"
-            INSERT INTO offer_slot_constraints (slot_id, allowed_item_id, allowed_tag_id, allowed_section_id)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id
+            INSERT INTO offer_slot_constraints (slot_id, allowed_item_id, allowed_tag_id, allowed_section_id, supplement_cents)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id, supplement_cents
             "#,
             slot_id,
             request.kind.item_id(),
             request.kind.tag_id(),
             request.kind.section_id(),
+            request.supplement_cents,
         )
         .fetch_one(&mut **tx)
         .await?;
@@ -444,7 +511,8 @@ impl OfferRepository {
                 offer_id,
                 label as "label: Name",
                 min_items,
-                max_items
+                max_items,
+                supplement_cents
             FROM offer_slots
             WHERE offer_id = $1
             ORDER BY id
@@ -471,7 +539,8 @@ impl OfferRepository {
                 offer_id,
                 label as "label: Name",
                 min_items,
-                max_items
+                max_items,
+                supplement_cents
             FROM offer_slots
             WHERE offer_id = $1
             ORDER BY id
@@ -490,7 +559,7 @@ impl OfferRepository {
         let constraint_rows = sqlx::query_as!(
             OfferSlotConstraintRow,
             r#"
-            SELECT id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id
+            SELECT id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id, supplement_cents
             FROM offer_slot_constraints
             WHERE slot_id = ANY($1)
             ORDER BY id
@@ -520,7 +589,7 @@ impl OfferRepository {
         let constraint_rows = sqlx::query_as!(
             OfferSlotConstraintRow,
             r#"
-            SELECT id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id
+            SELECT id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id, supplement_cents
             FROM offer_slot_constraints
             WHERE slot_id = ANY($1)
             ORDER BY id
@@ -578,7 +647,8 @@ impl OfferRepository {
                 offer_id,
                 label as "label: Name",
                 min_items,
-                max_items
+                max_items,
+                supplement_cents
             FROM offer_slots
             WHERE offer_id = ANY($1)
             ORDER BY id
@@ -596,7 +666,7 @@ impl OfferRepository {
             sqlx::query_as!(
                 OfferSlotConstraintRow,
                 r#"
-                SELECT id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id
+                SELECT id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id, supplement_cents
                 FROM offer_slot_constraints
                 WHERE slot_id = ANY($1)
                 ORDER BY id
@@ -648,7 +718,7 @@ impl OfferRepository {
             menu_id: row.menu_id,
             title: row.title,
             description: row.description,
-            fixed_price_cents: row.fixed_price_cents,
+            base_price_cents: row.base_price_cents,
             is_active: row.is_active,
             created_at: row.created_at,
             created_by: row.created_by,
@@ -667,6 +737,7 @@ impl OfferRepository {
             label: row.label,
             min_items: row.min_items,
             max_items: row.max_items,
+            supplement_cents: row.supplement_cents,
             constraints,
         }
     }
@@ -684,6 +755,7 @@ impl OfferRepository {
             id: row.id,
             slot_id: row.slot_id,
             kind,
+            supplement_cents: row.supplement_cents,
         })
     }
 }
@@ -709,6 +781,7 @@ impl From<&crate::features::offer::domain::UpdateOfferSlot> for CreateOfferSlot 
             max_items: update
                 .max_items
                 .expect("max_items is required when replacing slots"),
+            supplement_cents: update.supplement_cents.unwrap_or(0),
             constraints: update
                 .constraints
                 .as_ref()
@@ -716,6 +789,7 @@ impl From<&crate::features::offer::domain::UpdateOfferSlot> for CreateOfferSlot 
                     cs.iter()
                         .map(|c| CreateOfferSlotConstraint {
                             kind: c.kind.clone(),
+                            supplement_cents: c.supplement_cents.unwrap_or(0),
                         })
                         .collect()
                 })

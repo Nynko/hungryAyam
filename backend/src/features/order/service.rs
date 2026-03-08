@@ -326,8 +326,12 @@ impl OrderService {
                 .validate_offer_order(offer_id, request.restaurant_id, &items_with_slots)
                 .await?;
 
-            // Use the offer's fixed price instead of summing item prices
-            (*offer.fixed_price_cents, Some(offer_id))
+            // Compute offer price: base + slot supplements + constraint supplements
+            let total = self
+                .offer_service
+                .compute_offer_price(&offer, &items_with_slots)
+                .await?;
+            (total, Some(offer_id))
         } else {
             // No offer — compute total from item base prices.
             // For items that appear multiple times, we sum each occurrence individually.

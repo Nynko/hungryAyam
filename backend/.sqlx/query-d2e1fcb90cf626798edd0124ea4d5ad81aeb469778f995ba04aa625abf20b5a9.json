@@ -1,0 +1,75 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE restaurant_order_settings\n            SET default_start_time  = COALESCE($1, default_start_time),\n                default_end_time    = COALESCE($2, default_end_time),\n                sending_method      = COALESCE($3, sending_method),\n                timezone            = COALESCE($4, timezone),\n                auto_create_session = COALESCE($5, auto_create_session),\n                updated_at          = NOW()\n            WHERE id = $6\n            RETURNING\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                created_at,\n                updated_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "restaurant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "default_start_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 3,
+        "name": "default_end_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 4,
+        "name": "sending_method: SendingMethod",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 5,
+        "name": "timezone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "auto_create_session",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Time",
+        "Time",
+        "Int2",
+        "Text",
+        "Bool",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d2e1fcb90cf626798edd0124ea4d5ad81aeb469778f995ba04aa625abf20b5a9"
+}

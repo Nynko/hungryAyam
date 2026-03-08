@@ -199,11 +199,15 @@ pub struct OfferSelectionEntry {
 #[ts(export)]
 pub struct ValidateOfferSelectionResponse {
     pub valid: bool,
-    pub fixed_price_cents: i32,
+    /// The offer's base price (before supplements).
+    pub base_price_cents: i32,
+    /// The fully computed price including slot and constraint supplements.
+    pub total_price_cents: i32,
 }
 
 /// Validate a user's offer slot selections without creating an order.
-/// Returns whether the selection is valid and the offer's fixed price.
+/// Returns whether the selection is valid, the base price, and the computed total
+/// (including slot and constraint supplements).
 pub async fn validate_selection(
     State(app_state): State<AppState>,
     Path(offer_id): Path<Uuid>,
@@ -220,10 +224,16 @@ pub async fn validate_selection(
         .validate_offer_order(offer_id, request.restaurant_id, &items)
         .await?;
 
+    let total_price_cents = app_state
+        .offer_service
+        .compute_offer_price(&offer, &items)
+        .await?;
+
     Ok(ApiJson(ApiResponse::success(
         ValidateOfferSelectionResponse {
             valid: true,
-            fixed_price_cents: *offer.fixed_price_cents,
+            base_price_cents: *offer.base_price_cents,
+            total_price_cents,
         },
     )))
 }

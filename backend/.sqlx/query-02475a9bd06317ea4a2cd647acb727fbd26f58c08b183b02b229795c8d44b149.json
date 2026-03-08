@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, slot_id, allowed_item_id, allowed_tag_id, allowed_section_id, supplement_cents\n            FROM offer_slot_constraints\n            WHERE slot_id = ANY($1)\n            ORDER BY id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "slot_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "allowed_item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "allowed_tag_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "allowed_section_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "supplement_cents",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "02475a9bd06317ea4a2cd647acb727fbd26f58c08b183b02b229795c8d44b149"
+}

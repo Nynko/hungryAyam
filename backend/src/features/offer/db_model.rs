@@ -12,7 +12,7 @@ pub struct OfferRow {
     pub menu_id: Option<Uuid>,
     pub title: Name,
     pub description: Option<String>,
-    pub fixed_price_cents: PriceCents,
+    pub base_price_cents: PriceCents,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub created_by: Uuid,
@@ -27,6 +27,7 @@ pub struct OfferSlotRow {
     pub label: Name,
     pub min_items: i32,
     pub max_items: i32,
+    pub supplement_cents: i32,
 }
 
 /// OfferSlotConstraintRow — maps directly to the `offer_slot_constraints` table.
@@ -40,4 +41,5 @@ pub struct OfferSlotConstraintRow {
     pub allowed_item_id: Option<Uuid>,
     pub allowed_tag_id: Option<Uuid>,
     pub allowed_section_id: Option<Uuid>,
+    pub supplement_cents: i32,
 }

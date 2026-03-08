@@ -1,11 +1,31 @@
-import { createSignal, createResource, Show, For } from "solid-js";
+import { createSignal, createResource, createMemo, Show, For, onMount } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import type { Restaurant } from "@bindings/Restaurant";
 import type { Menu } from "@bindings/Menu";
+import type { Order } from "@bindings/Order";
 import type { ApiResponse } from "@bindings/ApiResponse";
 import MenuView from "@/components/MenuView";
+import OrderableMenuSectionView from "@/components/OrderableMenuSectionView";
 import { Card } from "@/components/Card";
+import CartPanel from "@/components/CartPanel";
+import ActiveSessionBanner from "@/components/ActiveSessionBanner";
+import CreateSessionModal from "@/components/CreateSessionModal";
+import AuthPanel from "@/components/AuthPanel";
 import { isAuthenticated } from "@/stores/authStore";
+import {
+  fetchActiveSession,
+  getActiveSession,
+  fetchMyOrdersInSession,
+  deleteOrder,
+  sessionLoading,
+  orderLoading,
+  getCartCount,
+  formatPrice,
+  groupOrderItems,
+  orderError,
+  clearOrderError,
+} from "@/stores/orderStore";
+import { showConfirm } from "@/stores/confirmStore";
 
 async function fetchRestaurant(id: string): Promise<Restaurant> {
   const res = await fetch(`/api/restaurants/${id}`);
@@ -38,6 +58,58 @@ export default function RestaurantPage() {
   const [restaurant] = createResource(() => params.id, fetchRestaurant);
   const [menus] = createResource(() => params.id, fetchMenus);
 
+  // ── Active session ──────────────────────────────────────────────
+  const [sessionVersion, setSessionVersion] = createSignal(0);
+
+  onMount(async () => {
+    await fetchActiveSession(params.id);
+    setSessionVersion((v) => v + 1);
+    refreshMyOrders();
+  });
+
+  const activeSession = createMemo(() => {
+    // Re-read whenever sessionVersion changes (after transitions)
+    sessionVersion();
+    return getActiveSession(params.id);
+  });
+
+  const refreshSession = async () => {
+    await fetchActiveSession(params.id);
+    setSessionVersion((v) => v + 1);
+    // Also refresh my orders when session changes
+    refreshMyOrders();
+  };
+
+  // ── My orders in active session ─────────────────────────────────
+  const [myOrders, setMyOrders] = createSignal<Order[]>([]);
+  const [myOrdersLoading, setMyOrdersLoading] = createSignal(false);
+  const [myOrdersVersion, setMyOrdersVersion] = createSignal(0);
+
+  const refreshMyOrders = async () => {
+    const session = getActiveSession(params.id);
+    if (!session) {
+      setMyOrders([]);
+      return;
+    }
+    setMyOrdersLoading(true);
+    try {
+      const orders = await fetchMyOrdersInSession(session.id);
+      setMyOrders(orders);
+    } finally {
+      setMyOrdersLoading(false);
+    }
+    setMyOrdersVersion((v) => v + 1);
+  };
+
+
+
+  // ── Ordering mode ───────────────────────────────────────────────
+  const [orderingMode, setOrderingMode] = createSignal(false);
+  const [showCreateSession, setShowCreateSession] = createSignal(false);
+
+  const cartCount = createMemo(() => getCartCount(params.id));
+
+  // ── Menu helpers ────────────────────────────────────────────────
   const activeMenus = () =>
     (menus() ?? []).filter((m) => m.is_active).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -45,6 +117,13 @@ export default function RestaurantPage() {
     (menus() ?? []).filter((m) => !m.is_active).sort((a, b) => a.name.localeCompare(b.name));
 
   const [showInactive, setShowInactive] = createSignal(false);
+
+  // Can place orders if session is Open (or allow_late + Open)
+  const canOrder = createMemo(() => {
+    const session = activeSession();
+    if (!session) return true; // Backend will auto-create session
+    return session.status === "Open";
+  });
 
   return (
     <section class="section">
@@ -107,7 +186,7 @@ export default function RestaurantPage() {
                   </div>
                 </Show>
                 <div class="card-content">
-                  <div class="is-flex is-justify-content-space-between is-align-items-center">
+                  <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap" style={{ gap: "0.5rem" }}>
                     <div>
                       <h1 class="title is-3 mb-1">
                         <Show when={!r().image_url}>
@@ -119,110 +198,338 @@ export default function RestaurantPage() {
                         Added {new Date(r().created_at).toLocaleDateString()}
                       </p>
                     </div>
+
+                    {/* Order / Session actions */}
+                    <div class="buttons">
+                      <button
+                        class={`button ${orderingMode() ? "is-primary" : "is-primary is-outlined"}`}
+                        onClick={() => setOrderingMode(!orderingMode())}
+                      >
+                        <span class="icon is-small">
+                          <span>🛒</span>
+                        </span>
+                        <span>
+                          {orderingMode() ? "Exit Ordering" : "Start Ordering"}
+                        </span>
+                        <Show when={cartCount() > 0}>
+                          <span class="tag is-primary is-light ml-2">
+                            {cartCount()}
+                          </span>
+                        </Show>
+                      </button>
+
+                      <Show when={isAuthenticated()}>
+                        <button
+                          class="button is-info is-outlined"
+                          onClick={() => setShowCreateSession(true)}
+                          disabled={sessionLoading()}
+                        >
+                          <span class="icon is-small">
+                            <span>📋</span>
+                          </span>
+                          <span>New Session</span>
+                        </button>
+                      </Show>
+                    </div>
                   </div>
                 </div>
               </Card>
 
-              {/* ── Menus section ──────────────────────────────── */}
-              <div class="mb-4">
-                <div class="is-flex is-justify-content-space-between is-align-items-center mb-4">
-                  <h2 class="title is-4 mb-0">📋 Menus</h2>
-                  <Show when={isAuthenticated()}>
-                    <A
-                      href={`/restaurants/${r().id}/menus/new`}
-                      class="button is-primary"
-                    >
-                      <span class="icon is-small">
-                        <span>➕</span>
-                      </span>
-                      <span>Create Menu</span>
-                    </A>
-                  </Show>
-                </div>
+              {/* ── Active session banner ──────────────────────── */}
+              <Show when={activeSession()}>
+                {(session) => (
+                  <ActiveSessionBanner
+                    session={session()}
+                    restaurantId={r().id}
+                    onSessionChanged={refreshSession}
+                  />
+                )}
+              </Show>
 
-                {/* Menus loading */}
-                <Show when={menus.loading}>
-                  <div class="has-text-centered py-4">
-                    <progress class="progress is-primary is-small" max="100" />
-                    <p class="has-text-grey mt-2">Loading menus…</p>
-                  </div>
-                </Show>
+              {/* ── My Orders ──────────────────────────────────── */}
+              <Show when={isAuthenticated() && activeSession() && (myOrders().length > 0 || myOrdersLoading())}>
+                <Card class="mb-4">
+                  <div class="card-content">
+                    <h3 class="title is-5 mb-3">🧾 My Orders</h3>
 
-                {/* Menus error */}
-                <Show when={menus.error}>
-                  <div class="notification is-danger is-light">
-                    <strong>Failed to load menus:</strong>{" "}
-                    {(menus.error as Error)?.message ?? "Unknown error"}
-                  </div>
-                </Show>
-
-                {/* No menus */}
-                <Show
-                  when={
-                    !menus.loading &&
-                    !menus.error &&
-                    (menus() ?? []).length === 0
-                  }
-                >
-                  <div class="notification is-info is-light has-text-centered">
-                    <p class="is-size-4 mb-2">📭</p>
-                    <p>This restaurant doesn't have any menus yet.</p>
-                  </div>
-                </Show>
-
-                {/* Active menus */}
-                <Show when={activeMenus().length > 0}>
-                  <For each={activeMenus()}>
-                    {(menu) => (
-                      <div class="mb-5">
-                        <MenuView menu={menu} />
-                        <Show when={isAuthenticated()}>
-                          <div class="has-text-right mt-2">
-                            <A
-                              href={`/restaurants/${r().id}/menus/${menu.id}/edit`}
-                              class="button is-small is-info is-outlined"
-                            >
-                              <span class="icon is-small">
-                                <span>✏️</span>
-                              </span>
-                              <span>Edit this menu</span>
-                            </A>
-                          </div>
-                        </Show>
+                    <Show when={myOrdersLoading() && myOrders().length === 0}>
+                      <div class="has-text-centered py-3">
+                        <progress class="progress is-primary is-small" max="100" />
+                        <p class="has-text-grey is-size-7 mt-1">Loading your orders…</p>
                       </div>
-                    )}
-                  </For>
-                </Show>
+                    </Show>
 
-                {/* No active menus but has inactive ones */}
-                <Show
-                  when={
-                    activeMenus().length === 0 &&
-                    inactiveMenus().length > 0 &&
-                    !menus.loading
-                  }
-                >
-                  <div class="notification is-warning is-light has-text-centered mb-4">
-                    <p>No active menus. There {inactiveMenus().length === 1 ? "is" : "are"} {inactiveMenus().length} inactive menu{inactiveMenus().length !== 1 ? "s" : ""}.</p>
+                    <Show when={myOrders().length > 0}>
+                      <For each={myOrders()}>
+                        {(order) => {
+                          const totalItems = () => order.items.length;
+                          const [deleting, setDeleting] = createSignal(false);
+                          const sessionIsOpen = () => activeSession()?.status === "Open";
+
+                          const handleDelete = async () => {
+                            const confirmed = await showConfirm({
+                              title: "Delete order?",
+                              message: `Remove this order (${totalItems()} item${totalItems() !== 1 ? "s" : ""}, $${formatPrice(order.total_price_cents)})?`,
+                              confirmText: "Delete",
+                              danger: true,
+                            });
+                            if (!confirmed) return;
+
+                            setDeleting(true);
+                            const ok = await deleteOrder(order.id);
+                            setDeleting(false);
+
+                            if (ok) {
+                              await refreshMyOrders();
+                              await refreshSession();
+                            }
+                          };
+
+                          return (
+                            <div class="box p-3 mb-2">
+                              <div class="is-flex is-justify-content-space-between is-align-items-center mb-2">
+                                <span class="has-text-weight-semibold">
+                                  {totalItems()} item{totalItems() !== 1 ? "s" : ""}
+                                </span>
+                                <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
+                                  <span class="has-text-weight-bold">
+                                    ${formatPrice(order.total_price_cents)}
+                                  </span>
+                                  <Show when={sessionIsOpen()}>
+                                    <button
+                                      class="button is-small is-danger is-outlined"
+                                      classList={{ "is-loading": deleting() }}
+                                      disabled={deleting() || orderLoading()}
+                                      onClick={handleDelete}
+                                      title="Delete this order"
+                                    >
+                                      <span class="icon is-small"><span>🗑️</span></span>
+                                    </button>
+                                  </Show>
+                                </div>
+                              </div>
+                              <div>
+                                <For each={groupOrderItems(order.items)}>
+                                  {(group) => (
+                                    <div class="is-size-7 mb-1">
+                                      <div class="is-flex is-align-items-center" style={{ gap: "0.4rem" }}>
+                                        <span class="has-text-grey">•</span>
+                                        <span class="has-text-weight-medium">
+                                          {group.quantity > 1 ? `${group.quantity}× ` : ""}{group.itemName}
+                                        </span>
+                                        <span class="has-text-grey">
+                                          ${formatPrice(group.itemPriceCents * group.quantity)}
+                                        </span>
+                                      </div>
+                                      <Show when={group.notes.length > 0}>
+                                        <div class="ml-4">
+                                          <For each={group.notes}>
+                                            {(note) => (
+                                              <p class="has-text-grey is-italic">📝 {note}</p>
+                                            )}
+                                          </For>
+                                        </div>
+                                      </Show>
+                                    </div>
+                                  )}
+                                </For>
+                              </div>
+                              <p class="has-text-grey is-size-7 mt-2">
+                                Placed {new Date(order.created_at).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                              </p>
+                            </div>
+                          );
+                        }}
+                      </For>
+                    </Show>
                   </div>
-                </Show>
+                </Card>
+              </Show>
 
-                {/* Toggle inactive menus */}
-                <Show when={inactiveMenus().length > 0}>
-                  <div class="has-text-centered mt-4 mb-4">
-                    <button
-                      class="button is-small is-light"
-                      onClick={() => setShowInactive(!showInactive())}
+              {/* ── Global order error ─────────────────────────── */}
+              <Show when={orderError()}>
+                <div class="notification is-danger is-light mb-4">
+                  <button class="delete" onClick={clearOrderError} />
+                  {orderError()}
+                </div>
+              </Show>
+
+              {/* ── Ordering mode: two-column layout ───────────── */}
+              <Show when={orderingMode()}>
+                <div class="columns is-variable is-6">
+                  {/* ── Left: orderable menu ───────────────────── */}
+                  <div class="column is-8">
+                    <div class="mb-4">
+                      <h2 class="title is-4 mb-2">📋 Pick your items</h2>
+                      <Show when={!canOrder()}>
+                        <div class="notification is-warning is-light">
+                          <p class="is-size-7">
+                            The current session is not accepting orders. You
+                            can still browse, but ordering is disabled.
+                          </p>
+                        </div>
+                      </Show>
+                    </div>
+
+                    {/* Menus loading */}
+                    <Show when={menus.loading}>
+                      <div class="has-text-centered py-4">
+                        <progress class="progress is-primary is-small" max="100" />
+                        <p class="has-text-grey mt-2">Loading menus…</p>
+                      </div>
+                    </Show>
+
+                    {/* Menus error */}
+                    <Show when={menus.error}>
+                      <div class="notification is-danger is-light">
+                        <strong>Failed to load menus:</strong>{" "}
+                        {(menus.error as Error)?.message ?? "Unknown error"}
+                      </div>
+                    </Show>
+
+                    {/* No menus */}
+                    <Show
+                      when={
+                        !menus.loading &&
+                        !menus.error &&
+                        (menus() ?? []).length === 0
+                      }
                     >
-                      <span class="mr-1">{showInactive() ? "▼" : "▶"}</span>
-                      {showInactive() ? "Hide" : "Show"} inactive menus ({inactiveMenus().length})
-                    </button>
+                      <div class="notification is-info is-light has-text-centered">
+                        <p class="is-size-4 mb-2">📭</p>
+                        <p>This restaurant doesn't have any menus yet.</p>
+                      </div>
+                    </Show>
+
+                    {/* Active menus — orderable */}
+                    <Show when={activeMenus().length > 0}>
+                      <For each={activeMenus()}>
+                        {(menu) => (
+                          <Card class="mb-5">
+                            <header class="card-header">
+                              <div class="card-header-title is-flex is-justify-content-space-between is-align-items-center">
+                                <div>
+                                  <span class="is-size-5 has-text-weight-bold">
+                                    {menu.name}
+                                  </span>
+                                  <Show when={menu.permanent}>
+                                    <span
+                                      class="tag is-primary is-light ml-2"
+                                      style={{ "vertical-align": "middle" }}
+                                    >
+                                      Permanent
+                                    </span>
+                                  </Show>
+                                </div>
+                              </div>
+                            </header>
+                            <div class="card-content">
+                              <Show when={menu.description}>
+                                <p class="has-text-grey mb-4">
+                                  {menu.description}
+                                </p>
+                              </Show>
+                              <Show
+                                when={
+                                  menu.sections.filter((s) => s.is_active).length > 0
+                                }
+                                fallback={
+                                  <div class="has-text-centered py-4">
+                                    <p class="has-text-grey-light is-italic">
+                                      This menu has no active sections yet.
+                                    </p>
+                                  </div>
+                                }
+                              >
+                                <For
+                                  each={menu.sections
+                                    .filter((s) => s.is_active)
+                                    .sort((a, b) => a.position - b.position)}
+                                >
+                                  {(section) => (
+                                    <OrderableMenuSectionView
+                                      section={section}
+                                      restaurantId={r().id}
+                                      depth={0}
+                                    />
+                                  )}
+                                </For>
+                              </Show>
+                            </div>
+                          </Card>
+                        )}
+                      </For>
+                    </Show>
                   </div>
 
-                  <Show when={showInactive()}>
-                    <For each={inactiveMenus()}>
+                  {/* ── Right: cart panel (sticky) ──────────────── */}
+                  <div class="column is-4">
+                    <div style={{ position: "sticky", top: "1rem" }}>
+                      <CartPanel
+                        restaurantId={r().id}
+                        onOrderPlaced={() => {
+                          refreshSession();
+                          refreshMyOrders();
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </Show>
+
+              {/* ── Normal (non-ordering) mode: standard menus ─── */}
+              <Show when={!orderingMode()}>
+                <div class="mb-4">
+                  <div class="is-flex is-justify-content-space-between is-align-items-center mb-4">
+                    <h2 class="title is-4 mb-0">📋 Menus</h2>
+                    <Show when={isAuthenticated()}>
+                      <A
+                        href={`/restaurants/${r().id}/menus/new`}
+                        class="button is-primary"
+                      >
+                        <span class="icon is-small">
+                          <span>➕</span>
+                        </span>
+                        <span>Create Menu</span>
+                      </A>
+                    </Show>
+                  </div>
+
+                  {/* Menus loading */}
+                  <Show when={menus.loading}>
+                    <div class="has-text-centered py-4">
+                      <progress class="progress is-primary is-small" max="100" />
+                      <p class="has-text-grey mt-2">Loading menus…</p>
+                    </div>
+                  </Show>
+
+                  {/* Menus error */}
+                  <Show when={menus.error}>
+                    <div class="notification is-danger is-light">
+                      <strong>Failed to load menus:</strong>{" "}
+                      {(menus.error as Error)?.message ?? "Unknown error"}
+                    </div>
+                  </Show>
+
+                  {/* No menus */}
+                  <Show
+                    when={
+                      !menus.loading &&
+                      !menus.error &&
+                      (menus() ?? []).length === 0
+                    }
+                  >
+                    <div class="notification is-info is-light has-text-centered">
+                      <p class="is-size-4 mb-2">📭</p>
+                      <p>This restaurant doesn't have any menus yet.</p>
+                    </div>
+                  </Show>
+
+                  {/* Active menus */}
+                  <Show when={activeMenus().length > 0}>
+                    <For each={activeMenus()}>
                       {(menu) => (
-                        <div style={{ opacity: "0.7" }} class="mb-5">
+                        <div class="mb-5">
                           <MenuView menu={menu} />
                           <Show when={isAuthenticated()}>
                             <div class="has-text-right mt-2">
@@ -241,8 +548,98 @@ export default function RestaurantPage() {
                       )}
                     </For>
                   </Show>
+
+                  {/* No active menus but has inactive ones */}
+                  <Show
+                    when={
+                      activeMenus().length === 0 &&
+                      inactiveMenus().length > 0 &&
+                      !menus.loading
+                    }
+                  >
+                    <div class="notification is-warning is-light has-text-centered mb-4">
+                      <p>
+                        No active menus. There{" "}
+                        {inactiveMenus().length === 1 ? "is" : "are"}{" "}
+                        {inactiveMenus().length} inactive menu
+                        {inactiveMenus().length !== 1 ? "s" : ""}.
+                      </p>
+                    </div>
+                  </Show>
+
+                  {/* Toggle inactive menus */}
+                  <Show when={inactiveMenus().length > 0}>
+                    <div class="has-text-centered mt-4 mb-4">
+                      <button
+                        class="button is-small is-light"
+                        onClick={() => setShowInactive(!showInactive())}
+                      >
+                        <span class="mr-1">
+                          {showInactive() ? "▼" : "▶"}
+                        </span>
+                        {showInactive() ? "Hide" : "Show"} inactive menus (
+                        {inactiveMenus().length})
+                      </button>
+                    </div>
+
+                    <Show when={showInactive()}>
+                      <For each={inactiveMenus()}>
+                        {(menu) => (
+                          <div style={{ opacity: "0.7" }} class="mb-5">
+                            <MenuView menu={menu} />
+                            <Show when={isAuthenticated()}>
+                              <div class="has-text-right mt-2">
+                                <A
+                                  href={`/restaurants/${r().id}/menus/${menu.id}/edit`}
+                                  class="button is-small is-info is-outlined"
+                                >
+                                  <span class="icon is-small">
+                                    <span>✏️</span>
+                                  </span>
+                                  <span>Edit this menu</span>
+                                </A>
+                              </div>
+                            </Show>
+                          </div>
+                        )}
+                      </For>
+                    </Show>
+                  </Show>
+                </div>
+
+                {/* ── Floating cart pill (non-ordering mode) ────── */}
+                <Show when={cartCount() > 0}>
+                  <div
+                    style={{
+                      position: "fixed",
+                      bottom: "1.5rem",
+                      right: "1.5rem",
+                      "z-index": "30",
+                    }}
+                  >
+                    <button
+                      class="button is-primary is-medium is-rounded"
+                      style={{ "box-shadow": "0 4px 14px rgba(0,0,0,0.25)" }}
+                      onClick={() => setOrderingMode(true)}
+                    >
+                      <span class="icon">
+                        <span>🛒</span>
+                      </span>
+                      <span>
+                        View Cart ({cartCount()})
+                      </span>
+                    </button>
+                  </div>
                 </Show>
-              </div>
+              </Show>
+
+              {/* ── Create Session Modal ───────────────────────── */}
+              <CreateSessionModal
+                isOpen={showCreateSession()}
+                restaurantId={r().id}
+                onClose={() => setShowCreateSession(false)}
+                onCreated={refreshSession}
+              />
             </>
           )}
         </Show>

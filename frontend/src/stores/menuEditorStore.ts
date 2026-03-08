@@ -678,7 +678,7 @@ function addSection(parentId: string | null, name: string): DraftSection {
         parent_id: parentRef,
         section: {
           menu_id: menuId,
-          parent_id: parentId,
+          // parent_id: parentId,
           name,
           description: null,
           position,
@@ -835,7 +835,7 @@ function addItemToSection(
       AddItem: {
         section_id: sectionRef,
         item: {
-          section_id: sectionId,
+          // section_id: sectionId,
           position,
           price_override_cents: null,
           is_available: true,

@@ -3,6 +3,7 @@ import { A, useParams } from "@solidjs/router";
 import type { Restaurant } from "@bindings/Restaurant";
 import type { Menu } from "@bindings/Menu";
 import type { Order } from "@bindings/Order";
+import type { Offer } from "@bindings/Offer";
 import type { ApiResponse } from "@bindings/ApiResponse";
 import MenuView from "@/components/MenuView";
 import OrderableMenuSectionView from "@/components/OrderableMenuSectionView";
@@ -10,6 +11,10 @@ import { Card } from "@/components/Card";
 import CartPanel from "@/components/CartPanel";
 import ActiveSessionBanner from "@/components/ActiveSessionBanner";
 import CreateSessionModal from "@/components/CreateSessionModal";
+import OfferBanner from "@/components/OfferBanner";
+import OfferSlotPicker from "@/components/OfferSlotPicker";
+import OffersManager from "@/components/OffersManager";
+import RestaurantSettingsPanel from "@/components/RestaurantSettingsPanel";
 import AuthPanel from "@/components/AuthPanel";
 import { isAuthenticated } from "@/stores/authStore";
 import {
@@ -25,6 +30,7 @@ import {
   orderError,
   clearOrderError,
 } from "@/stores/orderStore";
+import { getOfferCartCount, fetchActiveOffers } from "@/stores/offerStore";
 import { showConfirm } from "@/stores/confirmStore";
 
 async function fetchRestaurant(id: string): Promise<Restaurant> {
@@ -61,10 +67,40 @@ export default function RestaurantPage() {
   // ── Active session ──────────────────────────────────────────────
   const [sessionVersion, setSessionVersion] = createSignal(0);
 
+  // ── Active offers (for menu filtering) ──────────────────────────
+  const [activeOffers, setActiveOffers] = createSignal<Offer[]>([]);
+
+  /**
+   * Set of menu IDs that are "owned" by an active offer AND are non-permanent.
+   * These menus should NOT be shown as standalone menus in ordering mode —
+   * they are presented as part of the offer instead.
+   */
+  const offerOwnedMenuIds = createMemo(() => {
+    const allMenus = menus() ?? [];
+    const menuMap = new Map(allMenus.map((m) => [m.id, m]));
+    const ids = new Set<string>();
+
+    for (const offer of activeOffers()) {
+      if (offer.menu_id) {
+        const menu = menuMap.get(offer.menu_id);
+        // Only hide from standalone display if the menu is non-permanent
+        if (menu && !menu.permanent) {
+          ids.add(offer.menu_id);
+        }
+      }
+    }
+
+    return ids;
+  });
+
   onMount(async () => {
     await fetchActiveSession(params.id);
     setSessionVersion((v) => v + 1);
     refreshMyOrders();
+
+    // Load active offers so we can filter offer-owned menus
+    const offers = await fetchActiveOffers(params.id);
+    setActiveOffers(offers);
   });
 
   const activeSession = createMemo(() => {
@@ -107,10 +143,24 @@ export default function RestaurantPage() {
   const [orderingMode, setOrderingMode] = createSignal(false);
   const [showCreateSession, setShowCreateSession] = createSignal(false);
 
-  const cartCount = createMemo(() => getCartCount(params.id));
+  // ── Offer composer state ────────────────────────────────────────
+  const [composingOffer, setComposingOffer] = createSignal<Offer | null>(null);
+
+  const cartCount = createMemo(() => getCartCount(params.id) + getOfferCartCount(params.id));
 
   // ── Menu helpers ────────────────────────────────────────────────
+
+  /**
+   * Active menus, excluding non-permanent menus that are linked to an active
+   * offer (those are displayed as offer cards, not standalone menus).
+   */
   const activeMenus = () =>
+    (menus() ?? [])
+      .filter((m) => m.is_active && !offerOwnedMenuIds().has(m.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+  /** All active menus (unfiltered), used in non-ordering mode where we show everything. */
+  const allActiveMenus = () =>
     (menus() ?? []).filter((m) => m.is_active).sort((a, b) => a.name.localeCompare(b.name));
 
   const inactiveMenus = () =>
@@ -359,6 +409,28 @@ export default function RestaurantPage() {
                 <div class="columns is-variable is-6">
                   {/* ── Left: orderable menu ───────────────────── */}
                   <div class="column is-8">
+                    {/* ── Offer Slot Picker (modal-like overlay) ── */}
+                    <Show when={composingOffer()}>
+                      {(offer) => (
+                        <div class="mb-5">
+                          <OfferSlotPicker
+                            offer={offer()}
+                            restaurantId={r().id}
+                            onClose={() => setComposingOffer(null)}
+                            onAdded={() => setComposingOffer(null)}
+                          />
+                        </div>
+                      )}
+                    </Show>
+
+                    {/* ── Offer Banner (when not composing) ──────── */}
+                    <Show when={!composingOffer()}>
+                      <OfferBanner
+                        restaurantId={r().id}
+                        onComposeOffer={(offer) => setComposingOffer(offer)}
+                      />
+                    </Show>
+
                     <div class="mb-4">
                       <h2 class="title is-4 mb-2">📋 Pick your items</h2>
                       <Show when={!canOrder()}>
@@ -479,6 +551,19 @@ export default function RestaurantPage() {
 
               {/* ── Normal (non-ordering) mode: standard menus ─── */}
               <Show when={!orderingMode()}>
+                {/* ── Restaurant Settings (auth only) ──────────── */}
+                <Show when={isAuthenticated()}>
+                  <RestaurantSettingsPanel restaurantId={r().id} />
+                </Show>
+
+                {/* ── Offers Manager (auth only) ───────────────── */}
+                <Show when={isAuthenticated() && !menus.loading}>
+                  <OffersManager
+                    restaurantId={r().id}
+                    menus={menus() ?? []}
+                  />
+                </Show>
+
                 <div class="mb-4">
                   <div class="is-flex is-justify-content-space-between is-align-items-center mb-4">
                     <h2 class="title is-4 mb-0">📋 Menus</h2>
@@ -525,9 +610,9 @@ export default function RestaurantPage() {
                     </div>
                   </Show>
 
-                  {/* Active menus */}
-                  <Show when={activeMenus().length > 0}>
-                    <For each={activeMenus()}>
+                  {/* Active menus (unfiltered in non-ordering view) */}
+                  <Show when={allActiveMenus().length > 0}>
+                    <For each={allActiveMenus()}>
                       {(menu) => (
                         <div class="mb-5">
                           <MenuView menu={menu} />
@@ -552,7 +637,7 @@ export default function RestaurantPage() {
                   {/* No active menus but has inactive ones */}
                   <Show
                     when={
-                      activeMenus().length === 0 &&
+                      allActiveMenus().length === 0 &&
                       inactiveMenus().length > 0 &&
                       !menus.loading
                     }

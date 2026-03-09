@@ -126,6 +126,15 @@ pub struct RestaurantOrderSettings {
     /// When true, a new session is created automatically when a user places an
     /// order and no active session exists for the restaurant.
     pub auto_create_session: bool,
+    /// Time of day (in the restaurant's timezone) when non-permanent menus
+    /// should be automatically reset (all items set to is_available = false).
+    /// NULL means no automatic reset.
+    #[ts(type = "string | null")]
+    pub menu_reset_time: Option<NaiveTime>,
+    /// When true, order sessions are automatically closed when their end_date
+    /// passes. The scheduler transitions Open sessions whose end_date is in
+    /// the past to Closed status.
+    pub auto_close_session: bool,
     #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]

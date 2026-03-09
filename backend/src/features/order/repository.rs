@@ -12,10 +12,9 @@ use crate::{
             },
             order_settings::{
                 CreateRestaurantOrderSettings, RestaurantOrderSettings,
-                UpdateRestaurantOrderSettings,
             },
         },
-        dto::OrderSummary,
+        dto::{OrderSummary, UpdateOrderSettingsRequest},
     },
     types::price::PriceCents,
 };
@@ -503,6 +502,8 @@ impl OrderRepository {
                 sending_method as "sending_method: SendingMethod",
                 timezone,
                 auto_create_session,
+                menu_reset_time,
+                auto_close_session,
                 created_at,
                 updated_at
             FROM restaurant_order_settings
@@ -535,6 +536,8 @@ impl OrderRepository {
                 sending_method as "sending_method: SendingMethod",
                 timezone,
                 auto_create_session,
+                menu_reset_time,
+                auto_close_session,
                 created_at,
                 updated_at
             "#,
@@ -554,8 +557,8 @@ impl OrderRepository {
         let settings = sqlx::query_as!(
             RestaurantOrderSettingsRow,
             r#"
-            INSERT INTO restaurant_order_settings (restaurant_id, default_start_time, default_end_time, sending_method, timezone, auto_create_session)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO restaurant_order_settings (restaurant_id, default_start_time, default_end_time, sending_method, timezone, auto_create_session, menu_reset_time, auto_close_session)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING
                 id,
                 restaurant_id,
@@ -564,6 +567,8 @@ impl OrderRepository {
                 sending_method as "sending_method: SendingMethod",
                 timezone,
                 auto_create_session,
+                menu_reset_time,
+                auto_close_session,
                 created_at,
                 updated_at
             "#,
@@ -573,6 +578,8 @@ impl OrderRepository {
             request.sending_method.as_i16(),
             request.timezone,
             request.auto_create_session,
+            request.menu_reset_time,
+            request.auto_close_session,
         )
         .fetch_one(&self.pool)
         .await?;
@@ -583,7 +590,7 @@ impl OrderRepository {
     /// Update order settings for a restaurant.
     pub async fn update_settings(
         &self,
-        request: UpdateRestaurantOrderSettings,
+        request: UpdateOrderSettingsRequest,
     ) -> Result<Option<RestaurantOrderSettings>> {
         let settings = sqlx::query_as!(
             RestaurantOrderSettingsRow,
@@ -594,8 +601,10 @@ impl OrderRepository {
                 sending_method      = COALESCE($3, sending_method),
                 timezone            = COALESCE($4, timezone),
                 auto_create_session = COALESCE($5, auto_create_session),
+                menu_reset_time     = CASE WHEN $7 THEN $6 ELSE menu_reset_time END,
+                auto_close_session  = COALESCE($8, auto_close_session),
                 updated_at          = NOW()
-            WHERE id = $6
+            WHERE id = $9
             RETURNING
                 id,
                 restaurant_id,
@@ -604,6 +613,8 @@ impl OrderRepository {
                 sending_method as "sending_method: SendingMethod",
                 timezone,
                 auto_create_session,
+                menu_reset_time,
+                auto_close_session,
                 created_at,
                 updated_at
             "#,
@@ -612,6 +623,9 @@ impl OrderRepository {
             request.sending_method.map(|m| m.as_i16()),
             request.timezone,
             request.auto_create_session,
+            request.menu_reset_time,
+            request.update_menu_reset_time,
+            request.auto_close_session,
             request.id,
         )
         .fetch_optional(&self.pool)

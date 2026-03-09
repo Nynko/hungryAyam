@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import {
   editorState,
   actionQueue,
@@ -11,6 +11,7 @@ import {
   updateMenuPermanent,
   saveMenu,
   discardChanges,
+  resetMenu,
 } from "@/stores/menuEditorStore";
 import { showConfirm } from "@/stores/confirmStore";
 
@@ -20,6 +21,34 @@ interface MenuEditorToolbarProps {
 }
 
 export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
+  const [resetResult, setResetResult] = createSignal<string | null>(null);
+
+  const handleReset = async () => {
+    const confirmed = await showConfirm({
+      title: "Reset menu?",
+      message:
+        "This will set ALL items in this menu to unavailable. " +
+        "Items are kept in the menu so you can easily re-select which ones to offer today. " +
+        "Any unsaved changes will be saved first.",
+      confirmText: "Reset Menu",
+      cancelText: "Cancel",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    // Save pending changes first if dirty
+    if (dirty()) {
+      const saved = await saveMenu();
+      if (!saved) return; // save failed, don't reset
+    }
+
+    const count = await resetMenu();
+    if (count !== null) {
+      setResetResult(`✅ Reset complete — ${count} item${count !== 1 ? "s" : ""} set to unavailable.`);
+      setTimeout(() => setResetResult(null), 5000);
+    }
+  };
+
   const handleSave = async () => {
     const result = await saveMenu();
     if (result && props.onSaved) {
@@ -68,6 +97,14 @@ export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
         <div class="notification is-danger is-light mb-4">
           <button class="delete" onClick={() => {}} />
           <strong>Error:</strong> {editorError()}
+        </div>
+      </Show>
+
+      {/* ── Reset result banner ───────────────────────────── */}
+      <Show when={resetResult()}>
+        <div class="notification is-success is-light mb-4">
+          <button class="delete" onClick={() => setResetResult(null)} />
+          {resetResult()}
         </div>
       </Show>
 
@@ -192,14 +229,32 @@ export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
           </Show>
         </div>
 
-        <button
-          class="button is-light"
-          disabled={editorSaving()}
-          onClick={handleCancel}
-        >
-          <span class="mr-1">←</span>
-          Cancel
-        </button>
+        <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
+          {/* Reset button — only for non-permanent menus in edit mode */}
+          <Show when={!editorState.isNewMenu && !editorState.draft.permanent}>
+            <button
+              class="button is-danger is-outlined"
+              classList={{ "is-loading": editorSaving() }}
+              disabled={editorSaving()}
+              onClick={handleReset}
+              title="Reset all items to unavailable"
+            >
+              <span class="icon is-small">
+                <span>🔄</span>
+              </span>
+              <span>Reset Menu</span>
+            </button>
+          </Show>
+
+          <button
+            class="button is-light"
+            disabled={editorSaving()}
+            onClick={handleCancel}
+          >
+            <span class="mr-1">←</span>
+            Cancel
+          </button>
+        </div>
       </div>
 
       {/* ── Dirty indicator ───────────────────────────────── */}

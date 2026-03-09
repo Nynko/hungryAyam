@@ -16,6 +16,7 @@ mod setup_middleware;
 mod types;
 mod traits;
 mod utils;
+mod scheduler;
 
 use crate::{
     state::build_state,
@@ -74,7 +75,12 @@ async fn main() -> anyhow::Result<()> {
     // --------------------------------------------------
     // App state
     // --------------------------------------------------
-    let state = build_state(setup_completed, db);
+    let state = build_state(setup_completed, db.clone());
+
+    // --------------------------------------------------
+    // Background scheduler (menu auto-reset, session auto-close)
+    // --------------------------------------------------
+    scheduler::spawn_scheduler(db);
 
     // --------------------------------------------------
     // Router

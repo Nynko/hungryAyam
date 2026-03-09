@@ -36,6 +36,7 @@ ts-rs = { version = "7.1.1", features = ["uuid-impl", "chrono-impl", "url-impl"]
 # Environment variables
 dotenv = "0.15"
 chrono = { version = "0.4.43", features = ["serde"] }
+chrono-tz = "0.10"
 url = { version= "2.5.8", features = ["serde"]}
 email_address = "0.2.9"
 enum_stringify = "0.6.4"

@@ -9,6 +9,7 @@ import type { UpdateOrderSession } from "@bindings/UpdateOrderSession";
 import type { CreateOrder } from "@bindings/CreateOrder";
 import type { CreateOrderItem } from "@bindings/CreateOrderItem";
 import type { RestaurantOrderSettings } from "@bindings/RestaurantOrderSettings";
+import type { UpdateOrderSettingsRequest } from "@bindings/UpdateOrderSettingsRequest";
 import type { OrderSessionStatusResponse } from "@bindings/OrderSessionStatusResponse";
 import type { OrderSummary } from "@bindings/OrderSummary";
 import type { MenuSectionItem } from "@bindings/MenuSectionItem";
@@ -475,12 +476,14 @@ async function placeOrder(
 
   const createItems: CreateOrderItem[] = items.map((ci) => ({
     item_id: ci.sectionItem.item.id,
+    slot_id: null,
     notes: ci.notes,
   }));
 
   const request: CreateOrder = {
     restaurant_id: restaurantId,
     session_id: sessionId,
+    offer_id: null,
     items: createItems,
   };
 
@@ -705,6 +708,43 @@ async function fetchOrderSettings(
   }
 }
 
+/**
+ * Update the order settings for a restaurant.
+ */
+async function updateOrderSettings(
+  request: UpdateOrderSettingsRequest,
+): Promise<RestaurantOrderSettings | null> {
+  try {
+    setOrderLoading(true);
+    setOrderError(null);
+
+    const res = await fetch(`/api/update-order-settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Failed to update order settings (${res.status})`);
+    }
+
+    const json: ApiResponse<RestaurantOrderSettings> = await res.json();
+    if (!json.success || json.data == null) {
+      throw new Error(json.error ?? "Unexpected response");
+    }
+
+    return json.data;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setOrderError(msg);
+    console.error("[orderStore] updateOrderSettings failed:", msg);
+    return null;
+  } finally {
+    setOrderLoading(false);
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════
 // Helpers
 // ══════════════════════════════════════════════════════════════════
@@ -781,6 +821,7 @@ export {
 
   // ── Settings API ────────────────────────────────────────────
   fetchOrderSettings,
+  updateOrderSettings,
 
   // ── Helpers ─────────────────────────────────────────────────
   sessionStatusColor,

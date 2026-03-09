@@ -10,9 +10,9 @@ use crate::features::order::{
         order_session::{
             CreateOrderSession, OrderSession, OrderSessionStatus, UpdateOrderSession,
         },
-        order_settings::{RestaurantOrderSettings, UpdateRestaurantOrderSettings},
+        order_settings::RestaurantOrderSettings,
     },
-    dto::OrderSummary,
+    dto::{OrderSummary, UpdateOrderSettingsRequest},
     repository::OrderRepository,
 };
 
@@ -444,7 +444,7 @@ impl OrderService {
     /// if they don't exist, then applies the update.
     pub async fn update_order_settings(
         &self,
-        request: UpdateRestaurantOrderSettings,
+        request: UpdateOrderSettingsRequest,
     ) -> Result<Option<RestaurantOrderSettings>> {
         // Validate times if both are provided
         if let (Some(start), Some(end)) = (request.default_start_time, request.default_end_time) {

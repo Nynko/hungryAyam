@@ -2,10 +2,12 @@ import { createSignal, createResource, Show, For, onMount, onCleanup } from "sol
 import { A, useParams, useNavigate } from "@solidjs/router";
 import type { Restaurant } from "@bindings/Restaurant";
 import type { Menu } from "@bindings/Menu";
+import type { MenuSection } from "@bindings/MenuSection";
 import type { ApiResponse } from "@bindings/ApiResponse";
 import MenuEditorToolbar from "@/components/menu-editor/MenuEditorToolbar";
 import SectionEditor from "@/components/menu-editor/SectionEditor";
 import CreateModeSelector from "@/components/menu-editor/CreateModeSelector";
+import OfferEditor from "@/components/menu-editor/OfferEditor";
 import {
   editorState,
   editorLoading,
@@ -201,6 +203,13 @@ export default function MenuEditor() {
 
           {/* Toolbar (name, description, toggles, save/cancel) */}
           <MenuEditorToolbar onSaved={handleSaved} onCancel={handleCancel} />
+
+          {/* ── Offer Editor (integrated into menu) ─────────── */}
+          <OfferEditor
+            restaurantId={params.id}
+            menuId={editorState.draft.id}
+            menuSections={editorState.draft.sections as unknown as MenuSection[]}
+          />
 
           {/* ── Sections ────────────────────────────────────── */}
           <div class="mb-4">

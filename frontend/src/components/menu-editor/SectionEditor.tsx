@@ -1,10 +1,12 @@
-import { Show, For, createSignal, createEffect, onMount, onCleanup } from "solid-js";
-import type { DraftSection } from "@/stores/menuEditorStore";
+import { Show, For, createSignal, createEffect, createMemo, onMount, onCleanup } from "solid-js";
+import type { DraftSection, DraftSectionItem } from "@/stores/menuEditorStore";
 import {
+  editorState,
   addSection,
   updateSection,
   removeSection,
   addItemToSection,
+  updateSectionItem,
   moveSectionToIndex,
   moveItemToIndex,
 } from "@/stores/menuEditorStore";
@@ -12,6 +14,64 @@ import SectionItemEditor from "./SectionItemEditor";
 import { setupSortableItem, setupSortableMonitor } from "@/lib/dnd";
 import type { SortableItemState } from "@/lib/dnd";
 import DropIndicator from "./DropIndicator";
+
+/**
+ * Normalize a string for fuzzy matching: lowercase, trim, collapse whitespace.
+ */
+function normalize(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Simple similarity check between two item names.
+ * Returns true if the names are "close enough" to warn about duplicates.
+ * Uses normalized prefix/substring matching + Levenshtein-like heuristic.
+ */
+function isSimilarName(a: string, b: string): boolean {
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  // One contains the other
+  if (na.includes(nb) || nb.includes(na)) return true;
+  // Levenshtein distance <= 2 for short names
+  if (na.length <= 20 && nb.length <= 20) {
+    const dist = levenshtein(na, nb);
+    const maxLen = Math.max(na.length, nb.length);
+    // Allow distance of ~15% of the longer string, min 2
+    if (dist <= Math.max(2, Math.floor(maxLen * 0.15))) return true;
+  }
+  return false;
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Collect all item names from all sections in the current menu draft (recursively).
+ */
+function collectAllItemNames(sections: DraftSection[]): string[] {
+  const names: string[] = [];
+  for (const section of sections) {
+    for (const si of section.items) {
+      if (si.item.name) names.push(si.item.name);
+    }
+    names.push(...collectAllItemNames(section.subsections));
+  }
+  return names;
+}
 
 interface SectionEditorProps {
   section: DraftSection;
@@ -46,6 +106,15 @@ export default function SectionEditor(props: SectionEditorProps) {
   const [newSubsectionName, setNewSubsectionName] = createSignal("");
 
   const [confirmRemove, setConfirmRemove] = createSignal(false);
+
+  // ── Search / filter state ──────────────────────────────────────
+  const [searchQuery, setSearchQuery] = createSignal("");
+  const [showFilter, setShowFilter] = createSignal(false);
+  /** Filter: "all" | "available" | "unavailable" */
+  const [availabilityFilter, setAvailabilityFilter] = createSignal<"all" | "available" | "unavailable">("all");
+
+  // ── Duplicate detection state ──────────────────────────────────
+  const [duplicateWarning, setDuplicateWarning] = createSignal<string | null>(null);
 
   // ── Drag-and-drop state ────────────────────────────────────────
   let sectionContainerRef!: HTMLDivElement;
@@ -107,9 +176,39 @@ export default function SectionEditor(props: SectionEditorProps) {
     onCleanup(cleanup);
   });
 
-  // ── Sorted children ────────────────────────────────────────────
-  const sortedItems = () =>
+  // ── Sorted & filtered children ─────────────────────────────────
+  const allSortedItems = () =>
     [...props.section.items].sort((a, b) => a.position - b.position);
+
+  const sortedItems = () => {
+    let items = allSortedItems();
+    const query = normalize(searchQuery());
+    const filter = availabilityFilter();
+
+    // Apply availability filter
+    if (filter === "available") {
+      items = items.filter((i) => i.is_available);
+    } else if (filter === "unavailable") {
+      items = items.filter((i) => !i.is_available);
+    }
+
+    // Apply search query
+    if (query) {
+      items = items.filter((i) => {
+        const name = normalize(i.item.name);
+        const desc = normalize(i.item.description ?? "");
+        return name.includes(query) || desc.includes(query);
+      });
+    }
+
+    return items;
+  };
+
+  // ── Availability stats ─────────────────────────────────────────
+  const availableCount = createMemo(() => props.section.items.filter((i) => i.is_available).length);
+  const unavailableCount = createMemo(() => props.section.items.filter((i) => !i.is_available).length);
+  const totalCount = createMemo(() => props.section.items.length);
+  const isFiltering = () => !!searchQuery() || availabilityFilter() !== "all";
 
   const sortedSubsections = () =>
     [...props.section.subsections].sort((a, b) => a.position - b.position);
@@ -140,7 +239,22 @@ export default function SectionEditor(props: SectionEditorProps) {
     updateSection(props.section.id, { is_active: !props.section.is_active });
   };
 
-  // ── Add item ───────────────────────────────────────────────────
+  // ── Add item (with duplicate detection) ────────────────────────
+  const checkDuplicate = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setDuplicateWarning(null);
+      return;
+    }
+    const allNames = collectAllItemNames(editorState.draft.sections);
+    const similar = allNames.find((existing) => isSimilarName(trimmed, existing));
+    if (similar) {
+      setDuplicateWarning(`Similar item exists: "${similar}"`);
+    } else {
+      setDuplicateWarning(null);
+    }
+  };
+
   const handleAddItem = () => {
     const name = newItemName().trim();
     const priceStr = newItemPrice().trim();
@@ -157,6 +271,26 @@ export default function SectionEditor(props: SectionEditorProps) {
     setNewItemName("");
     setNewItemPrice("");
     setShowAddItem(false);
+    setDuplicateWarning(null);
+  };
+
+  // ── Bulk availability toggle ───────────────────────────────────
+  const handleBulkActivate = () => {
+    const items = sortedItems();
+    for (const si of items) {
+      if (!si.is_available) {
+        updateSectionItem(props.section.id, si.id, { is_available: true });
+      }
+    }
+  };
+
+  const handleBulkDeactivate = () => {
+    const items = sortedItems();
+    for (const si of items) {
+      if (si.is_available) {
+        updateSectionItem(props.section.id, si.id, { is_available: false });
+      }
+    }
   };
 
   // ── Add subsection ─────────────────────────────────────────────
@@ -410,9 +544,121 @@ export default function SectionEditor(props: SectionEditorProps) {
           </p>
         </Show>
 
+        {/* ── Items toolbar (search, filter, bulk actions) ──── */}
+        <Show when={totalCount() > 0}>
+          <div class="mt-3 mb-2">
+            {/* Stats bar */}
+            <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap mb-2" style={{ gap: "0.5rem" }}>
+              <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
+                <span class="is-size-7 has-text-grey">
+                  {totalCount()} item{totalCount() !== 1 ? "s" : ""}
+                </span>
+                <Show when={availableCount() > 0}>
+                  <span class="tag is-success is-light is-small">
+                    {availableCount()} available
+                  </span>
+                </Show>
+                <Show when={unavailableCount() > 0}>
+                  <span class="tag is-warning is-light is-small">
+                    {unavailableCount()} unavailable
+                  </span>
+                </Show>
+              </div>
+              <div class="buttons are-small">
+                <button
+                  class={`button is-small ${showFilter() ? "is-info" : "is-light"}`}
+                  onClick={() => {
+                    setShowFilter(!showFilter());
+                    if (!showFilter()) {
+                      setSearchQuery("");
+                      setAvailabilityFilter("all");
+                    }
+                  }}
+                  title="Search & filter items"
+                >
+                  <span class="icon is-small"><span>🔍</span></span>
+                  <span>Filter</span>
+                </button>
+                <Show when={unavailableCount() > 0}>
+                  <button
+                    class="button is-small is-success is-outlined"
+                    onClick={handleBulkActivate}
+                    title={isFiltering() ? "Activate all filtered items" : "Activate all items in this section"}
+                  >
+                    <span class="icon is-small"><span>✅</span></span>
+                    <span>Activate {isFiltering() ? "filtered" : "all"}</span>
+                  </button>
+                </Show>
+                <Show when={availableCount() > 0}>
+                  <button
+                    class="button is-small is-warning is-outlined"
+                    onClick={handleBulkDeactivate}
+                    title={isFiltering() ? "Deactivate all filtered items" : "Deactivate all items in this section"}
+                  >
+                    <span class="icon is-small"><span>⏸</span></span>
+                    <span>Deactivate {isFiltering() ? "filtered" : "all"}</span>
+                  </button>
+                </Show>
+              </div>
+            </div>
+
+            {/* Search & filter bar */}
+            <Show when={showFilter()}>
+              <div class="box p-3 mb-2 has-background-light">
+                <div class="columns is-mobile is-variable is-2 mb-0">
+                  <div class="column">
+                    <div class="control has-icons-left">
+                      <input
+                        class="input is-small"
+                        type="text"
+                        placeholder="Search items by name or description…"
+                        value={searchQuery()}
+                        onInput={(e) => setSearchQuery(e.currentTarget.value)}
+                        ref={(el) => setTimeout(() => el.focus(), 0)}
+                      />
+                      <span class="icon is-left is-small">🔍</span>
+                    </div>
+                  </div>
+                  <div class="column is-narrow">
+                    <div class="select is-small">
+                      <select
+                        value={availabilityFilter()}
+                        onChange={(e) => setAvailabilityFilter(e.currentTarget.value as "all" | "available" | "unavailable")}
+                      >
+                        <option value="all">All items</option>
+                        <option value="available">✅ Available only</option>
+                        <option value="unavailable">⏸ Unavailable only</option>
+                      </select>
+                    </div>
+                  </div>
+                  <Show when={isFiltering()}>
+                    <div class="column is-narrow">
+                      <button
+                        class="button is-small is-light"
+                        onClick={() => {
+                          setSearchQuery("");
+                          setAvailabilityFilter("all");
+                        }}
+                        title="Clear filters"
+                      >
+                        ✕ Clear
+                      </button>
+                    </div>
+                  </Show>
+                </div>
+                <Show when={isFiltering()}>
+                  <p class="is-size-7 has-text-grey mt-1">
+                    Showing {sortedItems().length} of {totalCount()} item{totalCount() !== 1 ? "s" : ""}
+                  </p>
+                </Show>
+              </div>
+            </Show>
+          </div>
+        </Show>
+
         {/* ── Items list ────────────────────────────────────── */}
         <Show when={sortedItems().length > 0}>
-          <div class="mt-3">
+          <div class="mt-1">
             <For each={sortedItems()}>
               {(sectionItem, index) => (
                 <SectionItemEditor
@@ -425,7 +671,13 @@ export default function SectionEditor(props: SectionEditorProps) {
           </div>
         </Show>
 
-        <Show when={sortedItems().length === 0 && sortedSubsections().length === 0}>
+        <Show when={sortedItems().length === 0 && totalCount() > 0 && isFiltering()}>
+          <p class="has-text-grey is-size-7 is-italic mt-3 ml-2">
+            No items match your filter. Try adjusting your search or filter.
+          </p>
+        </Show>
+
+        <Show when={totalCount() === 0 && sortedSubsections().length === 0}>
           <p class="has-text-grey-light is-size-7 is-italic mt-3 ml-2">
             This section is empty — add items or subsections below.
           </p>
@@ -448,18 +700,31 @@ export default function SectionEditor(props: SectionEditorProps) {
         >
           <div class="box p-3 mt-3 has-background-info-light">
             <p class="has-text-weight-semibold is-size-7 mb-2">New item</p>
+            {/* Duplicate warning */}
+            <Show when={duplicateWarning()}>
+              <div class="notification is-warning is-light py-2 px-3 mb-2 is-size-7">
+                ⚠️ {duplicateWarning()} — you can still add it if intended.
+              </div>
+            </Show>
             <div class="columns is-mobile is-variable is-2 mb-0">
               <div class="column">
                 <div class="control">
                   <input
                     class="input is-small"
+                    classList={{ "is-warning": !!duplicateWarning() }}
                     type="text"
                     placeholder="Item name"
                     value={newItemName()}
-                    onInput={(e) => setNewItemName(e.currentTarget.value)}
+                    onInput={(e) => {
+                      setNewItemName(e.currentTarget.value);
+                      checkDuplicate(e.currentTarget.value);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleAddItem();
-                      if (e.key === "Escape") setShowAddItem(false);
+                      if (e.key === "Escape") {
+                        setShowAddItem(false);
+                        setDuplicateWarning(null);
+                      }
                     }}
                     ref={(el) => setTimeout(() => el.focus(), 0)}
                   />
@@ -477,7 +742,10 @@ export default function SectionEditor(props: SectionEditorProps) {
                     onInput={(e) => setNewItemPrice(e.currentTarget.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleAddItem();
-                      if (e.key === "Escape") setShowAddItem(false);
+                      if (e.key === "Escape") {
+                        setShowAddItem(false);
+                        setDuplicateWarning(null);
+                      }
                     }}
                     style={{ width: "100px" }}
                   />
@@ -498,6 +766,7 @@ export default function SectionEditor(props: SectionEditorProps) {
                       setShowAddItem(false);
                       setNewItemName("");
                       setNewItemPrice("");
+                      setDuplicateWarning(null);
                     }}
                   >
                     Cancel

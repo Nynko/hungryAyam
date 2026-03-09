@@ -1,3 +1,4 @@
+use chrono::NaiveTime;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
@@ -5,7 +6,7 @@ use uuid::Uuid;
 use crate::features::order::domain::{
     order::CreateOrder,
     order_session::{CreateOrderSession, OrderSession, UpdateOrderSession},
-    order_settings::{CreateRestaurantOrderSettings, UpdateRestaurantOrderSettings},
+    order_settings::{CreateRestaurantOrderSettings, SendingMethod},
 };
 
 // ==================== Order Session DTOs ====================
@@ -39,4 +40,37 @@ pub struct OrderSummary {
 // ==================== Order Settings DTOs ====================
 
 pub type CreateOrderSettingsRequest = CreateRestaurantOrderSettings;
-pub type UpdateOrderSettingsRequest = UpdateRestaurantOrderSettings;
+
+/// Custom update DTO for restaurant order settings.
+///
+/// We need a hand-written struct instead of the macro-generated
+/// `UpdateRestaurantOrderSettings` because `menu_reset_time` is
+/// `Option<NaiveTime>` in the domain — an `update(all_optional)` macro
+/// keeps it as `Option<NaiveTime>` (no double-wrap), so we can't
+/// distinguish "don't change" from "set to null".
+///
+/// The `update_menu_reset_time` flag solves this:
+/// - `false` → leave the current value untouched
+/// - `true`  → write `menu_reset_time` (which may be `null`)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct UpdateOrderSettingsRequest {
+    pub id: Uuid,
+    #[ts(type = "string | null")]
+    pub default_start_time: Option<NaiveTime>,
+    #[ts(type = "string | null")]
+    pub default_end_time: Option<NaiveTime>,
+    pub sending_method: Option<SendingMethod>,
+    pub timezone: Option<String>,
+    pub auto_create_session: Option<bool>,
+    /// The new value for `menu_reset_time`. Only written when
+    /// `update_menu_reset_time` is `true`.
+    #[ts(type = "string | null")]
+    pub menu_reset_time: Option<NaiveTime>,
+    /// When `true`, the `menu_reset_time` field is applied (even if `null`,
+    /// which clears the reset schedule). When `false` (or absent), the
+    /// existing `menu_reset_time` is left unchanged.
+    #[serde(default)]
+    pub update_menu_reset_time: bool,
+    pub auto_close_session: Option<bool>,
+}

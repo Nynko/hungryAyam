@@ -8,6 +8,8 @@ import type { CreateMenuSection } from "@bindings/CreateMenuSection";
 import type { CreateMenuSectionItem } from "@bindings/CreateMenuSectionItem";
 import type { UpdateMenuAction } from "@bindings/UpdateMenuAction";
 import type { UpdateMenuActionsRequest } from "@bindings/UpdateMenuActionsRequest";
+import type { ResetMenuRequest } from "@bindings/ResetMenuRequest";
+import type { ResetMenuResponse } from "@bindings/ResetMenuResponse";
 import type { ApiResponse } from "@bindings/ApiResponse";
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1188,6 +1190,55 @@ function discardChanges(): void {
   });
 }
 
+/**
+ * Reset a non-permanent menu: calls the backend to set all items to
+ * is_available = false, then reloads the menu into the editor.
+ *
+ * Returns the number of items reset, or null on failure.
+ */
+async function resetMenu(): Promise<number | null> {
+  const menuId = editorState.draft.id;
+  if (!menuId) {
+    setEditorError("Cannot reset a menu without an ID");
+    return null;
+  }
+  if (editorState.draft.permanent) {
+    setEditorError("Cannot reset a permanent menu");
+    return null;
+  }
+
+  try {
+    setEditorSaving(true);
+    setEditorError(null);
+
+    const request: ResetMenuRequest = { id: menuId };
+    const res = await fetch("/api/reset-menu", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    const json: ApiResponse<ResetMenuResponse> = await res.json();
+    if (!res.ok || !json.success || json.data == null) {
+      throw new Error(json.error ?? `Reset menu failed with status ${res.status}`);
+    }
+
+    const itemsReset = Number(json.data.items_reset);
+
+    // Reload the menu from the server to get the updated state
+    await fetchAndLoadMenu(menuId);
+
+    return itemsReset;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setEditorError(msg);
+    console.error("[menuEditorStore] resetMenu failed:", msg);
+    return null;
+  } finally {
+    setEditorSaving(false);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Exports
 // ═══════════════════════════════════════════════════════════════════
@@ -1230,6 +1281,7 @@ export {
   saveMenu,
   discardChanges,
   clearActions,
+  resetMenu,
 
   // Helpers
   findSectionPath,

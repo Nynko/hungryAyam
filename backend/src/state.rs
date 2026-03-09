@@ -1,5 +1,6 @@
 use sqlx::PgPool;
 use std::sync::Arc;
+use tokio::sync::Notify;
 use crate::{
     auth::{
         service::AuthService,
@@ -50,10 +51,17 @@ pub struct AppState {
     pub offer_service: OfferService,
     pub auth_service: AuthService,
     pub session_repository: SessionRepository,
+    /// Shared handle used to wake the background scheduler when data it cares
+    /// about changes (e.g. session created/updated/closed, order settings
+    /// changed). Call `scheduler_notify.notify_one()` after any such mutation.
+    pub scheduler_notify: Arc<Notify>,
 }
 
-pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
-    db: PgPool) -> AppState {
+pub fn build_state(
+    setup_completed: Arc<std::sync::atomic::AtomicBool>,
+    db: PgPool,
+    scheduler_notify: Arc<Notify>,
+) -> AppState {
 
     // Create repositories
     let setup_repository = AppSetupRepository::new(db.clone());
@@ -73,7 +81,7 @@ pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
     let item_service = ItemService::new(item_repository);
     let menu_service = MenuService::new(menu_repository, setup_repository.clone());
     let offer_service = OfferService::new(offer_repository);
-    let order_service = OrderService::new(order_repository, offer_service.clone());
+    let order_service = OrderService::new(order_repository, offer_service.clone(), scheduler_notify.clone());
 
     AppState {
         setup_completed,
@@ -87,5 +95,6 @@ pub fn build_state(setup_completed: Arc<std::sync::atomic::AtomicBool>,
         offer_service,
         auth_service,
         session_repository,
+        scheduler_notify,
     }
 }

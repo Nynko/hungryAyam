@@ -4,6 +4,7 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 use dotenv::dotenv;
 use std::sync::{Arc, atomic::AtomicBool};
+use tokio::sync::Notify;
 
 
 mod features;
@@ -73,14 +74,19 @@ async fn main() -> anyhow::Result<()> {
     let setup_completed = Arc::new(AtomicBool::new(setup_completed_bool));
 
     // --------------------------------------------------
+    // Scheduler notify handle (shared between app state and scheduler)
+    // --------------------------------------------------
+    let scheduler_notify = Arc::new(Notify::new());
+
+    // --------------------------------------------------
     // App state
     // --------------------------------------------------
-    let state = build_state(setup_completed, db.clone());
+    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone());
 
     // --------------------------------------------------
     // Background scheduler (menu auto-reset, session auto-close)
     // --------------------------------------------------
-    scheduler::spawn_scheduler(db);
+    scheduler::spawn_scheduler(db, scheduler_notify);
 
     // --------------------------------------------------
     // Router

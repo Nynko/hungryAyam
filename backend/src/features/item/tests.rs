@@ -7,6 +7,7 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::sync::{atomic::AtomicBool, Arc};
+use tokio::sync::Notify;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -68,7 +69,7 @@ async fn seed_second_restaurant(pool: &PgPool, user_id: Uuid) -> Uuid {
 /// Build a fully-wired Router backed by the given pool.
 fn app(pool: PgPool) -> Router {
     let setup_done = Arc::new(AtomicBool::new(true));
-    let state = build_state(setup_done, pool);
+    let state = build_state(setup_done, pool, Arc::new(Notify::new()));
     build_app(state)
 }
 

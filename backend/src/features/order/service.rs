@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
+use std::sync::Arc;
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 use crate::types::role::UserRole;
@@ -20,11 +22,15 @@ use crate::features::order::{
 pub struct OrderService {
     repository: OrderRepository,
     offer_service: OfferService,
+    /// Shared handle used to wake the background scheduler when data it cares
+    /// about changes (e.g. session created/updated/closed, order settings
+    /// changed).
+    scheduler_notify: Arc<Notify>,
 }
 
 impl OrderService {
-    pub fn new(repository: OrderRepository, offer_service: OfferService) -> Self {
-        Self { repository, offer_service }
+    pub fn new(repository: OrderRepository, offer_service: OfferService, scheduler_notify: Arc<Notify>) -> Self {
+        Self { repository, offer_service, scheduler_notify }
     }
 
     // ==================== ORDER SESSION OPERATIONS ====================
@@ -59,7 +65,11 @@ impl OrderService {
             ));
         }
 
-        self.repository.create_session(request, user_id).await
+        let session = self.repository.create_session(request, user_id).await?;
+        // Wake the scheduler — a new session's end_date may be earlier than
+        // the current sleep target.
+        self.scheduler_notify.notify_one();
+        Ok(session)
     }
 
     /// Get an order session by ID (without orders).
@@ -124,7 +134,10 @@ impl OrderService {
             ));
         }
 
-        self.repository.update_session(request, user_id).await
+        let result = self.repository.update_session(request, user_id).await?;
+        // Wake the scheduler — end_date or allow_late may have changed.
+        self.scheduler_notify.notify_one();
+        Ok(result)
     }
 
     /// Cancel an order session.
@@ -149,9 +162,12 @@ impl OrderService {
             ));
         }
 
-        self.repository
+        let result = self.repository
             .set_session_status(session_id, OrderSessionStatus::Cancelled, user_id)
-            .await
+            .await?;
+        // Wake the scheduler — it can skip this cancelled session now.
+        self.scheduler_notify.notify_one();
+        Ok(result)
     }
 
     /// Close an order session (stop accepting new orders).
@@ -175,9 +191,12 @@ impl OrderService {
             ));
         }
 
-        self.repository
+        let result = self.repository
             .set_session_status(session_id, OrderSessionStatus::Closed, user_id)
-            .await
+            .await?;
+        // Wake the scheduler — it can skip this closed session now.
+        self.scheduler_notify.notify_one();
+        Ok(result)
     }
 
     /// Mark a session as sent (orders have been dispatched to the restaurant).
@@ -229,9 +248,12 @@ impl OrderService {
             ));
         }
 
-        self.repository
+        let result = self.repository
             .set_session_status(session_id, OrderSessionStatus::Open, user_id)
-            .await
+            .await?;
+        // Wake the scheduler — a reopened session may need auto-close tracking.
+        self.scheduler_notify.notify_one();
+        Ok(result)
     }
 
     /// Delete a session. Only sessions in Cancelled status can be deleted.
@@ -455,7 +477,11 @@ impl OrderService {
             }
         }
 
-        self.repository.update_settings(request).await
+        let result = self.repository.update_settings(request).await?;
+        // Wake the scheduler — menu_reset_time or auto_close_session may have
+        // changed, requiring a recalculated sleep target.
+        self.scheduler_notify.notify_one();
+        Ok(result)
     }
 
     // ==================== PRIVATE HELPERS ====================
@@ -561,7 +587,10 @@ impl OrderService {
             allow_late: false,
         };
 
-        self.repository.create_session(create_request, user_id).await
+        let session = self.repository.create_session(create_request, user_id).await?;
+        // Wake the scheduler — a new auto-created session needs tracking.
+        self.scheduler_notify.notify_one();
+        Ok(session)
     }
 
     /// Compute the total price for a non-offer order.

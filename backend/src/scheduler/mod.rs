@@ -1,54 +1,59 @@
 //! Background scheduler for periodic tasks.
 //!
-//! Runs a loop every 60 seconds that checks for:
-//! 1. **Menu auto-reset** — Non-permanent menus belonging to restaurants that
-//!    have a `menu_reset_time` configured. When the local time passes the
-//!    configured reset time, all `menu_section_items` are set to
-//!    `is_available = false`. A `scheduled_task_log` entry prevents
-//!    double-execution on the same calendar day.
-//! 2. **Session auto-close** — Order sessions in `Open` status whose
-//!    `end_date` is in the past. If the restaurant has `auto_close_session`
-//!    enabled, the session is transitioned to `Closed`.
+//! Uses a **computed wake-up** approach instead of polling:
+//!
+//! 1. On startup (and after each task execution), query the DB for the next
+//!    event time — the earliest of:
+//!    - Next `menu_reset_time` that hasn't run today (converted to UTC)
+//!    - Earliest `end_date` of any `Open` session where `allow_late = false`
+//!      and the restaurant has `auto_close_session = true`
+//! 2. `tokio::time::sleep_until(next_event)` — sleep precisely until then
+//!    (capped at 5 minutes to catch drift or newly inserted events)
+//! 3. `tokio::sync::Notify` wakes the scheduler early when relevant data
+//!    changes (session created/updated/closed, order settings changed)
+//! 4. The loop uses `tokio::select!` to race sleep vs notify
+//!
+//! Tasks:
+//! 1. **Menu auto-reset** — At a configured time each day, set all items in
+//!    non-permanent menus to `is_available = false`. Uses `scheduled_task_log`
+//!    to prevent double-execution on the same calendar day.
+//! 2. **Session auto-close** — When an order session's `end_date` passes and
+//!    the restaurant has `auto_close_session = true`, transition the session
+//!    from `Open` to `Closed`.
 
 use chrono::{NaiveDate, Utc};
 use sqlx::PgPool;
+use std::sync::Arc;
+use tokio::sync::Notify;
+use tokio::time::{sleep_until, Instant};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::features::order::domain::order_session::OrderSessionStatus;
 
-/// Interval between scheduler ticks (in seconds).
-const TICK_INTERVAL_SECS: u64 = 60;
+/// Maximum time the scheduler will sleep before waking up to re-check.
+/// This caps drift from events inserted without a notify (e.g. direct DB edits).
+const MAX_SLEEP_SECS: u64 = 5 * 60; // 5 minutes
 
-/// System user UUID used as `updated_by` for scheduler-initiated changes.
-/// This is a well-known sentinel — it doesn't need to exist in the `users`
-/// table because the FK on `updated_by` points to `users(id)` which may be
-/// relaxed for system operations. If your schema enforces it, seed this user
-/// during app setup.
-///
-/// We use the first admin user instead — resolved at runtime.
+/// Resolve a system user for `updated_by` fields on scheduler-initiated writes.
+/// Picks the first user in the database (typically the initial admin).
 async fn resolve_system_user(pool: &PgPool) -> Option<Uuid> {
-    // Pick the first admin user (role = 0 is typically Admin in your schema)
-    let row = sqlx::query_scalar!(
-        r#"SELECT id FROM users ORDER BY created_at ASC LIMIT 1"#
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    row
+    sqlx::query_scalar!(r#"SELECT id FROM users ORDER BY created_at ASC LIMIT 1"#)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
 }
 
 /// Spawn the background scheduler as a Tokio task.
 ///
-/// This function returns immediately. The scheduler runs indefinitely in the
-/// background until the process exits.
-pub fn spawn_scheduler(pool: PgPool) {
+/// The scheduler runs indefinitely until the process exits. It uses the
+/// provided `Notify` handle to wake early when relevant data changes.
+pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>) {
     tokio::spawn(async move {
-        info!("Scheduler started — tick interval: {}s", TICK_INTERVAL_SECS);
+        info!("Scheduler started (sleep_until + Notify pattern)");
 
-        // Resolve a system user for `updated_by` fields
+        // Wait for at least one user to exist (needed for updated_by)
         let system_user = loop {
             match resolve_system_user(&pool).await {
                 Some(uid) => break uid,
@@ -60,13 +65,8 @@ pub fn spawn_scheduler(pool: PgPool) {
         };
         info!("Scheduler using system user: {}", system_user);
 
-        let mut interval =
-            tokio::time::interval(std::time::Duration::from_secs(TICK_INTERVAL_SECS));
-
         loop {
-            interval.tick().await;
-
-            // Run both tasks concurrently
+            // 1. Run any tasks that are currently due
             let (reset_result, close_result) = tokio::join!(
                 run_menu_auto_reset(&pool, system_user),
                 run_session_auto_close(&pool, system_user),
@@ -78,8 +78,154 @@ pub fn spawn_scheduler(pool: PgPool) {
             if let Err(e) = close_result {
                 error!("Scheduler: session auto-close failed: {e:#}");
             }
+
+            // 2. Compute how long to sleep until the next event
+            let sleep_duration = match compute_next_wake(&pool).await {
+                Ok(d) => d,
+                Err(e) => {
+                    error!("Scheduler: failed to compute next wake time: {e:#}");
+                    // Fallback: retry after the max sleep interval
+                    std::time::Duration::from_secs(MAX_SLEEP_SECS)
+                }
+            };
+
+            info!(
+                "Scheduler: sleeping for {:.1}s until next event",
+                sleep_duration.as_secs_f64()
+            );
+
+            let deadline = Instant::now() + sleep_duration;
+
+            // 3. Race: sleep_until vs notify (early wake)
+            tokio::select! {
+                _ = sleep_until(deadline) => {
+                    // Timer expired — time to check for due tasks
+                }
+                _ = notify.notified() => {
+                    info!("Scheduler: woken early by notify");
+                    // Data changed — re-evaluate what's due
+                }
+            }
         }
     });
+}
+
+// ─── Next-Wake Computation ────────────────────────────────────────────────
+
+/// Compute the duration until the next scheduled event.
+///
+/// Queries both menu-reset candidates and session-close candidates, picks the
+/// earliest, and returns the duration from now. Capped at `MAX_SLEEP_SECS`.
+async fn compute_next_wake(pool: &PgPool) -> anyhow::Result<std::time::Duration> {
+    let now_utc = Utc::now();
+    let max_wake = now_utc + chrono::Duration::seconds(MAX_SLEEP_SECS as i64);
+    let mut earliest = max_wake;
+
+    // ── Menu reset candidates ─────────────────────────────────────────
+    let reset_candidates = sqlx::query!(
+        r#"
+        SELECT restaurant_id,
+               menu_reset_time as "menu_reset_time!: chrono::NaiveTime",
+               timezone
+        FROM restaurant_order_settings
+        WHERE menu_reset_time IS NOT NULL
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for row in &reset_candidates {
+        let tz: chrono_tz::Tz = match row.timezone.parse() {
+            Ok(tz) => tz,
+            Err(_) => {
+                warn!(
+                    "Scheduler: invalid timezone '{}' for restaurant {}",
+                    row.timezone, row.restaurant_id
+                );
+                continue;
+            }
+        };
+
+        let local_now = now_utc.with_timezone(&tz);
+        let local_date: NaiveDate = local_now.date_naive();
+        let local_time = local_now.time();
+
+        // Check if today's reset has already been executed
+        let already_done = sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM scheduled_task_log
+                WHERE restaurant_id = $1
+                  AND task_kind = 'menu_reset'
+                  AND last_executed_date = $2
+            ) as "exists!: bool"
+            "#,
+            row.restaurant_id,
+            local_date,
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+
+        // Determine the next reset instant in local time
+        let next_reset_local = if !already_done && local_time < row.menu_reset_time {
+            // Still upcoming today
+            local_date.and_time(row.menu_reset_time)
+        } else {
+            // Already done today or time has passed — schedule for tomorrow
+            let tomorrow = local_date.succ_opt().unwrap_or(local_date);
+            tomorrow.and_time(row.menu_reset_time)
+        };
+
+        // Convert local NaiveDateTime → UTC via the timezone
+        let maybe_utc = match next_reset_local.and_local_timezone(tz) {
+            chrono::LocalResult::Single(dt) => Some(dt.with_timezone(&Utc)),
+            chrono::LocalResult::Ambiguous(dt, _) => Some(dt.with_timezone(&Utc)),
+            chrono::LocalResult::None => None,
+        };
+        if let Some(utc_dt) = maybe_utc {
+            if utc_dt < earliest {
+                earliest = utc_dt;
+            }
+        }
+    }
+
+    // ── Session auto-close candidates ─────────────────────────────────
+    // Find the earliest end_date among open sessions that qualify for auto-close.
+    let earliest_session_end = sqlx::query_scalar!(
+        r#"
+        SELECT MIN(os.end_date) as "min_end: chrono::DateTime<Utc>"
+        FROM order_sessions os
+        JOIN restaurant_order_settings ros ON ros.restaurant_id = os.restaurant_id
+        WHERE os.status = $1
+          AND os.allow_late = false
+          AND ros.auto_close_session = true
+        "#,
+        OrderSessionStatus::Open.as_i16(),
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if let Some(end_dt) = earliest_session_end {
+        if end_dt < earliest {
+            earliest = end_dt;
+        }
+    }
+
+    // ── Compute the duration ──────────────────────────────────────────
+    let diff = earliest - now_utc;
+    let duration = if diff <= chrono::Duration::zero() {
+        // Event is already due (or in the past) — wake immediately
+        // but add a tiny delay to avoid a busy-spin if tasks keep failing
+        std::time::Duration::from_millis(100)
+    } else {
+        let millis = diff.num_milliseconds().max(0) as u64;
+        std::time::Duration::from_millis(millis)
+    };
+
+    // Cap at MAX_SLEEP_SECS
+    let max_dur = std::time::Duration::from_secs(MAX_SLEEP_SECS);
+    Ok(duration.min(max_dur))
 }
 
 // ─── Menu Auto-Reset ──────────────────────────────────────────────────────

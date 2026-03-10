@@ -104,6 +104,7 @@ export default function SectionEditor(props: SectionEditorProps) {
 
   const [showAddItem, setShowAddItem] = createSignal(false);
   const [newItemName, setNewItemName] = createSignal("");
+  const [newItemDesc, setNewItemDesc] = createSignal("");
   const [newItemPrice, setNewItemPrice] = createSignal("");
 
   const [showAddSubsection, setShowAddSubsection] = createSignal(false);
@@ -267,12 +268,15 @@ export default function SectionEditor(props: SectionEditorProps) {
     const priceCents = priceStr ? Math.round(parseFloat(priceStr) * 100) : 0;
     if (isNaN(priceCents) || priceCents < 0) return;
 
+    const desc = newItemDesc().trim();
     addItemToSection(props.section.id, {
       name,
+      description: desc || null,
       base_price_cents: priceCents,
     });
 
     setNewItemName("");
+    setNewItemDesc("");
     setNewItemPrice("");
     setShowAddItem(false);
     setDuplicateWarning(null);
@@ -736,8 +740,8 @@ export default function SectionEditor(props: SectionEditorProps) {
                 ⚠️ {duplicateWarning()} — you can still add it if intended.
               </div>
             </Show>
-            <div class="columns is-mobile is-variable is-2 mb-0">
-              <div class="column">
+            <div class="columns is-multiline is-variable is-2 mb-0">
+              <div class="column is-expand">
                 <div class="control">
                   <input
                     class="input is-small"
@@ -781,6 +785,24 @@ export default function SectionEditor(props: SectionEditorProps) {
                   />
                 </div>
               </div>
+              <div class="column is-12">
+                <div class="control">
+                  <input
+                    class="input is-small"
+                    type="text"
+                    placeholder="Description (optional)"
+                    value={newItemDesc()}
+                    onInput={(e) => setNewItemDesc(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddItem();
+                      if (e.key === "Escape") {
+                        setShowAddItem(false);
+                        setDuplicateWarning(null);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
               <div class="column is-narrow">
                 <div class="buttons">
                   <button
@@ -795,6 +817,7 @@ export default function SectionEditor(props: SectionEditorProps) {
                     onClick={() => {
                       setShowAddItem(false);
                       setNewItemName("");
+                      setNewItemDesc("");
                       setNewItemPrice("");
                       setDuplicateWarning(null);
                     }}

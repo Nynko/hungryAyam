@@ -6,6 +6,7 @@ import {
   fetchRestaurants,
   refetchRestaurants,
 } from "@/stores/restaurantStore";
+import { isEditor } from "@/stores/authStore";
 import RestaurantCard from "@/components/RestaurantCard";
 import SearchBar from "@/components/SearchBar";
 import Pagination from "@/components/Pagination";
@@ -69,17 +70,19 @@ export default function Restaurants() {
             </div>
           </div>
           <div class="level-right">
-            <div class="level-item">
-              <button
-                class="button is-primary"
-                onClick={() => setShowCreateModal(true)}
-              >
-                <span class="icon">
-                  <span>➕</span>
-                </span>
-                <span>Add Restaurant</span>
-              </button>
-            </div>
+            <Show when={isEditor()}>
+              <div class="level-item">
+                <button
+                  class="button is-primary"
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  <span class="icon">
+                    <span>➕</span>
+                  </span>
+                  <span>Add Restaurant</span>
+                </button>
+              </div>
+            </Show>
             <div class="level-item">
               <button
                 class="button is-primary is-outlined"

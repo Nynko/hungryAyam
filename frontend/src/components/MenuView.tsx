@@ -5,6 +5,8 @@ import { Card } from "@/components/Card";
 
 interface MenuViewProps {
   menu: Menu;
+  /** When true, unavailable items are hidden entirely (instead of shown greyed out). */
+  hideUnavailable?: boolean;
 }
 
 export default function MenuView(props: MenuViewProps) {
@@ -52,7 +54,7 @@ export default function MenuView(props: MenuViewProps) {
           }
         >
           <For each={activeSections()}>
-            {(section) => <MenuSectionView section={section} depth={0} />}
+            {(section) => <MenuSectionView section={section} depth={0} hideUnavailable={props.hideUnavailable} />}
           </For>
         </Show>
       </div>

@@ -16,7 +16,7 @@ import OfferSlotPicker from "@/components/OfferSlotPicker";
 import OffersManager from "@/components/OffersManager";
 import RestaurantSettingsPanel from "@/components/RestaurantSettingsPanel";
 import AuthPanel from "@/components/AuthPanel";
-import { isAuthenticated } from "@/stores/authStore";
+import { isAuthenticated, isEditor, isAdmin } from "@/stores/authStore";
 import {
   fetchActiveSession,
   getActiveSession,
@@ -268,7 +268,7 @@ export default function RestaurantPage() {
                         </Show>
                       </button>
 
-                      <Show when={isAuthenticated()}>
+                      <Show when={isEditor()}>
                         <button
                           class="button is-info is-outlined"
                           onClick={() => setShowCreateSession(true)}
@@ -523,6 +523,7 @@ export default function RestaurantPage() {
                                       section={section}
                                       restaurantId={r().id}
                                       depth={0}
+                                      hideUnavailable={!menu.permanent && !isEditor()}
                                     />
                                   )}
                                 </For>
@@ -551,13 +552,13 @@ export default function RestaurantPage() {
 
               {/* ── Normal (non-ordering) mode: standard menus ─── */}
               <Show when={!orderingMode()}>
-                {/* ── Restaurant Settings (auth only) ──────────── */}
-                <Show when={isAuthenticated()}>
+                {/* ── Restaurant Settings (editor only) ────────── */}
+                <Show when={isEditor()}>
                   <RestaurantSettingsPanel restaurantId={r().id} />
                 </Show>
 
-                {/* ── Offers Manager (auth only) ───────────────── */}
-                <Show when={isAuthenticated() && !menus.loading}>
+                {/* ── Offers Manager (editor only) ─────────────── */}
+                <Show when={isEditor() && !menus.loading}>
                   <OffersManager
                     restaurantId={r().id}
                     menus={menus() ?? []}
@@ -567,7 +568,7 @@ export default function RestaurantPage() {
                 <div class="mb-4">
                   <div class="is-flex is-justify-content-space-between is-align-items-center mb-4">
                     <h2 class="title is-4 mb-0">📋 Menus</h2>
-                    <Show when={isAuthenticated()}>
+                    <Show when={isEditor()}>
                       <A
                         href={`/restaurants/${r().id}/menus/new`}
                         class="button is-primary"
@@ -615,8 +616,8 @@ export default function RestaurantPage() {
                     <For each={allActiveMenus()}>
                       {(menu) => (
                         <div class="mb-5">
-                          <MenuView menu={menu} />
-                          <Show when={isAuthenticated()}>
+                          <MenuView menu={menu} hideUnavailable={!menu.permanent && !isEditor()} />
+                          <Show when={isEditor()}>
                             <div class="has-text-right mt-2">
                               <A
                                 href={`/restaurants/${r().id}/menus/${menu.id}/edit`}
@@ -634,9 +635,10 @@ export default function RestaurantPage() {
                     </For>
                   </Show>
 
-                  {/* No active menus but has inactive ones */}
+                  {/* No active menus but has inactive ones (editor hint) */}
                   <Show
                     when={
+                      isEditor() &&
                       allActiveMenus().length === 0 &&
                       inactiveMenus().length > 0 &&
                       !menus.loading
@@ -652,8 +654,8 @@ export default function RestaurantPage() {
                     </div>
                   </Show>
 
-                  {/* Toggle inactive menus */}
-                  <Show when={inactiveMenus().length > 0}>
+                  {/* Toggle inactive menus (editor only) */}
+                  <Show when={isEditor() && inactiveMenus().length > 0}>
                     <div class="has-text-centered mt-4 mb-4">
                       <button
                         class="button is-small is-light"
@@ -671,20 +673,20 @@ export default function RestaurantPage() {
                       <For each={inactiveMenus()}>
                         {(menu) => (
                           <div style={{ opacity: "0.7" }} class="mb-5">
-                            <MenuView menu={menu} />
-                            <Show when={isAuthenticated()}>
-                              <div class="has-text-right mt-2">
-                                <A
-                                  href={`/restaurants/${r().id}/menus/${menu.id}/edit`}
-                                  class="button is-small is-info is-outlined"
-                                >
-                                  <span class="icon is-small">
-                                    <span>✏️</span>
-                                  </span>
-                                  <span>Edit this menu</span>
-                                </A>
-                              </div>
-                            </Show>
+                            <MenuView menu={menu} hideUnavailable={!menu.permanent && !isEditor()} />
+                            <Show when={isEditor()}>
+                                <div class="has-text-right mt-2">
+                                  <A
+                                    href={`/restaurants/${r().id}/menus/${menu.id}/edit`}
+                                    class="button is-small is-info is-outlined"
+                                  >
+                                    <span class="icon is-small">
+                                      <span>✏️</span>
+                                    </span>
+                                    <span>Edit this menu</span>
+                                  </A>
+                                </div>
+                              </Show>
                           </div>
                         )}
                       </For>

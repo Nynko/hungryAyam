@@ -421,10 +421,10 @@ impl OrderService {
             .await?
             .ok_or_else(|| anyhow!("Order not found"))?;
 
-        // Only the order owner or an admin can delete an order
+        // Only the order owner or an editor/admin can delete an order
         let is_owner = order.user_id == user_id;
-        let is_admin = user_role == Some(UserRole::Admin);
-        if !is_owner && !is_admin {
+        let is_editor_or_above = user_role.as_ref().map_or(false, |r| r.is_editor_or_above());
+        if !is_owner && !is_editor_or_above {
             return Err(anyhow!("You can only delete your own orders"));
         }
 

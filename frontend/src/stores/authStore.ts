@@ -19,6 +19,13 @@ const isGuest = createMemo(
 const isPasswordUser = createMemo(
   () => currentUser() !== null && currentUser()!.auth_method === "Password"
 );
+/** User has Editor or Admin role — can manage restaurants, menus, offers, sessions. */
+const isEditor = createMemo(() => {
+  const role = currentUser()?.role;
+  return role === "Editor" || role === "Admin";
+});
+/** User has Admin role — full control including user management and app settings. */
+const isAdmin = createMemo(() => currentUser()?.role === "Admin");
 
 // ── Check current auth (on app load) ──────────────────────────────
 
@@ -243,6 +250,8 @@ export {
   isAuthenticated,
   isGuest,
   isPasswordUser,
+  isEditor,
+  isAdmin,
 
   // Actions
   checkAuth,

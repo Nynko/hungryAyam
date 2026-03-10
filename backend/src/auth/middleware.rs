@@ -67,6 +67,43 @@ impl FromRequestParts<AppState> for AuthUser {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// EditorUser — users with role = Editor or Admin
+// ═══════════════════════════════════════════════════════════════════
+
+/// Extractor that resolves the current user and verifies they have at least
+/// `Editor` role (i.e. `Editor` or `Admin`).
+///
+/// Rejects with:
+/// - `401 Unauthorized` if no valid session
+/// - `403 Forbidden` if the user's role is below Editor
+///
+/// # Example
+///
+/// ```rust,ignore
+/// async fn editor_handler(EditorUser(user): EditorUser) -> impl IntoResponse {
+///     format!("Hello editor {}!", user.name)
+/// }
+/// ```
+pub struct EditorUser(pub User);
+
+#[async_trait]
+impl FromRequestParts<AppState> for EditorUser {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let AuthUser(user) = AuthUser::from_request_parts(parts, state).await?;
+
+        match &user.role {
+            Some(role) if role.is_editor_or_above() => Ok(EditorUser(user)),
+            _ => Err(ApiError::Forbidden),
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // AdminUser — only users with role = Admin
 // ═══════════════════════════════════════════════════════════════════
 
@@ -96,7 +133,7 @@ impl FromRequestParts<AppState> for AdminUser {
         let AuthUser(user) = AuthUser::from_request_parts(parts, state).await?;
 
         match &user.role {
-            Some(role) if *role == UserRole::Admin => Ok(AdminUser(user)),
+            Some(role) if role.is_admin() => Ok(AdminUser(user)),
             _ => Err(ApiError::Forbidden),
         }
     }

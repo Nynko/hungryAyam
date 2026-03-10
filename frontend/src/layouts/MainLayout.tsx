@@ -6,6 +6,7 @@ import {
   isAuthenticated,
   isGuest,
   isPasswordUser,
+  isAdmin,
   currentUser,
   logout,
 } from "@/stores/authStore";
@@ -58,9 +59,11 @@ const MainLayout: ParentComponent = (props) => {
             <A href="/statistics" class="navbar-item" onClick={closeBurger} activeClass="is-active">
               📊 Statistics
             </A>
-            <A href="/admin" class="navbar-item" onClick={closeBurger} activeClass="is-active">
-              ⚙️ Admin
-            </A>
+            <Show when={isAdmin()}>
+              <A href="/admin" class="navbar-item" onClick={closeBurger} activeClass="is-active">
+                ⚙️ Admin
+              </A>
+            </Show>
           </div>
 
           <div class="navbar-end">

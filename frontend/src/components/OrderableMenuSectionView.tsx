@@ -7,6 +7,8 @@ interface OrderableMenuSectionViewProps {
   restaurantId: string;
   /** Current nesting depth (0 = top-level). Used for visual indentation. */
   depth?: number;
+  /** When true, unavailable items are hidden entirely (instead of shown greyed out). */
+  hideUnavailable?: boolean;
 }
 
 export default function OrderableMenuSectionView(props: OrderableMenuSectionViewProps) {
@@ -30,10 +32,14 @@ export default function OrderableMenuSectionView(props: OrderableMenuSectionView
   const unavailableItems = () =>
     props.section.items.filter((si) => !si.is_available || !si.item.active);
 
-  const sortedItems = () =>
-    [...availableItems(), ...unavailableItems()].sort(
+  const sortedItems = () => {
+    if (props.hideUnavailable) {
+      return availableItems().sort((a, b) => a.position - b.position);
+    }
+    return [...availableItems(), ...unavailableItems()].sort(
       (a, b) => a.position - b.position,
     );
+  };
 
   const activeSubsections = () =>
     props.section.subsections
@@ -82,6 +88,7 @@ export default function OrderableMenuSectionView(props: OrderableMenuSectionView
               section={subsection}
               restaurantId={props.restaurantId}
               depth={depth() + 1}
+              hideUnavailable={props.hideUnavailable}
             />
           )}
         </For>

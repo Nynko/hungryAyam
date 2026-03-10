@@ -617,7 +617,7 @@ export default function RestaurantPage() {
                       {(menu) => (
                         <div class="mb-5">
                           <MenuView menu={menu} hideUnavailable={!menu.permanent && !isEditor()} />
-                          <Show when={isEditor()}>
+                          <Show when={isEditor() || (!menu.permanent && isAuthenticated())}>
                             <div class="has-text-right mt-2">
                               <A
                                 href={`/restaurants/${r().id}/menus/${menu.id}/edit`}
@@ -674,7 +674,7 @@ export default function RestaurantPage() {
                         {(menu) => (
                           <div style={{ opacity: "0.7" }} class="mb-5">
                             <MenuView menu={menu} hideUnavailable={!menu.permanent && !isEditor()} />
-                            <Show when={isEditor()}>
+                            <Show when={isEditor() || (!menu.permanent && isAuthenticated())}>
                                 <div class="has-text-right mt-2">
                                   <A
                                     href={`/restaurants/${r().id}/menus/${menu.id}/edit`}

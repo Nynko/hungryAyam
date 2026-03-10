@@ -60,6 +60,12 @@ function SessionOrderList(props: { session: OrderSession }) {
     orders().reduce((sum, o) => sum + o.total_price_cents, 0),
   );
 
+  /** Aggregate all items across every order in the session. */
+  const aggregatedCommand = createMemo(() => {
+    const allItems = orders().flatMap((o) => o.items);
+    return groupOrderItems(allItems);
+  });
+
   return (
     <div class="mt-3">
       <Show
@@ -79,6 +85,37 @@ function SessionOrderList(props: { session: OrderSession }) {
             Total: ${formatPrice(totalRevenue())}
           </span>
         </div>
+
+        {/* ── Aggregated command for the restaurant ────────────── */}
+        <Show when={aggregatedCommand().length > 0}>
+          <div
+            class="box mb-4 p-3"
+            style={{
+              background: "hsl(204, 86%, 96%)",
+              "border-left": "4px solid hsl(204, 86%, 53%)",
+            }}
+          >
+            <p class="has-text-weight-bold is-size-7 mb-2">
+              🧾 Full command to send
+            </p>
+            <ul class="ml-4" style={{ "list-style": "disc" }}>
+              <For each={aggregatedCommand()}>
+                {(group) => (
+                  <li>
+                    <span class="has-text-weight-bold">{group.quantity}</span>
+                    {" "}
+                    <span>{group.itemName}</span>
+                    <Show when={group.notes.length > 0}>
+                      <span class="has-text-grey is-italic is-size-7 ml-1">
+                        ({group.notes.join(", ")})
+                      </span>
+                    </Show>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </div>
+        </Show>
 
         {/* Individual orders */}
         <div class="table-container">

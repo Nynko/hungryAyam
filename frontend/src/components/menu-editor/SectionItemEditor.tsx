@@ -10,6 +10,9 @@ interface SectionItemEditorProps {
   sectionItem: DraftSectionItem;
   /** Index of this item in the sorted list (needed for drag data). */
   sortedIndex: number;
+  /** When true, only the availability toggle is shown. Item detail editing
+   *  (name, price, description, image, remove) is hidden. */
+  availabilityOnly?: boolean;
 }
 
 /**
@@ -66,6 +69,8 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
 
     onCleanup(state.cleanup);
   });
+
+  const isAvailabilityOnly = () => props.availabilityOnly === true;
 
   const item = () => props.sectionItem.item;
   const displayPrice = () => {
@@ -151,8 +156,8 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
       <div class="is-flex is-justify-content-space-between is-align-items-center">
         <div
           class="is-flex is-align-items-center is-clickable"
-          style={{ flex: "1", "min-width": "0", cursor: "pointer" }}
-          onClick={() => setExpanded(!expanded())}
+          style={{ flex: "1", "min-width": "0", cursor: isAvailabilityOnly() ? "default" : "pointer" }}
+          onClick={() => { if (!isAvailabilityOnly()) setExpanded(!expanded()); }}
         >
           {/* Drag handle */}
           <span
@@ -226,18 +231,32 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
             </Show>
           </span>
 
-          <button
-            class="button is-small is-light"
-            title={expanded() ? "Collapse" : "Expand"}
-            onClick={() => setExpanded(!expanded())}
-          >
-            {expanded() ? "▲" : "▼"}
-          </button>
+          {/* Availability toggle (always visible) */}
+          <Show when={isAvailabilityOnly()}>
+            <button
+              class={`button is-small ${props.sectionItem.is_available ? "is-success is-light" : "is-warning is-light"}`}
+              title={props.sectionItem.is_available ? "Mark unavailable" : "Mark available"}
+              onClick={handleAvailabilityToggle}
+            >
+              {props.sectionItem.is_available ? "✅" : "⏸"}
+            </button>
+          </Show>
+
+          {/* Expand/collapse (hidden in availabilityOnly) */}
+          <Show when={!isAvailabilityOnly()}>
+            <button
+              class="button is-small is-light"
+              title={expanded() ? "Collapse" : "Expand"}
+              onClick={() => setExpanded(!expanded())}
+            >
+              {expanded() ? "▲" : "▼"}
+            </button>
+          </Show>
         </div>
       </div>
 
-      {/* ── Expanded edit form ─────────────────────────────── */}
-      <Show when={expanded()}>
+      {/* ── Expanded edit form (hidden in availabilityOnly) ── */}
+      <Show when={expanded() && !isAvailabilityOnly()}>
         <hr class="my-3" />
         <div class="columns is-multiline">
           {/* Item name */}

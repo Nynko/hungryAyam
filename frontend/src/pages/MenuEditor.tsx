@@ -18,7 +18,7 @@ import {
   addSection,
   moveSectionToIndex,
 } from "@/stores/menuEditorStore";
-import { isAuthenticated } from "@/stores/authStore";
+import { isAuthenticated, isEditor } from "@/stores/authStore";
 import { setupSortableMonitor } from "@/lib/dnd";
 
 // ── Data fetchers ─────────────────────────────────────────────────
@@ -43,6 +43,10 @@ export default function MenuEditor() {
   const navigate = useNavigate();
 
   const isEditMode = () => !!params.menuId;
+
+  // Non-editors on non-permanent menus can only toggle availability + add items
+  const availabilityOnly = () =>
+    !isEditor() && isEditMode() && !editorState.draft.permanent;
   const [modeSelected, setModeSelected] = createSignal(false);
   const [showAddSection, setShowAddSection] = createSignal(false);
   const [newSectionName, setNewSectionName] = createSignal("");
@@ -202,14 +206,16 @@ export default function MenuEditor() {
           </div>
 
           {/* Toolbar (name, description, toggles, save/cancel) */}
-          <MenuEditorToolbar onSaved={handleSaved} onCancel={handleCancel} />
+          <MenuEditorToolbar onSaved={handleSaved} onCancel={handleCancel} availabilityOnly={availabilityOnly()} />
 
-          {/* ── Offer Editor (integrated into menu) ─────────── */}
-          <OfferEditor
-            restaurantId={params.id}
-            menuId={editorState.draft.id}
-            menuSections={editorState.draft.sections as unknown as MenuSection[]}
-          />
+          {/* ── Offer Editor (integrated into menu, editor only) ── */}
+          <Show when={!availabilityOnly()}>
+            <OfferEditor
+              restaurantId={params.id}
+              menuId={editorState.draft.id}
+              menuSections={editorState.draft.sections as unknown as MenuSection[]}
+            />
+          </Show>
 
           {/* ── Sections ────────────────────────────────────── */}
           <div class="mb-4">
@@ -230,7 +236,8 @@ export default function MenuEditor() {
                     depth={0}
                     siblingCount={sortedSections().length}
                     sortedIndex={index()}
-                    draggable={true}
+                    draggable={!availabilityOnly()}
+                    availabilityOnly={availabilityOnly()}
                     onMoveUp={() => moveSectionToIndex(section.id, index() - 1)}
                     onMoveDown={() => moveSectionToIndex(section.id, index() + 1)}
                   />
@@ -249,7 +256,8 @@ export default function MenuEditor() {
               </div>
             </Show>
 
-            {/* Add section */}
+            {/* Add section (hidden in availabilityOnly mode) */}
+            <Show when={!availabilityOnly()}>
             <Show
               when={showAddSection()}
               fallback={
@@ -311,6 +319,7 @@ export default function MenuEditor() {
                   </div>
                 </div>
               </div>
+            </Show>
             </Show>
           </div>
         </Show>

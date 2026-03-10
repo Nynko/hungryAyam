@@ -86,6 +86,10 @@ interface SectionEditorProps {
   onMoveDown?: () => void;
   /** Whether section-level drag-and-drop is enabled (default true). */
   draggable?: boolean;
+  /** When true, only allow toggling item availability and adding items.
+   *  Hides section name/desc editing, reorder, remove, active toggle,
+   *  and add subsection controls. */
+  availabilityOnly?: boolean;
 }
 
 export default function SectionEditor(props: SectionEditorProps) {
@@ -363,57 +367,66 @@ export default function SectionEditor(props: SectionEditorProps) {
             ⠿
           </span>
 
-          {/* Name — click to edit */}
+          {/* Name — click to edit (read-only in availabilityOnly mode) */}
           <Show
-            when={!editingName()}
+            when={!props.availabilityOnly}
             fallback={
-              <div class="field has-addons mb-0" style={{ flex: "1" }}>
-                <div class="control is-expanded">
-                  <input
-                    class="input is-small"
-                    type="text"
-                    value={nameValue()}
-                    onInput={(e) => setNameValue(e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitName();
-                      if (e.key === "Escape") {
-                        setNameValue(props.section.name);
-                        setEditingName(false);
-                      }
-                    }}
-                    ref={(el) => setTimeout(() => el.focus(), 0)}
-                  />
-                </div>
-                <div class="control">
-                  <button class="button is-small is-primary" onClick={commitName}>
-                    ✓
-                  </button>
-                </div>
-                <div class="control">
-                  <button
-                    class="button is-small is-light"
-                    onClick={() => {
-                      setNameValue(props.section.name);
-                      setEditingName(false);
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
+              <span class={`has-text-weight-bold ${headingClass()}`}>
+                {props.section.name || "(unnamed section)"}
+              </span>
             }
           >
-            <span
-              class={`has-text-weight-bold ${headingClass()} is-clickable`}
-              style={{ cursor: "text" }}
-              onClick={() => {
-                setNameValue(props.section.name);
-                setEditingName(true);
-              }}
-              title="Click to edit name"
+            <Show
+              when={!editingName()}
+              fallback={
+                <div class="field has-addons mb-0" style={{ flex: "1" }}>
+                  <div class="control is-expanded">
+                    <input
+                      class="input is-small"
+                      type="text"
+                      value={nameValue()}
+                      onInput={(e) => setNameValue(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitName();
+                        if (e.key === "Escape") {
+                          setNameValue(props.section.name);
+                          setEditingName(false);
+                        }
+                      }}
+                      ref={(el) => setTimeout(() => el.focus(), 0)}
+                    />
+                  </div>
+                  <div class="control">
+                    <button class="button is-small is-primary" onClick={commitName}>
+                      ✓
+                    </button>
+                  </div>
+                  <div class="control">
+                    <button
+                      class="button is-small is-light"
+                      onClick={() => {
+                        setNameValue(props.section.name);
+                        setEditingName(false);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              }
             >
-              {props.section.name || "(unnamed section)"}
-            </span>
+              <span
+                class={`has-text-weight-bold ${headingClass()} is-clickable`}
+                style={{ cursor: "text" }}
+                onClick={() => {
+                  setNameValue(props.section.name);
+                  setEditingName(true);
+                }}
+                title="Click to edit name"
+              >
+                {props.section.name || "(unnamed section)"}
+              </span>
+            </Show>
           </Show>
 
           {/* Badges */}
@@ -436,8 +449,8 @@ export default function SectionEditor(props: SectionEditorProps) {
 
         {/* Right: controls */}
         <div class="is-flex is-align-items-center ml-3" style={{ "flex-shrink": "0" }}>
-          {/* Move up/down */}
-          <Show when={props.sortedIndex > 0}>
+          {/* Move up/down (hidden in availabilityOnly) */}
+          <Show when={!props.availabilityOnly && props.sortedIndex > 0}>
             <button
               class="button is-small is-light mr-1"
               title="Move up"
@@ -446,7 +459,7 @@ export default function SectionEditor(props: SectionEditorProps) {
               ↑
             </button>
           </Show>
-          <Show when={props.sortedIndex < props.siblingCount - 1}>
+          <Show when={!props.availabilityOnly && props.sortedIndex < props.siblingCount - 1}>
             <button
               class="button is-small is-light mr-1"
               title="Move down"
@@ -456,14 +469,16 @@ export default function SectionEditor(props: SectionEditorProps) {
             </button>
           </Show>
 
-          {/* Toggle active */}
-          <button
-            class={`button is-small mr-1 ${props.section.is_active ? "is-success is-light" : "is-warning is-light"}`}
-            title={props.section.is_active ? "Deactivate" : "Activate"}
-            onClick={handleToggleActive}
-          >
-            {props.section.is_active ? "👁" : "👁‍🗨"}
-          </button>
+          {/* Toggle active (hidden in availabilityOnly) */}
+          <Show when={!props.availabilityOnly}>
+            <button
+              class={`button is-small mr-1 ${props.section.is_active ? "is-success is-light" : "is-warning is-light"}`}
+              title={props.section.is_active ? "Deactivate" : "Activate"}
+              onClick={handleToggleActive}
+            >
+              {props.section.is_active ? "👁" : "👁‍🗨"}
+            </button>
+          </Show>
 
           {/* Collapse/expand */}
           <button
@@ -474,74 +489,88 @@ export default function SectionEditor(props: SectionEditorProps) {
             {collapsed() ? "▶" : "▼"}
           </button>
 
-          {/* Remove */}
-          <button
-            class={`button is-small ${confirmRemove() ? "is-danger" : "is-danger is-outlined"}`}
-            title="Remove section"
-            onClick={handleRemove}
-          >
-            {confirmRemove() ? "Confirm?" : "🗑"}
-          </button>
+          {/* Remove (hidden in availabilityOnly) */}
+          <Show when={!props.availabilityOnly}>
+            <button
+              class={`button is-small ${confirmRemove() ? "is-danger" : "is-danger is-outlined"}`}
+              title="Remove section"
+              onClick={handleRemove}
+            >
+              {confirmRemove() ? "Confirm?" : "🗑"}
+            </button>
+          </Show>
         </div>
       </div>
 
       {/* ── Description ────────────────────────────────────── */}
       <Show when={!collapsed()}>
+        {/* Description — editable or read-only depending on mode */}
         <Show
-          when={!editingDesc()}
+          when={!props.availabilityOnly}
           fallback={
-            <div class="field has-addons mt-2 mb-0">
-              <div class="control is-expanded">
-                <input
-                  class="input is-small"
-                  type="text"
-                  placeholder="Section description (optional)"
-                  value={descValue()}
-                  onInput={(e) => setDescValue(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitDescription();
-                    if (e.key === "Escape") {
-                      setDescValue(props.section.description ?? "");
-                      setEditingDesc(false);
-                    }
-                  }}
-                  ref={(el) => setTimeout(() => el.focus(), 0)}
-                />
-              </div>
-              <div class="control">
-                <button class="button is-small is-primary" onClick={commitDescription}>
-                  ✓
-                </button>
-              </div>
-              <div class="control">
-                <button
-                  class="button is-small is-light"
-                  onClick={() => {
-                    setDescValue(props.section.description ?? "");
-                    setEditingDesc(false);
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
+            <Show when={props.section.description}>
+              <p class="has-text-grey is-size-7 mt-1">
+                {props.section.description}
+              </p>
+            </Show>
           }
         >
-          <p
-            class="has-text-grey is-size-7 mt-1 is-clickable"
-            style={{ cursor: "text", "min-height": "1.2em" }}
-            onClick={() => {
-              setDescValue(props.section.description ?? "");
-              setEditingDesc(true);
-            }}
-            title="Click to edit description"
+          <Show
+            when={!editingDesc()}
+            fallback={
+              <div class="field has-addons mt-2 mb-0">
+                <div class="control is-expanded">
+                  <input
+                    class="input is-small"
+                    type="text"
+                    placeholder="Section description (optional)"
+                    value={descValue()}
+                    onInput={(e) => setDescValue(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitDescription();
+                      if (e.key === "Escape") {
+                        setDescValue(props.section.description ?? "");
+                        setEditingDesc(false);
+                      }
+                    }}
+                    ref={(el) => setTimeout(() => el.focus(), 0)}
+                  />
+                </div>
+                <div class="control">
+                  <button class="button is-small is-primary" onClick={commitDescription}>
+                    ✓
+                  </button>
+                </div>
+                <div class="control">
+                  <button
+                    class="button is-small is-light"
+                    onClick={() => {
+                      setDescValue(props.section.description ?? "");
+                      setEditingDesc(false);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            }
           >
-            {props.section.description || (
-              <span class="has-text-grey-light is-italic">
-                Click to add a description…
-              </span>
-            )}
-          </p>
+            <p
+              class="has-text-grey is-size-7 mt-1 is-clickable"
+              style={{ cursor: "text", "min-height": "1.2em" }}
+              onClick={() => {
+                setDescValue(props.section.description ?? "");
+                setEditingDesc(true);
+              }}
+              title="Click to edit description"
+            >
+              {props.section.description || (
+                <span class="has-text-grey-light is-italic">
+                  Click to add a description…
+                </span>
+              )}
+            </p>
+          </Show>
         </Show>
 
         {/* ── Items toolbar (search, filter, bulk actions) ──── */}
@@ -665,6 +694,7 @@ export default function SectionEditor(props: SectionEditorProps) {
                   sectionId={props.section.id}
                   sectionItem={sectionItem}
                   sortedIndex={index()}
+                  availabilityOnly={props.availabilityOnly}
                 />
               )}
             </For>
@@ -787,7 +817,8 @@ export default function SectionEditor(props: SectionEditorProps) {
                   depth={depth() + 1}
                   siblingCount={sortedSubsections().length}
                   sortedIndex={index()}
-                  draggable={true}
+                  draggable={!props.availabilityOnly}
+                  availabilityOnly={props.availabilityOnly}
                   onMoveUp={() => moveSectionToIndex(subsection.id, index() - 1)}
                   onMoveDown={() => moveSectionToIndex(subsection.id, index() + 1)}
                 />
@@ -796,60 +827,62 @@ export default function SectionEditor(props: SectionEditorProps) {
           </div>
         </Show>
 
-        {/* ── Add subsection form ───────────────────────────── */}
-        <Show
-          when={showAddSubsection()}
-          fallback={
-            <button
-              class="button is-small is-primary is-outlined mt-2"
-              onClick={() => setShowAddSubsection(true)}
-            >
-              <span class="icon is-small">
-                <span>📁</span>
-              </span>
-              <span>Add subsection</span>
-            </button>
-          }
-        >
-          <div class="box p-3 mt-3 has-background-success-light">
-            <p class="has-text-weight-semibold is-size-7 mb-2">New subsection</p>
-            <div class="field has-addons">
-              <div class="control is-expanded">
-                <input
-                  class="input is-small"
-                  type="text"
-                  placeholder="Subsection name"
-                  value={newSubsectionName()}
-                  onInput={(e) => setNewSubsectionName(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleAddSubsection();
-                    if (e.key === "Escape") setShowAddSubsection(false);
-                  }}
-                  ref={(el) => setTimeout(() => el.focus(), 0)}
-                />
-              </div>
-              <div class="control">
-                <button
-                  class="button is-small is-primary"
-                  disabled={!newSubsectionName().trim()}
-                  onClick={handleAddSubsection}
-                >
-                  Add
-                </button>
-              </div>
-              <div class="control">
-                <button
-                  class="button is-small is-light"
-                  onClick={() => {
-                    setShowAddSubsection(false);
-                    setNewSubsectionName("");
-                  }}
-                >
-                  Cancel
-                </button>
+        {/* ── Add subsection form (hidden in availabilityOnly) ── */}
+        <Show when={!props.availabilityOnly}>
+          <Show
+            when={showAddSubsection()}
+            fallback={
+              <button
+                class="button is-small is-primary is-outlined mt-2"
+                onClick={() => setShowAddSubsection(true)}
+              >
+                <span class="icon is-small">
+                  <span>📁</span>
+                </span>
+                <span>Add subsection</span>
+              </button>
+            }
+          >
+            <div class="box p-3 mt-3 has-background-success-light">
+              <p class="has-text-weight-semibold is-size-7 mb-2">New subsection</p>
+              <div class="field has-addons">
+                <div class="control is-expanded">
+                  <input
+                    class="input is-small"
+                    type="text"
+                    placeholder="Subsection name"
+                    value={newSubsectionName()}
+                    onInput={(e) => setNewSubsectionName(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddSubsection();
+                      if (e.key === "Escape") setShowAddSubsection(false);
+                    }}
+                    ref={(el) => setTimeout(() => el.focus(), 0)}
+                  />
+                </div>
+                <div class="control">
+                  <button
+                    class="button is-small is-primary"
+                    disabled={!newSubsectionName().trim()}
+                    onClick={handleAddSubsection}
+                  >
+                    Add
+                  </button>
+                </div>
+                <div class="control">
+                  <button
+                    class="button is-small is-light"
+                    onClick={() => {
+                      setShowAddSubsection(false);
+                      setNewSubsectionName("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          </Show>
         </Show>
       </Show>
     </div>

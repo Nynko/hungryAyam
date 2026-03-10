@@ -18,6 +18,9 @@ import { showConfirm } from "@/stores/confirmStore";
 interface MenuEditorToolbarProps {
   onSaved?: () => void;
   onCancel: () => void;
+  /** When true, hide menu metadata fields (name, description, toggles) and
+   *  the reset button. Only show save/discard/cancel actions. */
+  availabilityOnly?: boolean;
 }
 
 export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
@@ -108,90 +111,104 @@ export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
         </div>
       </Show>
 
-      {/* ── Menu metadata fields ──────────────────────────── */}
-      <div class="columns is-multiline">
-        {/* Name */}
-        <div class="column is-6">
-          <div class="field">
-            <label class="label">Menu name</label>
-            <div class="control">
-              <input
-                class="input"
-                type="text"
-                placeholder="e.g. Lunch Menu"
-                value={editorState.draft.name}
-                onInput={(e) => updateMenuName(e.currentTarget.value)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Description */}
-        <div class="column is-6">
-          <div class="field">
-            <label class="label">Description</label>
-            <div class="control">
-              <input
-                class="input"
-                type="text"
-                placeholder="Optional description"
-                value={editorState.draft.description ?? ""}
-                onInput={(e) =>
-                  updateMenuDescription(e.currentTarget.value || null)
-                }
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Toggles */}
-        <div class="column is-6">
-          <div class="field is-grouped">
-            <div class="control">
-              <label class="checkbox">
-                <input
-                  type="checkbox"
-                  checked={editorState.draft.is_active}
-                  onChange={(e) => updateMenuIsActive(e.currentTarget.checked)}
-                />{" "}
-                Active
-              </label>
-              <p class="help has-text-grey">
-                Active menus are visible to users
-              </p>
-            </div>
-
-            <div class="control ml-5">
-              <label class="checkbox">
-                <input
-                  type="checkbox"
-                  checked={editorState.draft.permanent}
-                  onChange={(e) => updateMenuPermanent(e.currentTarget.checked)}
-                />{" "}
-                Permanent
-              </label>
-              <p class="help has-text-grey">
-                Permanent menus keep items between resets
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Action count (edit mode only) */}
-        <Show when={!editorState.isNewMenu && actionQueue().length > 0}>
+      {/* ── Menu metadata fields (hidden in availabilityOnly mode) ── */}
+      <Show when={!props.availabilityOnly}>
+        <div class="columns is-multiline">
+          {/* Name */}
           <div class="column is-6">
             <div class="field">
-              <label class="label">Pending changes</label>
-              <p class="is-size-7 has-text-grey">
-                <span class="tag is-info is-light mr-1">
-                  {actionQueue().length}
-                </span>
-                action{actionQueue().length !== 1 ? "s" : ""} queued
-              </p>
+              <label class="label">Menu name</label>
+              <div class="control">
+                <input
+                  class="input"
+                  type="text"
+                  placeholder="e.g. Lunch Menu"
+                  value={editorState.draft.name}
+                  onInput={(e) => updateMenuName(e.currentTarget.value)}
+                />
+              </div>
             </div>
           </div>
-        </Show>
-      </div>
+
+          {/* Description */}
+          <div class="column is-6">
+            <div class="field">
+              <label class="label">Description</label>
+              <div class="control">
+                <input
+                  class="input"
+                  type="text"
+                  placeholder="Optional description"
+                  value={editorState.draft.description ?? ""}
+                  onInput={(e) =>
+                    updateMenuDescription(e.currentTarget.value || null)
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Toggles */}
+          <div class="column is-6">
+            <div class="field is-grouped">
+              <div class="control">
+                <label class="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={editorState.draft.is_active}
+                    onChange={(e) => updateMenuIsActive(e.currentTarget.checked)}
+                  />{" "}
+                  Active
+                </label>
+                <p class="help has-text-grey">
+                  Active menus are visible to users
+                </p>
+              </div>
+
+              <div class="control ml-5">
+                <label class="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={editorState.draft.permanent}
+                    onChange={(e) => updateMenuPermanent(e.currentTarget.checked)}
+                  />{" "}
+                  Permanent
+                </label>
+                <p class="help has-text-grey">
+                  Permanent menus keep items between resets
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Action count (edit mode only) */}
+          <Show when={!editorState.isNewMenu && actionQueue().length > 0}>
+            <div class="column is-6">
+              <div class="field">
+                <label class="label">Pending changes</label>
+                <p class="is-size-7 has-text-grey">
+                  <span class="tag is-info is-light mr-1">
+                    {actionQueue().length}
+                  </span>
+                  action{actionQueue().length !== 1 ? "s" : ""} queued
+                </p>
+              </div>
+            </div>
+          </Show>
+        </div>
+      </Show>
+
+      {/* ── Availability-only mode header ──────────────────── */}
+      <Show when={props.availabilityOnly}>
+        <div class="mb-3">
+          <p class="has-text-weight-semibold is-size-5 mb-1">
+            {editorState.draft.name || "Menu"}
+          </p>
+          <p class="has-text-grey is-size-7">
+            Choose which items are available today. You can also add new items.
+          </p>
+        </div>
+      </Show>
 
       {/* ── Action buttons ────────────────────────────────── */}
       <hr class="my-3" />
@@ -230,8 +247,8 @@ export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
         </div>
 
         <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
-          {/* Reset button — only for non-permanent menus in edit mode */}
-          <Show when={!editorState.isNewMenu && !editorState.draft.permanent}>
+          {/* Reset button — only for non-permanent menus in edit mode, hidden in availabilityOnly */}
+          <Show when={!props.availabilityOnly && !editorState.isNewMenu && !editorState.draft.permanent}>
             <button
               class="button is-danger is-outlined"
               classList={{ "is-loading": editorSaving() }}

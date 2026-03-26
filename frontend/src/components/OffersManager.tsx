@@ -10,6 +10,7 @@ import type { UpdateOffer } from "@bindings/UpdateOffer";
 import type { Menu } from "@bindings/Menu";
 import type { MenuSection } from "@bindings/MenuSection";
 import { Card } from "@/components/Card";
+import AvailabilityRuleEditor from "@/components/AvailabilityRuleEditor";
 import {
   fetchOffers,
   getOffers,
@@ -1138,6 +1139,20 @@ export default function OffersManager(props: OffersManagerProps) {
               </span>
             </button>
           </div>
+        </div>
+
+        {/* ── Availability Rule ────────────────────────────────── */}
+        <div class="mt-2 pt-2" style={{ "border-top": "1px solid hsl(0, 0%, 93%)" }}>
+          <div class="is-flex is-align-items-center mb-1">
+            <span class="is-size-7 has-text-weight-semibold has-text-grey-dark mr-1">🕐</span>
+            <span class="is-size-7 has-text-weight-semibold has-text-grey-dark">Availability</span>
+          </div>
+          <AvailabilityRuleEditor
+            rule={offer.availability_rule}
+            entityType="offer"
+            entityId={offer.id}
+            onChanged={() => fetchOffers(props.restaurantId)}
+          />
         </div>
       </div>
     );

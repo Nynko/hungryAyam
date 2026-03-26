@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import type { Restaurant } from "@bindings/Restaurant";
 import type { CreateRestaurant } from "@bindings/CreateRestaurant";
+import type { UpdateRestaurant } from "@bindings/UpdateRestaurant";
 import type { ApiResponse } from "@bindings/ApiResponse";
 
 // ── State ─────────────────────────────────────────────────────────
@@ -105,6 +106,50 @@ async function createRestaurant(
 }
 
 /**
+ * Update a restaurant via `POST /api/update-restaurant`.
+ *
+ * On success the local cache is updated in-place.
+ *
+ * Returns the updated `Restaurant` on success, or `null` on failure
+ * (the error message is available via `restaurantsError()`).
+ */
+async function updateRestaurant(
+  request: UpdateRestaurant,
+): Promise<Restaurant | null> {
+  try {
+    setRestaurantsLoading(true);
+    setRestaurantsError(null);
+
+    const res = await fetch("/api/update-restaurant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    const json: ApiResponse<Restaurant> = await res.json();
+
+    if (res.ok && json.success && json.data != null) {
+      // Update in the local cache so the UI updates immediately.
+      setRestaurants((prev) =>
+        prev.map((r) => (r.id === json.data!.id ? json.data! : r)),
+      );
+      return json.data;
+    } else {
+      const msg = json.error ?? `Update failed with status ${res.status}`;
+      setRestaurantsError(msg);
+      return null;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setRestaurantsError(msg);
+    console.error("[restaurantStore] Failed to update restaurant:", msg);
+    return null;
+  } finally {
+    setRestaurantsLoading(false);
+  }
+}
+
+/**
  * Clear the local cache (e.g. on logout or when navigating away).
  */
 function clearRestaurants(): void {
@@ -128,6 +173,7 @@ export {
   fetchRestaurants,
   refetchRestaurants,
   createRestaurant,
+  updateRestaurant,
   clearRestaurants,
   clearRestaurantsError,
 };

@@ -554,7 +554,7 @@ export default function RestaurantPage() {
               <Show when={!orderingMode()}>
                 {/* ── Restaurant Settings (editor only) ────────── */}
                 <Show when={isEditor()}>
-                  <RestaurantSettingsPanel restaurantId={r().id} />
+                  <RestaurantSettingsPanel restaurantId={r().id} restaurant={r()} />
                 </Show>
 
                 {/* ── Offers Manager (editor only) ─────────────── */}

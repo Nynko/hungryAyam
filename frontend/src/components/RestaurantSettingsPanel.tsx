@@ -1,6 +1,9 @@
 import { Show, createSignal, createEffect, onMount } from "solid-js";
 import type { RestaurantOrderSettings } from "@bindings/RestaurantOrderSettings";
 import type { UpdateOrderSettingsRequest } from "@bindings/UpdateOrderSettingsRequest";
+import type { UpdateRestaurant } from "@bindings/UpdateRestaurant";
+import type { AvailabilityRule } from "@bindings/AvailabilityRule";
+import type { Restaurant } from "@bindings/Restaurant";
 import {
   fetchOrderSettings,
   updateOrderSettings,
@@ -8,9 +11,12 @@ import {
   orderError,
   clearOrderError,
 } from "@/stores/orderStore";
+import { updateRestaurant as updateRestaurantApi, restaurantsError, clearRestaurantsError } from "@/stores/restaurantStore";
+import AvailabilityRuleEditor from "@/components/AvailabilityRuleEditor";
 
 interface RestaurantSettingsPanelProps {
   restaurantId: string;
+  restaurant?: Restaurant | null;
 }
 
 /**
@@ -57,6 +63,12 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
   const [menuResetTime, setMenuResetTime] = createSignal("");
   const [timezone, setTimezone] = createSignal("");
 
+  // ── Restaurant info form state ──────────────────────────────
+  const [restaurantName, setRestaurantName] = createSignal("");
+  const [restaurantImageUrl, setRestaurantImageUrl] = createSignal("");
+  const [restaurantSaving, setRestaurantSaving] = createSignal(false);
+  const [restaurantSuccess, setRestaurantSuccess] = createSignal<string | null>(null);
+
   // ── Load settings ───────────────────────────────────────────
   const loadSettings = async () => {
     setLoading(true);
@@ -88,6 +100,15 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
     loadSettings();
   });
 
+  // ── Populate restaurant fields ──────────────────────────────
+  createEffect(() => {
+    const r = props.restaurant;
+    if (r) {
+      setRestaurantName(r.name);
+      setRestaurantImageUrl(r.image_url ?? "");
+    }
+  });
+
   // Auto-dismiss success message
   createEffect(() => {
     if (success()) {
@@ -95,6 +116,44 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       return () => clearTimeout(timer);
     }
   });
+
+  createEffect(() => {
+    if (restaurantSuccess()) {
+      const timer = setTimeout(() => setRestaurantSuccess(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  });
+
+  // ── Save restaurant info ────────────────────────────────────
+  const handleSaveRestaurant = async () => {
+    const r = props.restaurant;
+    if (!r) return;
+
+    const trimmedName = restaurantName().trim();
+    if (!trimmedName) {
+      setError("Restaurant name is required.");
+      return;
+    }
+
+    setRestaurantSaving(true);
+    setError(null);
+    clearRestaurantsError();
+
+    const request: UpdateRestaurant = {
+      id: r.id,
+      name: trimmedName,
+      image_url: restaurantImageUrl().trim() || null,
+    };
+
+    const result = await updateRestaurantApi(request);
+    setRestaurantSaving(false);
+
+    if (result) {
+      setRestaurantSuccess("Restaurant info saved!");
+    } else {
+      setError(restaurantsError() || "Failed to save restaurant info.");
+    }
+  };
 
   // ── Save ────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -168,6 +227,12 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
     "Pacific/Auckland",
   ];
 
+  // ── Availability ────────────────────────────────────────────
+  const handleAvailabilityChanged = (_rule: AvailabilityRule | null) => {
+    // The parent can refetch if needed. For now the AvailabilityRuleEditor
+    // manages its own display state.
+  };
+
   const displayError = () => error() || (expanded() ? orderError() : null);
 
   return (
@@ -183,10 +248,10 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
         <div>
           <h3 class="title is-5 mb-0">
             <span class="mr-2">⚙️</span>
-            Order & Menu Settings
+            Restaurant Settings
           </h3>
           <p class="has-text-grey is-size-7 mt-1">
-            Configure auto-reset, auto-close, and default session timing
+            Configure restaurant info, availability, ordering, and scheduling
           </p>
         </div>
         <button class="button is-small is-light">
@@ -228,6 +293,100 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
         </Show>
 
         <Show when={settings() && !loading()}>
+          {/* ── Restaurant Info ─────────────────────────────── */}
+          <div class="mb-4">
+            <h4 class="title is-6 mb-2">
+              <span class="mr-1">🏪</span> Restaurant Info
+            </h4>
+
+            <Show when={restaurantSuccess()}>
+              <div class="notification is-success is-light py-2 px-3 mb-3" style={{ "font-size": "0.85rem" }}>
+                <button class="delete is-small" onClick={() => setRestaurantSuccess(null)} />
+                {restaurantSuccess()}
+              </div>
+            </Show>
+
+            <div class="columns is-multiline">
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">Name</label>
+                  <div class="control">
+                    <input
+                      class="input"
+                      type="text"
+                      placeholder="Restaurant name"
+                      value={restaurantName()}
+                      onInput={(e) => setRestaurantName(e.currentTarget.value)}
+                      disabled={restaurantSaving()}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">Image URL</label>
+                  <div class="control">
+                    <input
+                      class="input"
+                      type="url"
+                      placeholder="https://example.com/logo.png (optional)"
+                      value={restaurantImageUrl()}
+                      onInput={(e) => setRestaurantImageUrl(e.currentTarget.value)}
+                      disabled={restaurantSaving()}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Show when={restaurantImageUrl().trim()}>
+                <div class="column is-12">
+                  <div class="field">
+                    <label class="label is-small">Preview</label>
+                    <figure
+                      class="image is-3by2"
+                      style={{
+                        "max-width": "200px",
+                        "background-color": "var(--bulma-scheme-main-bis)",
+                        overflow: "hidden",
+                        "border-radius": "4px",
+                      }}
+                    >
+                      <img
+                        src={restaurantImageUrl().trim()}
+                        alt="Preview"
+                        style={{
+                          "object-fit": "cover",
+                          width: "100%",
+                          height: "100%",
+                        }}
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    </figure>
+                  </div>
+                </div>
+              </Show>
+
+              <div class="column is-12">
+                <div class="is-flex is-justify-content-flex-end">
+                  <button
+                    class="button is-primary is-small"
+                    classList={{ "is-loading": restaurantSaving() }}
+                    disabled={restaurantSaving() || !restaurantName().trim()}
+                    onClick={handleSaveRestaurant}
+                  >
+                    <span class="icon is-small"><span>💾</span></span>
+                    <span>Save Info</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <hr class="my-3" />
+          </div>
+
           <div class="columns is-multiline">
             {/* ── Default session start time ─────────────── */}
             <div class="column is-6">
@@ -437,6 +596,25 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
                   </li>
                 </ul>
               </div>
+            </div>
+
+            {/* ── Availability Rule ─────────────────────────── */}
+            <div class="column is-12">
+              <hr class="my-2" />
+              <h4 class="title is-6 mb-2">
+                <span class="mr-1">🕐</span> Availability
+              </h4>
+              <p class="has-text-grey is-size-7 mb-3">
+                Control when this restaurant is available for ordering.
+                When an availability rule is active, the restaurant will only
+                be accessible during the specified times/days.
+              </p>
+              <AvailabilityRuleEditor
+                rule={props.restaurant?.availability_rule ?? null}
+                entityType="restaurant"
+                entityId={props.restaurantId}
+                onChanged={handleAvailabilityChanged}
+              />
             </div>
           </div>
 

@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::{
     features::{
+        availability::{db_model::AvailabilityRuleRow, domain::AvailabilityRule},
         item::{domain::{item::Item, tag::Tag}, repository::ItemRepository},
         menu::{
             db_model::{MenuRow, MenuSectionItemRow, MenuSectionRow},
@@ -55,7 +56,8 @@ impl MenuRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             "#,
             request.restaurant_id,
             request.name.as_ref(),
@@ -75,7 +77,7 @@ impl MenuRepository {
 
         tx.commit().await?;
 
-        Ok(self.row_to_menu(menu_row, sections))
+        Ok(self.row_to_menu(menu_row, sections, None))
     }
 
     /// Get a menu by ID with all sections and items
@@ -93,7 +95,8 @@ impl MenuRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             FROM menus
             WHERE id = $1
             "#,
@@ -105,7 +108,8 @@ impl MenuRepository {
         match menu_row {
             Some(row) => {
                 let sections = self.load_menu_sections(row.id).await?;
-                Ok(Some(self.row_to_menu(row, sections)))
+                let availability_rule = self.load_availability_rule(row.availability_rule_id).await?;
+                Ok(Some(self.row_to_menu(row, sections, availability_rule)))
             }
             None => Ok(None),
         }
@@ -126,7 +130,8 @@ impl MenuRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             FROM menus
             WHERE restaurant_id = $1
             ORDER BY name ASC
@@ -139,7 +144,8 @@ impl MenuRepository {
         let mut menus = Vec::with_capacity(menu_rows.len());
         for row in menu_rows {
             let sections = self.load_menu_sections(row.id).await?;
-            menus.push(self.row_to_menu(row, sections));
+            let availability_rule = self.load_availability_rule(row.availability_rule_id).await?;
+            menus.push(self.row_to_menu(row, sections, availability_rule));
         }
 
         Ok(menus)
@@ -160,7 +166,8 @@ impl MenuRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             FROM menus
             WHERE restaurant_id = $1 AND is_active = true
             ORDER BY name ASC
@@ -173,7 +180,8 @@ impl MenuRepository {
         let mut menus = Vec::with_capacity(menu_rows.len());
         for row in menu_rows {
             let sections = self.load_menu_sections(row.id).await?;
-            menus.push(self.row_to_menu(row, sections));
+            let availability_rule = self.load_availability_rule(row.availability_rule_id).await?;
+            menus.push(self.row_to_menu(row, sections, availability_rule));
         }
 
         Ok(menus)
@@ -1020,7 +1028,32 @@ impl MenuRepository {
 
     // ==================== CONVERSION HELPERS ====================
 
-    fn row_to_menu(&self, row: MenuRow, sections: Vec<MenuSection>) -> Menu {
+    async fn load_availability_rule(&self, rule_id: Option<Uuid>) -> Result<Option<AvailabilityRule>> {
+        match rule_id {
+            Some(id) => {
+                let row = sqlx::query_as!(
+                    AvailabilityRuleRow,
+                    r#"SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                       FROM availability_rules WHERE id = $1"#,
+                    id
+                )
+                .fetch_optional(&self.pool)
+                .await?;
+                Ok(row.map(|r| AvailabilityRule {
+                    id: r.id,
+                    valid_from: r.valid_from,
+                    valid_to: r.valid_to,
+                    start_time: r.start_time,
+                    end_time: r.end_time,
+                    weekdays: r.weekdays,
+                    active: r.active,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn row_to_menu(&self, row: MenuRow, sections: Vec<MenuSection>, availability_rule: Option<AvailabilityRule>) -> Menu {
         Menu {
             id: row.id,
             restaurant_id: row.restaurant_id,
@@ -1032,6 +1065,7 @@ impl MenuRepository {
             created_by: row.created_by,
             updated_by: row.updated_by,
             sections,
+            availability_rule,
         }
     }
 

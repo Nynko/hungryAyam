@@ -22,4 +22,5 @@ pub struct ItemRow {
     pub updated_at: DateTime<Utc>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
+    pub availability_rule_id: Option<Uuid>,
 }

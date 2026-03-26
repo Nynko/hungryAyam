@@ -7,11 +7,12 @@ use crate::types::{
     url::UrlString,
     name::Name
 };
+use crate::features::availability::domain::AvailabilityRule;
 
 #[domain_struct(create, update)]
 // Remove derive(TS) and #[ts(export)] if the front end dto diverge from the domain
 // With validated types implementing sqlx traits, we can derive FromRow directly!
-#[derive(Debug, Clone, Serialize, Deserialize, TS, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Restaurant {
     #[create_ignore]
@@ -27,4 +28,10 @@ pub struct Restaurant {
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]
     pub updated_at: DateTime<Utc>,
+
+    /// Optional availability rule controlling when this restaurant is available.
+    /// Populated on read; ignored on create/update (assigned via separate endpoint).
+    #[serde(default)]
+    #[derived_domain_ignore]
+    pub availability_rule: Option<AvailabilityRule>,
 }

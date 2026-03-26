@@ -3,11 +3,17 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    features::offer::{
-        db_model::{OfferRow, OfferSlotConstraintRow, OfferSlotRow},
-        domain::{
-            CreateOffer, CreateOfferSlot, CreateOfferSlotConstraint, Offer, OfferSlot,
-            OfferSlotConstraint, SlotConstraintKind, UpdateOffer,
+    features::{
+        availability::{
+            db_model::AvailabilityRuleRow,
+            domain::AvailabilityRule,
+        },
+        offer::{
+            db_model::{OfferRow, OfferSlotConstraintRow, OfferSlotRow},
+            domain::{
+                CreateOffer, CreateOfferSlot, CreateOfferSlotConstraint, Offer, OfferSlot,
+                OfferSlotConstraint, SlotConstraintKind, UpdateOffer,
+            },
         },
     },
     types::{name::Name, price::PriceCents},
@@ -43,7 +49,8 @@ impl OfferRepository {
                 base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
-                created_by
+                created_by,
+                availability_rule_id
             "#,
             request.restaurant_id,
             request.menu_id,
@@ -66,7 +73,7 @@ impl OfferRepository {
 
         tx.commit().await?;
 
-        Ok(self.row_to_offer(offer_row, slots))
+        Ok(self.row_to_offer(offer_row, slots, None))
     }
 
     /// Get an offer by ID with all slots and constraints loaded.
@@ -83,7 +90,8 @@ impl OfferRepository {
                 base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
-                created_by
+                created_by,
+                availability_rule_id
             FROM offers
             WHERE id = $1
             "#,
@@ -95,7 +103,8 @@ impl OfferRepository {
         match offer_row {
             Some(row) => {
                 let slots = self.load_slots_for_offer(row.id).await?;
-                Ok(Some(self.row_to_offer(row, slots)))
+                let rule = self.load_availability_rule(row.availability_rule_id).await?;
+                Ok(Some(self.row_to_offer(row, slots, rule)))
             }
             None => Ok(None),
         }
@@ -115,7 +124,8 @@ impl OfferRepository {
                 base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
-                created_by
+                created_by,
+                availability_rule_id
             FROM offers
             WHERE restaurant_id = $1
             ORDER BY created_at DESC
@@ -142,7 +152,8 @@ impl OfferRepository {
                 base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
-                created_by
+                created_by,
+                availability_rule_id
             FROM offers
             WHERE restaurant_id = $1 AND is_active = true
             ORDER BY created_at DESC
@@ -181,7 +192,8 @@ impl OfferRepository {
                 base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
-                created_by
+                created_by,
+                availability_rule_id
             "#,
             request.menu_id,
             request.title.as_ref().map(|n| n.as_ref()),
@@ -220,7 +232,8 @@ impl OfferRepository {
 
         tx.commit().await?;
 
-        Ok(Some(self.row_to_offer(offer_row, slots)))
+        let rule = self.load_availability_rule(offer_row.availability_rule_id).await?;
+        Ok(Some(self.row_to_offer(offer_row, slots, rule)))
     }
 
     /// Delete an offer by ID. Returns true if a row was deleted.
@@ -248,7 +261,8 @@ impl OfferRepository {
                 base_price_cents as "base_price_cents: PriceCents",
                 is_active,
                 created_at,
-                created_by
+                created_by,
+                availability_rule_id
             "#,
             active,
             id,
@@ -259,7 +273,8 @@ impl OfferRepository {
         match offer_row {
             Some(row) => {
                 let slots = self.load_slots_for_offer(row.id).await?;
-                Ok(Some(self.row_to_offer(row, slots)))
+                let rule = self.load_availability_rule(row.availability_rule_id).await?;
+                Ok(Some(self.row_to_offer(row, slots, rule)))
             }
             None => Ok(None),
         }
@@ -630,6 +645,32 @@ impl OfferRepository {
         Ok(slots)
     }
 
+    /// Load an availability rule by ID, if present.
+    async fn load_availability_rule(&self, rule_id: Option<Uuid>) -> Result<Option<AvailabilityRule>> {
+        match rule_id {
+            Some(id) => {
+                let row = sqlx::query_as!(
+                    AvailabilityRuleRow,
+                    r#"SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                       FROM availability_rules WHERE id = $1"#,
+                    id
+                )
+                .fetch_optional(&self.pool)
+                .await?;
+                Ok(row.map(|r| AvailabilityRule {
+                    id: r.id,
+                    valid_from: r.valid_from,
+                    valid_to: r.valid_to,
+                    start_time: r.start_time,
+                    end_time: r.end_time,
+                    weekdays: r.weekdays,
+                    active: r.active,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Convert multiple offer rows into full Offer domain objects with nested slots.
     async fn rows_to_offers_with_slots(&self, rows: Vec<OfferRow>) -> Result<Vec<Offer>> {
         if rows.is_empty() {
@@ -697,12 +738,39 @@ impl OfferRepository {
             slots_map.entry(slot_row.offer_id).or_default().push(slot);
         }
 
+        // Batch-load availability rules
+        let rule_ids: Vec<Uuid> = rows.iter().filter_map(|r| r.availability_rule_id).collect();
+        let mut rules_map: std::collections::HashMap<Uuid, AvailabilityRule> = if !rule_ids.is_empty() {
+            let rule_rows = sqlx::query_as!(
+                AvailabilityRuleRow,
+                r#"SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                   FROM availability_rules WHERE id = ANY($1)"#,
+                &rule_ids
+            )
+            .fetch_all(&self.pool)
+            .await?;
+            rule_rows.into_iter().map(|r| {
+                (r.id, AvailabilityRule {
+                    id: r.id,
+                    valid_from: r.valid_from,
+                    valid_to: r.valid_to,
+                    start_time: r.start_time,
+                    end_time: r.end_time,
+                    weekdays: r.weekdays,
+                    active: r.active,
+                })
+            }).collect()
+        } else {
+            std::collections::HashMap::new()
+        };
+
         // Assemble offers
         let offers = rows
             .into_iter()
             .map(|row| {
                 let slots = slots_map.remove(&row.id).unwrap_or_default();
-                self.row_to_offer(row, slots)
+                let rule = row.availability_rule_id.and_then(|rid| rules_map.remove(&rid));
+                self.row_to_offer(row, slots, rule)
             })
             .collect();
 
@@ -711,7 +779,7 @@ impl OfferRepository {
 
     // ==================== ROW → DOMAIN CONVERSIONS ====================
 
-    fn row_to_offer(&self, row: OfferRow, slots: Vec<OfferSlot>) -> Offer {
+    fn row_to_offer(&self, row: OfferRow, slots: Vec<OfferSlot>, availability_rule: Option<AvailabilityRule>) -> Offer {
         Offer {
             id: row.id,
             restaurant_id: row.restaurant_id,
@@ -723,6 +791,7 @@ impl OfferRepository {
             created_at: row.created_at,
             created_by: row.created_by,
             slots,
+            availability_rule,
         }
     }
 

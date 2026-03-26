@@ -16,6 +16,7 @@ pub struct OfferRow {
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub created_by: Uuid,
+    pub availability_rule_id: Option<Uuid>,
 }
 
 /// OfferSlotRow — maps directly to the `offer_slots` table.

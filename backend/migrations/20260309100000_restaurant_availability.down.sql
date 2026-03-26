@@ -1,0 +1,1 @@
+alter table restaurants drop column if exists availability_rule_id;

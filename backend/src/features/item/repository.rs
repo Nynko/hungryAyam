@@ -3,16 +3,22 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    features::{item::{
-        db_model::ItemRow,
-        domain::{
-            item::Item,
-            tag::{EitherTag, Tag, UpdateTag
-            }
+    features::{
+        availability::{
+            db_model::AvailabilityRuleRow,
+            domain::AvailabilityRule,
         },
-        dto::{CreateItemRequest, UpdateItemRequest},
-    }, user::domain::User},
-    types::{name::Name, price::PriceCents, url::UrlString}
+        item::{
+            db_model::ItemRow,
+            domain::{
+                item::Item,
+                tag::{EitherTag, Tag, UpdateTag},
+            },
+            dto::{CreateItemRequest, UpdateItemRequest},
+        },
+        user::domain::User,
+    },
+    types::{name::Name, price::PriceCents, url::UrlString},
 };
 
 #[derive(Clone)]
@@ -44,7 +50,8 @@ impl ItemRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             "#,
             request.restaurant_id,
             request.name.as_ref(),
@@ -64,7 +71,7 @@ impl ItemRepository {
             vec![]
         };
 
-        Ok(self.row_to_item(row, tags))
+        Ok(self.row_to_item(row, tags, None))
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<Option<Item>> {
@@ -82,7 +89,8 @@ impl ItemRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             FROM items
             WHERE id = $1
             "#,
@@ -94,7 +102,31 @@ impl ItemRepository {
         match row {
             Some(row) => {
                 let tags = self.get_tags_for_item(id).await?;
-                Ok(Some(self.row_to_item(row, tags)))
+                let rule = if let Some(rule_id) = row.availability_rule_id {
+                    sqlx::query_as!(
+                        AvailabilityRuleRow,
+                        r#"
+                        SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                        FROM availability_rules
+                        WHERE id = $1
+                        "#,
+                        rule_id
+                    )
+                    .fetch_optional(&self.pool)
+                    .await?
+                    .map(|r| AvailabilityRule {
+                        id: r.id,
+                        valid_from: r.valid_from,
+                        valid_to: r.valid_to,
+                        start_time: r.start_time,
+                        end_time: r.end_time,
+                        weekdays: r.weekdays,
+                        active: r.active,
+                    })
+                } else {
+                    None
+                };
+                Ok(Some(self.row_to_item(row, tags, rule)))
             }
             None => Ok(None),
         }
@@ -116,7 +148,8 @@ impl ItemRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             FROM items
             WHERE restaurant_id = $1
             ORDER BY name ASC
@@ -145,7 +178,8 @@ impl ItemRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             FROM items
             WHERE restaurant_id = $1 AND active = true
             ORDER BY name ASC
@@ -183,7 +217,8 @@ impl ItemRepository {
                 created_at,
                 updated_at,
                 created_by,
-                updated_by
+                updated_by,
+                availability_rule_id
             "#,
             request.name.as_ref().map(|n| n.as_ref()),
             request.description,
@@ -204,7 +239,31 @@ impl ItemRepository {
                 } else {
                     self.get_tags_for_item(request.id).await?
                 };
-                Ok(Some(self.row_to_item(row, tags)))
+                let rule = if let Some(rule_id) = row.availability_rule_id {
+                    sqlx::query_as!(
+                        AvailabilityRuleRow,
+                        r#"
+                        SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                        FROM availability_rules
+                        WHERE id = $1
+                        "#,
+                        rule_id
+                    )
+                    .fetch_optional(&self.pool)
+                    .await?
+                    .map(|r| AvailabilityRule {
+                        id: r.id,
+                        valid_from: r.valid_from,
+                        valid_to: r.valid_to,
+                        start_time: r.start_time,
+                        end_time: r.end_time,
+                        weekdays: r.weekdays,
+                        active: r.active,
+                    })
+                } else {
+                    None
+                };
+                Ok(Some(self.row_to_item(row, tags, rule)))
             }
             None => Ok(None),
         }
@@ -362,8 +421,8 @@ impl ItemRepository {
 
     // ==================== HELPERS ====================
 
-    /// Convert an ItemRow to Item with tags
-    fn row_to_item(&self, row: ItemRow, tags: Vec<Tag>) -> Item {
+    /// Convert an ItemRow to Item with tags and an optional availability rule
+    fn row_to_item(&self, row: ItemRow, tags: Vec<Tag>, availability_rule: Option<AvailabilityRule>) -> Item {
         Item {
             id: row.id,
             restaurant_id: row.restaurant_id,
@@ -377,10 +436,11 @@ impl ItemRepository {
             created_by: row.created_by,
             updated_by: row.updated_by,
             tags,
+            availability_rule,
         }
     }
 
-    /// Convert multiple ItemRows to Items, fetching tags for each
+    /// Convert multiple ItemRows to Items, fetching tags and availability rules for each
     async fn rows_to_items_with_tags(&self, rows: Vec<ItemRow>) -> Result<Vec<Item>> {
         if rows.is_empty() {
             return Ok(vec![]);
@@ -413,12 +473,50 @@ impl ItemRepository {
             tags_map.entry(record.item_id).or_default().push(tag);
         }
 
-        // Convert rows to items with their tags
+        // Collect all availability_rule_ids that are not None
+        let rule_ids: Vec<Uuid> = rows.iter().filter_map(|r| r.availability_rule_id).collect();
+
+        let rules_map: std::collections::HashMap<Uuid, AvailabilityRule> = if !rule_ids.is_empty() {
+            let rule_rows = sqlx::query_as!(
+                AvailabilityRuleRow,
+                r#"
+                SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                FROM availability_rules
+                WHERE id = ANY($1)
+                "#,
+                &rule_ids
+            )
+            .fetch_all(&self.pool)
+            .await?;
+
+            rule_rows
+                .into_iter()
+                .map(|r| {
+                    let rule = AvailabilityRule {
+                        id: r.id,
+                        valid_from: r.valid_from,
+                        valid_to: r.valid_to,
+                        start_time: r.start_time,
+                        end_time: r.end_time,
+                        weekdays: r.weekdays,
+                        active: r.active,
+                    };
+                    (rule.id, rule)
+                })
+                .collect()
+        } else {
+            std::collections::HashMap::new()
+        };
+
+        // Convert rows to items with their tags and availability rules
         let items = rows
             .into_iter()
             .map(|row| {
                 let tags = tags_map.remove(&row.id).unwrap_or_default();
-                self.row_to_item(row, tags)
+                let rule = row
+                    .availability_rule_id
+                    .and_then(|rid| rules_map.get(&rid).cloned());
+                self.row_to_item(row, tags, rule)
             })
             .collect();
 

@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::types::name::Name;
 use crate::features::menu::domain::section::CreateMenuSection;
+use crate::features::availability::domain::AvailabilityRule;
 use super::section::MenuSection;
 
 
@@ -42,4 +43,10 @@ pub struct Menu {
     #[update_ignore] // We only want to update the menu itself for updates otherwise we update each parts with actions
     #[unit_create_ignore]
     pub sections: Vec<MenuSection>,
+
+    /// Optional availability rule controlling when this menu is available.
+    /// Populated on read; ignored on create/update (assigned via separate endpoint).
+    #[serde(default)]
+    #[derived_domain_ignore]
+    pub availability_rule: Option<AvailabilityRule>,
 }

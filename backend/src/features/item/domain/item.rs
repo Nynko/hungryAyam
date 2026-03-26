@@ -8,6 +8,7 @@ use crate::types::{
     price::PriceCents,
     name::Name
 };
+use crate::features::availability::domain::AvailabilityRule;
 
 use super::tag::{Tag, EitherTag};
 
@@ -43,4 +44,10 @@ pub struct Item {
     #[serde(default)] /// For TS : Create default if not present
     #[derived_type(Vec<EitherTag>)]
     pub tags: Vec<Tag>,
+
+    /// Optional availability rule controlling when this item is available.
+    /// Populated on read; ignored on create/update (assigned via separate endpoint).
+    #[serde(default)]
+    #[derived_domain_ignore]
+    pub availability_rule: Option<AvailabilityRule>,
 }

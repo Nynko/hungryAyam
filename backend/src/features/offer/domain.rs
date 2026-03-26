@@ -5,6 +5,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::types::{name::Name, price::PriceCents};
+use crate::features::availability::domain::AvailabilityRule;
 
 // ==================== SlotConstraintKind ====================
 
@@ -193,4 +194,10 @@ pub struct Offer {
     #[serde(default)]
     #[derived_nested]
     pub slots: Vec<OfferSlot>,
+
+    /// Optional availability rule controlling when this offer is available.
+    /// Populated on read; ignored on create/update (assigned via separate endpoint).
+    #[serde(default)]
+    #[derived_domain_ignore]
+    pub availability_rule: Option<AvailabilityRule>,
 }

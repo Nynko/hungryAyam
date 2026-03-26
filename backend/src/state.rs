@@ -34,6 +34,10 @@ use crate::{
         offer::{
             repository::OfferRepository,
             service::OfferService
+        },
+        availability::{
+            repository::AvailabilityRepository,
+            service::AvailabilityService
         }
     }
 };
@@ -49,6 +53,7 @@ pub struct AppState {
     pub menu_service: MenuService,
     pub order_service: OrderService,
     pub offer_service: OfferService,
+    pub availability_service: AvailabilityService,
     pub auth_service: AuthService,
     pub session_repository: SessionRepository,
     /// Shared handle used to wake the background scheduler when data it cares
@@ -71,6 +76,7 @@ pub fn build_state(
     let menu_repository = MenuRepository::new(db.clone(), item_repository.clone());
     let order_repository = OrderRepository::new(db.clone());
     let offer_repository = OfferRepository::new(db.clone());
+    let availability_repository = AvailabilityRepository::new(db.clone());
     let session_repository = SessionRepository::new(db.clone());
 
     // Create services
@@ -81,6 +87,7 @@ pub fn build_state(
     let item_service = ItemService::new(item_repository);
     let menu_service = MenuService::new(menu_repository, setup_repository.clone());
     let offer_service = OfferService::new(offer_repository);
+    let availability_service = AvailabilityService::new(availability_repository);
     let order_service = OrderService::new(order_repository, offer_service.clone(), scheduler_notify.clone());
 
     AppState {
@@ -93,6 +100,7 @@ pub fn build_state(
         menu_service,
         order_service,
         offer_service,
+        availability_service,
         auth_service,
         session_repository,
         scheduler_notify,

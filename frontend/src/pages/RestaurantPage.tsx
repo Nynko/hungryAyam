@@ -1,4 +1,4 @@
-import { createSignal, createResource, createMemo, Show, For, onMount } from "solid-js";
+import { createSignal, createResource, createMemo, Show, For, onMount, onCleanup } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import type { Restaurant } from "@bindings/Restaurant";
 import type { Menu } from "@bindings/Menu";
@@ -32,6 +32,7 @@ import {
 } from "@/stores/orderStore";
 import { getOfferCartCount, fetchActiveOffers } from "@/stores/offerStore";
 import { showConfirm } from "@/stores/confirmStore";
+import { availabilityStatus } from "@/lib/availability";
 
 async function fetchRestaurant(id: string): Promise<Restaurant> {
   const res = await fetch(`/api/restaurants/${id}`);
@@ -139,6 +140,19 @@ export default function RestaurantPage() {
 
 
 
+  // ── Restaurant availability ─────────────────────────────────────
+  // Re-check every 60s so the UI updates when a time window opens/closes
+  const [availTick, setAvailTick] = createSignal(0);
+  const availInterval = setInterval(() => setAvailTick((t) => t + 1), 60_000);
+  onCleanup(() => clearInterval(availInterval));
+
+  const restaurantAvailability = createMemo(() => {
+    availTick(); // subscribe to tick for periodic re-evaluation
+    const r = restaurant();
+    if (!r) return { available: true, reason: "" };
+    return availabilityStatus(r.availability_rule);
+  });
+
   // ── Ordering mode ───────────────────────────────────────────────
   const [orderingMode, setOrderingMode] = createSignal(false);
   const [showCreateSession, setShowCreateSession] = createSignal(false);
@@ -168,8 +182,10 @@ export default function RestaurantPage() {
 
   const [showInactive, setShowInactive] = createSignal(false);
 
-  // Can place orders if session is Open (or allow_late + Open)
+  // Can place orders if session is Open (or allow_late + Open) AND restaurant is available
   const canOrder = createMemo(() => {
+    // Restaurant must be available
+    if (!restaurantAvailability().available) return false;
     const session = activeSession();
     if (!session) return true; // Backend will auto-create session
     return session.status === "Open";
@@ -243,6 +259,11 @@ export default function RestaurantPage() {
                           <span class="mr-2">🍽️</span>
                         </Show>
                         {r().name}
+                        <Show when={!restaurantAvailability().available}>
+                          <span class="tag is-warning ml-2" style={{ "vertical-align": "middle", "font-size": "0.65em" }}>
+                            Unavailable
+                          </span>
+                        </Show>
                       </h1>
                       <p class="has-text-grey is-size-7">
                         Added {new Date(r().created_at).toLocaleDateString()}
@@ -253,6 +274,7 @@ export default function RestaurantPage() {
                     <div class="buttons">
                       <button
                         class={`button ${orderingMode() ? "is-primary" : "is-primary is-outlined"}`}
+                        disabled={!restaurantAvailability().available && !isEditor()}
                         onClick={() => setOrderingMode(!orderingMode())}
                       >
                         <span class="icon is-small">
@@ -284,6 +306,25 @@ export default function RestaurantPage() {
                   </div>
                 </div>
               </Card>
+
+              {/* ── Restaurant unavailable banner ─────────────── */}
+              <Show when={!restaurantAvailability().available}>
+                <div class="notification is-warning mb-4">
+                  <div class="is-flex is-align-items-center" style={{ gap: "0.75rem" }}>
+                    <span style={{ "font-size": "1.5rem" }}>🚫</span>
+                    <div>
+                      <p class="has-text-weight-bold">
+                        This restaurant is currently unavailable
+                      </p>
+                      <Show when={restaurantAvailability().reason}>
+                        <p class="is-size-7 mt-1">
+                          {restaurantAvailability().reason}
+                        </p>
+                      </Show>
+                    </div>
+                  </div>
+                </div>
+              </Show>
 
               {/* ── Active session banner ──────────────────────── */}
               <Show when={activeSession()}>

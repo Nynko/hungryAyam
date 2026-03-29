@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::AuthUser,
+    auth::middleware::{EditorUser, SiteAccess},
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::availability::{
         domain::AvailabilityRule,
@@ -40,7 +40,7 @@ pub fn availability_routes() -> Router<AppState> {
 
 /// Create a new availability rule.
 pub async fn create_rule(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateAvailabilityRuleRequest>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<AvailabilityRule>>), ApiError> {
@@ -50,6 +50,7 @@ pub async fn create_rule(
 
 /// List all availability rules.
 pub async fn list_rules(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
 ) -> Result<ApiJson<ApiResponse<Vec<AvailabilityRule>>>, ApiError> {
     let rules = app_state.availability_service.list_rules().await?;
@@ -58,6 +59,7 @@ pub async fn list_rules(
 
 /// Get an availability rule by ID.
 pub async fn get_rule(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<AvailabilityRule>>, ApiError> {
@@ -71,7 +73,7 @@ pub async fn get_rule(
 
 /// Update an availability rule.
 pub async fn update_rule(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateAvailabilityRuleRequest>,
 ) -> Result<ApiJson<ApiResponse<AvailabilityRule>>, ApiError> {
@@ -85,7 +87,7 @@ pub async fn update_rule(
 
 /// Delete an availability rule.
 pub async fn delete_rule(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
@@ -101,7 +103,7 @@ pub async fn delete_rule(
 
 /// Assign (or remove) an availability rule on a restaurant.
 pub async fn assign_to_restaurant(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
     ApiJson(request): ApiJson<AssignAvailabilityRequest>,
@@ -119,6 +121,7 @@ pub async fn assign_to_restaurant(
 
 /// Get the availability rule for a restaurant.
 pub async fn get_rule_for_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Option<AvailabilityRule>>>, ApiError> {
@@ -131,7 +134,7 @@ pub async fn get_rule_for_restaurant(
 
 /// Assign (or remove) an availability rule on a menu.
 pub async fn assign_to_menu(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(menu_id): Path<Uuid>,
     ApiJson(request): ApiJson<AssignAvailabilityRequest>,
@@ -149,6 +152,7 @@ pub async fn assign_to_menu(
 
 /// Get the availability rule for a menu.
 pub async fn get_rule_for_menu(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(menu_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Option<AvailabilityRule>>>, ApiError> {
@@ -161,7 +165,7 @@ pub async fn get_rule_for_menu(
 
 /// Assign (or remove) an availability rule on an item.
 pub async fn assign_to_item(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(item_id): Path<Uuid>,
     ApiJson(request): ApiJson<AssignAvailabilityRequest>,
@@ -179,6 +183,7 @@ pub async fn assign_to_item(
 
 /// Get the availability rule for an item.
 pub async fn get_rule_for_item(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(item_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Option<AvailabilityRule>>>, ApiError> {
@@ -191,7 +196,7 @@ pub async fn get_rule_for_item(
 
 /// Assign (or remove) an availability rule on an offer.
 pub async fn assign_to_offer(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(offer_id): Path<Uuid>,
     ApiJson(request): ApiJson<AssignAvailabilityRequest>,
@@ -209,6 +214,7 @@ pub async fn assign_to_offer(
 
 /// Get the availability rule for an offer.
 pub async fn get_rule_for_offer(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(offer_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Option<AvailabilityRule>>>, ApiError> {

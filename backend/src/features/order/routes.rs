@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::AuthUser,
+    auth::middleware::{AuthUser, EditorUser, SiteAccess},
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::order::{
         domain::{
@@ -74,9 +74,9 @@ pub fn order_routes() -> Router<AppState> {
 
 // ==================== ORDER SESSION HANDLERS ====================
 
-/// Create a new order session (requires authenticated user)
+/// Create a new order session (requires editor user)
 pub async fn create_session(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateOrderSessionRequest>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<OrderSession>>), ApiError> {
@@ -89,6 +89,7 @@ pub async fn create_session(
 
 /// Get an order session by ID (with orders and items)
 pub async fn get_session(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSession>>, ApiError> {
@@ -100,9 +101,9 @@ pub async fn get_session(
     Ok(ApiJson(ApiResponse::success(session)))
 }
 
-/// Update an order session's mutable fields (requires authenticated user)
+/// Update an order session's mutable fields (requires editor user)
 pub async fn update_session(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateOrderSessionRequest>,
 ) -> Result<ApiJson<ApiResponse<OrderSession>>, ApiError> {
@@ -114,9 +115,9 @@ pub async fn update_session(
     Ok(ApiJson(ApiResponse::success(session)))
 }
 
-/// Delete a cancelled order session (requires authenticated user)
+/// Delete a cancelled order session (requires editor user)
 pub async fn delete_session(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
@@ -128,9 +129,9 @@ pub async fn delete_session(
     }
 }
 
-/// Cancel an order session (requires authenticated user)
+/// Cancel an order session (requires editor user)
 pub async fn cancel_session(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
@@ -144,9 +145,9 @@ pub async fn cancel_session(
     })))
 }
 
-/// Close an order session — stop accepting new orders (requires authenticated user)
+/// Close an order session — stop accepting new orders (requires editor user)
 pub async fn close_session(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
@@ -160,9 +161,9 @@ pub async fn close_session(
     })))
 }
 
-/// Mark a session as sent — orders dispatched to restaurant (requires authenticated user)
+/// Mark a session as sent — orders dispatched to restaurant (requires editor user)
 pub async fn send_session(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
@@ -176,9 +177,9 @@ pub async fn send_session(
     })))
 }
 
-/// Reopen a closed session — resume accepting orders (requires authenticated user)
+/// Reopen a closed session — resume accepting orders (requires editor user)
 pub async fn reopen_session(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
@@ -194,6 +195,7 @@ pub async fn reopen_session(
 
 /// List all sessions for a restaurant (most recent first)
 pub async fn list_sessions_for_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<OrderSession>>>, ApiError> {
@@ -206,6 +208,7 @@ pub async fn list_sessions_for_restaurant(
 
 /// Get the currently active (Open) session for a restaurant
 pub async fn get_active_session(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Option<OrderSession>>>, ApiError> {
@@ -234,6 +237,7 @@ pub async fn create_order(
 
 /// Get an order by ID (with items)
 pub async fn get_order(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Order>>, ApiError> {
@@ -261,6 +265,7 @@ pub async fn delete_order(
 
 /// List all orders in a session (with items)
 pub async fn list_orders_for_session(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Order>>>, ApiError> {
@@ -273,6 +278,7 @@ pub async fn list_orders_for_session(
 
 /// List lightweight order summaries for a session (no item details)
 pub async fn list_order_summaries(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<OrderSummary>>>, ApiError> {
@@ -300,6 +306,7 @@ pub async fn list_my_orders_in_session(
 
 /// Get order settings for a restaurant (creates defaults if none exist)
 pub async fn get_order_settings(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<RestaurantOrderSettings>>, ApiError> {
@@ -310,9 +317,9 @@ pub async fn get_order_settings(
     Ok(ApiJson(ApiResponse::success(settings)))
 }
 
-/// Update order settings for a restaurant (requires authenticated user)
+/// Update order settings for a restaurant (requires editor user)
 pub async fn update_order_settings(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateOrderSettingsRequest>,
 ) -> Result<ApiJson<ApiResponse<RestaurantOrderSettings>>, ApiError> {

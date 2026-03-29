@@ -263,17 +263,19 @@ fn extract_cookie(parts: &Parts, name: &str) -> Option<String> {
 /// In production, you'd also add `Secure` and tune `Max-Age`.
 pub fn build_session_cookie(token: &str, max_age_days: i64) -> String {
     let max_age_secs = max_age_days * 24 * 60 * 60;
+    let secure = if std::env::var("SECURE_COOKIES").as_deref() == Ok("false") { "" } else { "; Secure" };
     format!(
-        "{}={}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}",
-        SESSION_COOKIE_NAME, token, max_age_secs
+        "{}={}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}{}",
+        SESSION_COOKIE_NAME, token, max_age_secs, secure
     )
 }
 
 /// Helper to build a `Set-Cookie` header value that clears the session cookie.
 pub fn build_clear_session_cookie() -> String {
+    let secure = if std::env::var("SECURE_COOKIES").as_deref() == Ok("false") { "" } else { "; Secure" };
     format!(
-        "{}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
-        SESSION_COOKIE_NAME
+        "{}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0{}",
+        SESSION_COOKIE_NAME, secure
     )
 }
 
@@ -283,17 +285,19 @@ pub fn build_clear_session_cookie() -> String {
 /// Sets `HttpOnly`, `SameSite=Lax`, and `Path=/`.
 pub fn build_site_access_cookie(access_token: &str, max_age_days: i64) -> String {
     let max_age_secs = max_age_days * 24 * 60 * 60;
+    let secure = if std::env::var("SECURE_COOKIES").as_deref() == Ok("false") { "" } else { "; Secure" };
     format!(
-        "{}={}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}",
-        SITE_ACCESS_COOKIE_NAME, access_token, max_age_secs
+        "{}={}; HttpOnly; SameSite=Lax; Path=/; Max-Age={}{}",
+        SITE_ACCESS_COOKIE_NAME, access_token, max_age_secs, secure
     )
 }
 
 /// Helper to build a `Set-Cookie` header value that clears the site-access cookie.
 pub fn build_clear_site_access_cookie() -> String {
+    let secure = if std::env::var("SECURE_COOKIES").as_deref() == Ok("false") { "" } else { "; Secure" };
     format!(
-        "{}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
-        SITE_ACCESS_COOKIE_NAME
+        "{}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0{}",
+        SITE_ACCESS_COOKIE_NAME, secure
     )
 }
 
@@ -394,6 +398,7 @@ mod tests {
         assert!(cookie.contains("SameSite=Lax"));
         assert!(cookie.contains("Path=/"));
         assert!(cookie.contains("Max-Age=604800")); // 7 * 86400
+        assert!(cookie.contains("Secure"));
     }
 
     #[test]
@@ -401,6 +406,7 @@ mod tests {
         let cookie = build_clear_session_cookie();
         assert!(cookie.contains("session_token=;"));
         assert!(cookie.contains("Max-Age=0"));
+        assert!(cookie.contains("Secure"));
     }
 
     #[test]
@@ -411,6 +417,7 @@ mod tests {
         assert!(cookie.contains("SameSite=Lax"));
         assert!(cookie.contains("Path=/"));
         assert!(cookie.contains("Max-Age=31536000")); // 365 * 86400
+        assert!(cookie.contains("Secure"));
     }
 
     #[test]
@@ -418,5 +425,6 @@ mod tests {
         let cookie = build_clear_site_access_cookie();
         assert!(cookie.contains("site_access=;"));
         assert!(cookie.contains("Max-Age=0"));
+        assert!(cookie.contains("Secure"));
     }
 }

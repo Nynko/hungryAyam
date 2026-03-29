@@ -28,7 +28,7 @@ async fn seed(pool: &PgPool) -> (Uuid, String) {
         .unwrap();
 
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('tester', 'Password', 'User') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('tester', 'Password', 'Editor') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -50,7 +50,7 @@ async fn seed(pool: &PgPool) -> (Uuid, String) {
 /// Returns (user_id, session_token).
 async fn seed_second_user(pool: &PgPool) -> (Uuid, String) {
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('second_user', 'Password', 'User') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('second_user', 'Password', 'Editor') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -130,6 +130,11 @@ async fn post_auth(router: &Router, uri: &str, body: Value, token: &str) -> (Sta
 /// Convenience: GET (no auth — public routes).
 async fn get(router: &Router, uri: &str) -> (StatusCode, Value) {
     send(router, Method::GET, uri, None).await
+}
+
+/// Convenience: GET with auth token.
+async fn get_auth(router: &Router, uri: &str, token: &str) -> (StatusCode, Value) {
+    send_with_auth(router, Method::GET, uri, None, Some(token)).await
 }
 
 /// Convenience: DELETE (no auth).
@@ -291,7 +296,7 @@ async fn test_get_restaurant_by_id(pool: PgPool) {
     let created = create_restaurant(&router, "Findable Restaurant", &token).await;
     let rest_id = created["id"].as_str().unwrap();
 
-    let (status, body) = get(&router, &format!("/api/restaurants/{rest_id}")).await;
+    let (status, body) = get_auth(&router, &format!("/api/restaurants/{rest_id}"), &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
 
@@ -303,11 +308,11 @@ async fn test_get_restaurant_by_id(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_restaurant_not_found(pool: PgPool) {
-    let (_user_id, _token) = seed(&pool).await;
+    let (_user_id, token) = seed(&pool).await;
     let router = app(pool);
 
     let fake_id = Uuid::new_v4();
-    let (status, _body) = get(&router, &format!("/api/restaurants/{fake_id}")).await;
+    let (status, _body) = get_auth(&router, &format!("/api/restaurants/{fake_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -325,7 +330,7 @@ async fn test_get_restaurant_preserves_all_fields(pool: PgPool) {
     .await;
     let rest_id = created["id"].as_str().unwrap();
 
-    let (status, body) = get(&router, &format!("/api/restaurants/{rest_id}")).await;
+    let (status, body) = get_auth(&router, &format!("/api/restaurants/{rest_id}"), &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
     let data = &body["data"];
@@ -343,10 +348,10 @@ async fn test_get_restaurant_preserves_all_fields(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_list_restaurants_empty(pool: PgPool) {
-    let (_user_id, _token) = seed(&pool).await;
+    let (_user_id, token) = seed(&pool).await;
     let router = app(pool);
 
-    let (status, body) = get(&router, "/api/restaurants").await;
+    let (status, body) = get_auth(&router, "/api/restaurants", &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
     assert!(body["data"].as_array().unwrap().is_empty());
@@ -361,7 +366,7 @@ async fn test_list_restaurants_multiple(pool: PgPool) {
     create_restaurant(&router, "Restaurant B", &token).await;
     create_restaurant(&router, "Restaurant C", &token).await;
 
-    let (status, body) = get(&router, "/api/restaurants").await;
+    let (status, body) = get_auth(&router, "/api/restaurants", &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
 
@@ -385,7 +390,7 @@ async fn test_list_restaurants_order(pool: PgPool) {
     let r1 = create_restaurant(&router, "First", &token).await;
     let r2 = create_restaurant(&router, "Second", &token).await;
 
-    let (status, body) = get(&router, "/api/restaurants").await;
+    let (status, body) = get_auth(&router, "/api/restaurants", &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
     let restaurants = body["data"].as_array().unwrap();
@@ -407,7 +412,7 @@ async fn test_list_active_restaurants_empty_when_no_sessions(pool: PgPool) {
 
     create_restaurant(&router, "No Sessions", &token).await;
 
-    let (status, body) = get(&router, "/api/restaurants/active").await;
+    let (status, body) = get_auth(&router, "/api/restaurants/active", &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body["data"].as_array().unwrap().is_empty());
 }
@@ -431,7 +436,7 @@ async fn test_list_active_restaurants_with_active_session(pool: PgPool) {
     .await
     .unwrap();
 
-    let (status, body) = get(&router, "/api/restaurants/active").await;
+    let (status, body) = get_auth(&router, "/api/restaurants/active", &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let data = body["data"].as_array().unwrap();
     assert_eq!(data.len(), 1);
@@ -457,7 +462,7 @@ async fn test_list_active_restaurants_excludes_expired_sessions(pool: PgPool) {
     .await
     .unwrap();
 
-    let (status, body) = get(&router, "/api/restaurants/active").await;
+    let (status, body) = get_auth(&router, "/api/restaurants/active", &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body["data"].as_array().unwrap().is_empty());
 }
@@ -496,7 +501,7 @@ async fn test_list_active_restaurants_mixed(pool: PgPool) {
     .await
     .unwrap();
 
-    let (status, body) = get(&router, "/api/restaurants/active").await;
+    let (status, body) = get_auth(&router, "/api/restaurants/active", &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
     let data = body["data"].as_array().unwrap();
@@ -707,7 +712,7 @@ async fn test_delete_restaurant(pool: PgPool) {
     assert_eq!(body["success"], true);
 
     // Verify it's gone
-    let (status, _body) = get(&router, &format!("/api/restaurants/{rest_id}")).await;
+    let (status, _body) = get_auth(&router, &format!("/api/restaurants/{rest_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -793,7 +798,7 @@ async fn test_delete_restaurant_removes_from_list(pool: PgPool) {
     let r2_id = r2["id"].as_str().unwrap();
 
     // Both should be listed
-    let (status, body) = get(&router, "/api/restaurants").await;
+    let (status, body) = get_auth(&router, "/api/restaurants", &token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"].as_array().unwrap().len(), 2);
 
@@ -802,7 +807,7 @@ async fn test_delete_restaurant_removes_from_list(pool: PgPool) {
     assert_eq!(status, StatusCode::OK);
 
     // Verify only one remains
-    let (status, body) = get(&router, "/api/restaurants").await;
+    let (status, body) = get_auth(&router, "/api/restaurants", &token).await;
     assert_eq!(status, StatusCode::OK);
     let restaurants = body["data"].as_array().unwrap();
     assert_eq!(restaurants.len(), 1);
@@ -827,7 +832,7 @@ async fn test_create_and_get_round_trip(pool: PgPool) {
     .await;
     let rest_id = created["id"].as_str().unwrap();
 
-    let (status, body) = get(&router, &format!("/api/restaurants/{rest_id}")).await;
+    let (status, body) = get_auth(&router, &format!("/api/restaurants/{rest_id}"), &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
     let fetched = &body["data"];
@@ -868,8 +873,8 @@ async fn test_update_then_get_reflects_changes(pool: PgPool) {
     let (status, _body) = post_auth(&router, "/api/update-restaurant", update_payload, &token).await;
     assert_eq!(status, StatusCode::OK);
 
-    // Fetch and verify changes are persisted (GET is public)
-    let (status, body) = get(&router, &format!("/api/restaurants/{rest_id}")).await;
+    // Fetch and verify changes are persisted
+    let (status, body) = get_auth(&router, &format!("/api/restaurants/{rest_id}"), &token).await;
     assert_eq!(status, StatusCode::OK);
 
     let data = &body["data"];
@@ -889,8 +894,8 @@ async fn test_different_users_can_own_restaurants(pool: PgPool) {
     assert_eq!(r1["created_by"], user_id.to_string());
     assert_eq!(r2["created_by"], second_user_id.to_string());
 
-    // Both should appear in the full list (GET is public)
-    let (status, body) = get(&router, "/api/restaurants").await;
+    // Both should appear in the full list
+    let (status, body) = get_auth(&router, "/api/restaurants", &token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"].as_array().unwrap().len(), 2);
 }

@@ -30,7 +30,7 @@ async fn seed(pool: &PgPool) -> (Uuid, Uuid, String) {
 
     // user
     let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('tester', 'Password', 'User') RETURNING id")
+        sqlx::query_scalar("INSERT INTO users (name, auth_method, role) VALUES ('tester', 'Password', 'Editor') RETURNING id")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -120,6 +120,11 @@ async fn post_auth(router: &Router, uri: &str, body: Value, token: &str) -> (Sta
 /// Convenience: GET (no auth — public routes).
 async fn get(router: &Router, uri: &str) -> (StatusCode, Value) {
     send(router, Method::GET, uri, None).await
+}
+
+/// Convenience: GET with auth token.
+async fn get_auth(router: &Router, uri: &str, token: &str) -> (StatusCode, Value) {
+    send_with_auth(router, Method::GET, uri, None, Some(token)).await
 }
 
 /// Convenience: DELETE (no auth).
@@ -285,7 +290,7 @@ async fn test_get_menu(pool: PgPool) {
     let created = create_menu(&router, restaurant_id, &token).await;
     let menu_id = created["id"].as_str().unwrap();
 
-    let (status, body) = get(&router, &format!("/api/menus/{menu_id}")).await;
+    let (status, body) = get_auth(&router, &format!("/api/menus/{menu_id}"), &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["id"], menu_id);
     assert_eq!(body["data"]["name"], "Lunch Menu");
@@ -297,11 +302,11 @@ async fn test_get_menu(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_get_menu_not_found(pool: PgPool) {
-    let _ = seed(&pool).await;
+    let (_, _, token) = seed(&pool).await;
     let router = app(pool);
     let fake_id = Uuid::new_v4();
 
-    let (status, body) = get(&router, &format!("/api/menus/{fake_id}")).await;
+    let (status, body) = get_auth(&router, &format!("/api/menus/{fake_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["success"], false);
 }
@@ -327,9 +332,10 @@ async fn test_list_menus_for_restaurant(pool: PgPool) {
     let (s, _) = post_auth(&router, "/api/menus", payload2, &token).await;
     assert_eq!(s, StatusCode::CREATED);
 
-    let (status, body) = get(
+    let (status, body) = get_auth(
         &router,
         &format!("/api/restaurants/{restaurant_id}/menus"),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -356,9 +362,10 @@ async fn test_list_active_menus_for_restaurant(pool: PgPool) {
     let (s, _) = post_auth(&router, "/api/menus", payload2, &token).await;
     assert_eq!(s, StatusCode::CREATED);
 
-    let (status, body) = get(
+    let (status, body) = get_auth(
         &router,
         &format!("/api/restaurants/{restaurant_id}/menus/active"),
+        &token,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -382,7 +389,7 @@ async fn test_delete_menu(pool: PgPool) {
     assert_eq!(body["success"], true);
 
     // Confirm it's gone.
-    let (status, _) = get(&router, &format!("/api/menus/{menu_id}")).await;
+    let (status, _) = get_auth(&router, &format!("/api/menus/{menu_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -423,7 +430,7 @@ async fn test_reset_menu(pool: PgPool) {
     assert!(body["data"]["items_reset"].as_u64().unwrap() >= 1);
 
     // Verify items are now unavailable.
-    let (_, get_body) = get(&router, &format!("/api/menus/{menu_id}")).await;
+    let (_, get_body) = get_auth(&router, &format!("/api/menus/{menu_id}"), &token).await;
     let items = &get_body["data"]["sections"][0]["items"];
     for item in items.as_array().unwrap() {
         assert_eq!(item["is_available"], false);
@@ -587,7 +594,7 @@ async fn test_update_menu_section_item_with_catalog_and_tags(pool: PgPool) {
     assert_eq!(item["base_price_cents"], 1800);
 
     // Verify tags were set by fetching through the item API.
-    let (s2, b2) = get(&router, &format!("/api/items/{catalog_item_id}")).await;
+    let (s2, b2) = get_auth(&router, &format!("/api/items/{catalog_item_id}"), &token).await;
     assert_eq!(s2, StatusCode::OK, "{b2}");
     let tags = b2["data"]["tags"].as_array().unwrap();
     assert_eq!(tags.len(), 2);

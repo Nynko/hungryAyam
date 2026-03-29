@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::AuthUser,
+    auth::middleware::{EditorUser, SiteAccess},
     features::item::{
         domain::{
             item::Item,
@@ -42,9 +42,9 @@ pub fn item_routes() -> Router<AppState> {
 
 // ==================== ITEM HANDLERS ====================
 
-/// Create a new item (with tags if provided; requires authenticated user)
+/// Create a new item (with tags if provided; requires editor user)
 pub async fn create_item(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateItemRequest>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<Item>>), ApiError> {
@@ -52,9 +52,9 @@ pub async fn create_item(
     Ok((StatusCode::CREATED, ApiJson(ApiResponse::success(item))))
 }
 
-/// Create multiple items in batch (requires authenticated user)
+/// Create multiple items in batch (requires editor user)
 pub async fn create_batch_items(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(requests): ApiJson<Vec<CreateItemRequest>>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<Vec<Item>>>), ApiError> {
@@ -64,6 +64,7 @@ pub async fn create_batch_items(
 
 /// Get an item by ID
 pub async fn get_item(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Item>>, ApiError> {
@@ -76,6 +77,7 @@ pub async fn get_item(
 
 /// List all items for a specific restaurant
 pub async fn list_items_for_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Item>>>, ApiError> {
@@ -85,6 +87,7 @@ pub async fn list_items_for_restaurant(
 
 /// List only active items for a specific restaurant
 pub async fn list_active_items_for_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Item>>>, ApiError> {
@@ -92,9 +95,9 @@ pub async fn list_active_items_for_restaurant(
     Ok(ApiJson(ApiResponse::success(items)))
 }
 
-/// Update an item (ID provided in request body, with tags if provided; requires authenticated user)
+/// Update an item (ID provided in request body, with tags if provided; requires editor user)
 pub async fn update_item(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateItemRequest>,
 ) -> Result<ApiJson<ApiResponse<Item>>, ApiError> {
@@ -105,9 +108,9 @@ pub async fn update_item(
     Ok(ApiJson(ApiResponse::success(item)))
 }
 
-/// Delete an item (requires authenticated user)
+/// Delete an item (requires editor user)
 pub async fn delete_item(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
@@ -123,6 +126,7 @@ pub async fn delete_item(
 
 /// List all tags
 pub async fn list_tags(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
 ) -> Result<ApiJson<ApiResponse<Vec<Tag>>>, ApiError> {
     let tags = app_state.item_service.list_tags().await?;
@@ -131,6 +135,7 @@ pub async fn list_tags(
 
 /// Get a tag by ID
 pub async fn get_tag(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Tag>>, ApiError> {
@@ -141,9 +146,9 @@ pub async fn get_tag(
     Ok(ApiJson(ApiResponse::success(tag)))
 }
 
-/// Update a tag (ID provided in request body; requires authenticated user)
+/// Update a tag (ID provided in request body; requires editor user)
 pub async fn update_tag(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateTag>,
 ) -> Result<ApiJson<ApiResponse<Tag>>, ApiError> {
@@ -154,9 +159,9 @@ pub async fn update_tag(
     Ok(ApiJson(ApiResponse::success(tag)))
 }
 
-/// Delete a tag (will cascade remove from all items; requires authenticated user)
+/// Delete a tag (will cascade remove from all items; requires editor user)
 pub async fn delete_tag(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {

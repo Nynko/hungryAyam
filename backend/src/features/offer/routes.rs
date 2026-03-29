@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::AuthUser,
+    auth::middleware::{EditorUser, SiteAccess},
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::offer::{
         domain::Offer,
@@ -50,9 +50,9 @@ pub fn offer_routes() -> Router<AppState> {
 
 // ==================== CRUD HANDLERS ====================
 
-/// Create a new offer with nested slots and constraints (requires authenticated user).
+/// Create a new offer with nested slots and constraints (requires editor user).
 pub async fn create_offer(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateOfferRequest>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<Offer>>), ApiError> {
@@ -65,6 +65,7 @@ pub async fn create_offer(
 
 /// Get an offer by ID (with slots and constraints).
 pub async fn get_offer(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Offer>>, ApiError> {
@@ -77,9 +78,9 @@ pub async fn get_offer(
 }
 
 /// Update an offer (partial top-level fields; replace-all for slots if provided).
-/// Requires authenticated user.
+/// Requires editor user.
 pub async fn update_offer(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateOfferRequest>,
 ) -> Result<ApiJson<ApiResponse<Offer>>, ApiError> {
@@ -91,9 +92,9 @@ pub async fn update_offer(
     Ok(ApiJson(ApiResponse::success(offer)))
 }
 
-/// Delete an offer by ID (requires authenticated user).
+/// Delete an offer by ID (requires editor user).
 pub async fn delete_offer(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
@@ -109,6 +110,7 @@ pub async fn delete_offer(
 
 /// List all offers for a restaurant (with slots and constraints).
 pub async fn list_offers_for_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Offer>>>, ApiError> {
@@ -121,6 +123,7 @@ pub async fn list_offers_for_restaurant(
 
 /// List only active offers for a restaurant (with slots and constraints).
 pub async fn list_active_offers_for_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Offer>>>, ApiError> {
@@ -133,9 +136,9 @@ pub async fn list_active_offers_for_restaurant(
 
 // ==================== ACTIVATION HANDLERS ====================
 
-/// Activate an offer (set is_active = true). Requires authenticated user.
+/// Activate an offer (set is_active = true). Requires editor user.
 pub async fn activate_offer(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Offer>>, ApiError> {
@@ -147,9 +150,9 @@ pub async fn activate_offer(
     Ok(ApiJson(ApiResponse::success(offer)))
 }
 
-/// Deactivate an offer (set is_active = false). Requires authenticated user.
+/// Deactivate an offer (set is_active = false). Requires editor user.
 pub async fn deactivate_offer(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Offer>>, ApiError> {
@@ -166,6 +169,7 @@ pub async fn deactivate_offer(
 /// Get the resolved list of allowed item IDs for a specific offer slot.
 /// Resolves item, tag, and section constraints into concrete item IDs.
 pub async fn get_allowed_items_for_slot(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(slot_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Uuid>>>, ApiError> {
@@ -209,6 +213,7 @@ pub struct ValidateOfferSelectionResponse {
 /// Returns whether the selection is valid, the base price, and the computed total
 /// (including slot and constraint supplements).
 pub async fn validate_selection(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(offer_id): Path<Uuid>,
     ApiJson(request): ApiJson<ValidateOfferSelectionRequest>,

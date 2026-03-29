@@ -4,7 +4,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::AuthUser,
+    auth::middleware::{EditorUser, SiteAccess},
     errors::{
         api_errors::ApiError,
         json_extractor::ApiJson,
@@ -24,9 +24,9 @@ pub fn restaurant_routes() -> Router<AppState> {
         .route("/api/update-restaurant", post(update_restaurant))
 }
 
-/// Create a new restaurant (requires authenticated user)
+/// Create a new restaurant (requires editor user)
 pub async fn create_restaurant(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateRestaurant>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<Restaurant>>), ApiError> {
@@ -36,6 +36,7 @@ pub async fn create_restaurant(
 
 /// Get all restaurants
 pub async fn list_restaurants(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
 ) -> Result<ApiJson<ApiResponse<Vec<Restaurant>>>, ApiError> {
     let restaurants = app_state.restaurant_service.list_restaurants().await?;
@@ -44,6 +45,7 @@ pub async fn list_restaurants(
 
 /// Get restaurants with active order sessions
 pub async fn list_active_restaurants(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
 ) -> Result<ApiJson<ApiResponse<Vec<Restaurant>>>, ApiError> {
     let restaurants = app_state.restaurant_service.list_active_restaurants().await?;
@@ -52,6 +54,7 @@ pub async fn list_active_restaurants(
 
 /// Get a restaurant by ID
 pub async fn get_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Restaurant>>, ApiError> {
@@ -62,9 +65,9 @@ pub async fn get_restaurant(
     Ok(ApiJson(ApiResponse::success(restaurant)))
 }
 
-/// Update a restaurant (requires authenticated user)
+/// Update a restaurant (requires editor user)
 pub async fn update_restaurant(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<UpdateRestaurant>,
 ) -> Result<ApiJson<ApiResponse<Restaurant>>, ApiError> {
@@ -75,11 +78,11 @@ pub async fn update_restaurant(
     Ok(ApiJson(ApiResponse::success(restaurant)))
 }
 
-/// Delete a restaurant (requires authenticated user)
+/// Delete a restaurant (requires editor user)
 /// Returns success on deletion, 404 if not found
 /// Returns 400 if restaurant has active order sessions
 pub async fn delete_restaurant(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {

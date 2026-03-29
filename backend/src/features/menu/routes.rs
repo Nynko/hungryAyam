@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::AuthUser,
+    auth::middleware::{AuthUser, EditorUser, SiteAccess},
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::menu::{
         domain::menu::Menu,
@@ -47,6 +47,7 @@ pub async fn create_menu(
 
 /// Get a menu by ID with full structure
 pub async fn get_menu(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Menu>>, ApiError> {
@@ -60,6 +61,7 @@ pub async fn get_menu(
 
 /// List all menus for a restaurant
 pub async fn list_menus_for_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Menu>>>, ApiError> {
@@ -72,6 +74,7 @@ pub async fn list_menus_for_restaurant(
 
 /// List only active menus for a restaurant
 pub async fn list_active_menus_for_restaurant(
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Menu>>>, ApiError> {
@@ -98,9 +101,9 @@ pub async fn update_menu(
 
 /// Reset a non-permanent menu - sets all items to is_available = false
 /// This keeps items in the "candidate pool" for easy re-selection
-/// (requires authenticated user)
+/// (requires editor user)
 pub async fn reset_menu(
-    AuthUser(user): AuthUser,
+    EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<ResetMenuRequest>,
 ) -> Result<ApiJson<ApiResponse<ResetMenuResponse>>, ApiError> {
@@ -116,9 +119,9 @@ pub async fn reset_menu(
     })))
 }
 
-/// Delete a menu (requires authenticated user)
+/// Delete a menu (requires editor user)
 pub async fn delete_menu(
-    AuthUser(_user): AuthUser,
+    EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<()>>, ApiError> {

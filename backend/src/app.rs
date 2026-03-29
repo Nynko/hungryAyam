@@ -1,7 +1,8 @@
 use axum::{
     Router, middleware
 };
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{CorsLayer, AllowOrigin};
+use tower_http::limit::RequestBodyLimitLayer;
 
 use crate::{
     setup_middleware::setup_redirect_guard,
@@ -20,6 +21,26 @@ use crate::{
 };
 
 pub fn build_app(state: AppState) -> Router {
+    // In production, nginx proxies all requests (same-origin), so CORS is
+    // effectively a no-op.  We restrict it to same-origin by default and
+    // allow the CORS_ORIGIN env var to override for development.
+    let cors = match std::env::var("CORS_ORIGIN") {
+        Ok(origin) if !origin.is_empty() => {
+            CorsLayer::new()
+                .allow_origin(origin.parse::<http::HeaderValue>().expect("Invalid CORS_ORIGIN"))
+                .allow_methods(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any)
+                .allow_credentials(true)
+        }
+        _ => {
+            // Default: no cross-origin allowed (same-origin only via nginx proxy)
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::exact(
+                    http::HeaderValue::from_static("null"),
+                ))
+        }
+    };
+
     Router::new()
         .merge(setup_routes())
         .merge(restaurant_routes())
@@ -31,8 +52,9 @@ pub fn build_app(state: AppState) -> Router {
         .merge(availability_routes())
         .merge(auth_routes())
         .merge(admin_auth_routes())
-        // Add CORS middleware
-        .layer(CorsLayer::permissive()) // TODO: Change
+        .layer(cors)
+        // Limit request body size to 2 MB (prevents abuse via large payloads)
+        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), setup_redirect_guard))
         .with_state(state)
 }

@@ -186,6 +186,7 @@ dependencies = [
  "dotenv",
  "email_address",
  "enum_stringify",
+ "http",
  "http-body-util",
  "hungry_ayam_derive",
  "hyper",

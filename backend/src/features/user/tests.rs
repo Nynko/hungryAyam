@@ -369,10 +369,10 @@ async fn test_get_user_by_id(pool: PgPool) {
     let router = app(pool);
 
     // GET /api/user/:id requires SiteAccess — cookie is included automatically
-    let created = create_guest(&router, "GetMe").await;
+    let (created, token) = create_guest_via_auth(&router, "GetMe").await;
     let user_id = created["id"].as_str().unwrap();
 
-    let (status, body) = get(&router, &format!("/api/user/{user_id}")).await;
+    let (status, body) = get_auth(&router, &format!("/api/user/{user_id}"), &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
     assert_eq!(body["data"]["id"], user_id);
@@ -384,8 +384,9 @@ async fn test_get_user_not_found(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
+    let (_, token) = create_guest_via_auth(&router, "Dummy").await;
     let fake_id = Uuid::new_v4();
-    let (status, _body) = get(&router, &format!("/api/user/{fake_id}")).await;
+    let (status, _body) = get_auth(&router, &format!("/api/user/{fake_id}"), &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -436,10 +437,10 @@ async fn test_get_user_by_name(pool: PgPool) {
     let router = app(pool);
 
     // GET /api/user/name/:name requires SiteAccess — cookie is included automatically
-    let created = create_guest(&router, "FindByName").await;
+    let (created, token) = create_guest_via_auth(&router, "FindByName").await;
     let user_id = created["id"].as_str().unwrap().to_string();
 
-    let (status, body) = get(&router, "/api/user/name/FindByName").await;
+    let (status, body) = get_auth(&router, "/api/user/name/FindByName", &token).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["id"], user_id);
     assert_eq!(body["data"]["name"], "FindByName");
@@ -450,7 +451,8 @@ async fn test_get_user_by_name_not_found(pool: PgPool) {
     seed(&pool).await;
     let router = app(pool);
 
-    let (status, _body) = get(&router, "/api/user/name/DoesNotExist").await;
+    let (_, token) = create_guest_via_auth(&router, "Dummy").await;
+    let (status, _body) = get_auth(&router, "/api/user/name/DoesNotExist", &token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -697,7 +699,7 @@ async fn test_delete_user(pool: PgPool) {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["success"], true);
 
-    let (status, _body) = get(&router, &format!("/api/user/{user_id}")).await;
+    let (status, _body) = get_auth(&router, &format!("/api/user/{user_id}"), &admin_token).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -790,7 +792,7 @@ async fn test_password_hash_never_in_response(pool: PgPool) {
 
     // Also verify via GET
     let user_id = body["data"]["id"].as_str().unwrap();
-    let (status, body) = get(&router, &format!("/api/user/{user_id}")).await;
+    let (status, body) = get_auth(&router, &format!("/api/user/{user_id}"), &admin_token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"].get("password_hash"), None);
 }
@@ -1289,7 +1291,7 @@ async fn test_full_guest_flow(pool: PgPool) {
     assert_eq!(body["data"]["name"], "FullFlowGuest");
 
     // 3. Can be found by name
-    let (status, body) = get(&router, "/api/user/name/FullFlowGuest").await;
+    let (status, body) = get_auth(&router, "/api/user/name/FullFlowGuest", &token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["id"], user["id"]);
 }

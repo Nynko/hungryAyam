@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT restaurant_id,\n               menu_reset_time as \"menu_reset_time!: chrono::NaiveTime\",\n               timezone\n        FROM restaurant_order_settings\n        WHERE menu_reset_time IS NOT NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "restaurant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "menu_reset_time!: chrono::NaiveTime",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 2,
+        "name": "timezone",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "343438a460fd6145735840da5f1bb1aa4d2396b1d1f42c36fd3667d58b6b721f"
+}

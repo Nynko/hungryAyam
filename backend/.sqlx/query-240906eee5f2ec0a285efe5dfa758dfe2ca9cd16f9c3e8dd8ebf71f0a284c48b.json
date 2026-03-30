@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE menus SET availability_rule_id = $1 WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "240906eee5f2ec0a285efe5dfa758dfe2ca9cd16f9c3e8dd8ebf71f0a284c48b"
+}

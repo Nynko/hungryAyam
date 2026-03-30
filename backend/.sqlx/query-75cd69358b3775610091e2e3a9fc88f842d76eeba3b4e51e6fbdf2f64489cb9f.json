@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                created_at,\n                updated_at\n            FROM restaurant_order_settings\n            WHERE restaurant_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "restaurant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "default_start_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 3,
+        "name": "default_end_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 4,
+        "name": "sending_method: SendingMethod",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 5,
+        "name": "timezone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "auto_create_session",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "menu_reset_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 8,
+        "name": "auto_close_session",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "75cd69358b3775610091e2e3a9fc88f842d76eeba3b4e51e6fbdf2f64489cb9f"
+}

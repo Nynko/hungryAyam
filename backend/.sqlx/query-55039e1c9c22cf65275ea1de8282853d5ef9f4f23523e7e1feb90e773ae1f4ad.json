@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE order_sessions\n        SET status = $1,\n            updated_at = NOW(),\n            updated_by = $3\n        WHERE id = $2\n          AND status = $4\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int2",
+        "Uuid",
+        "Uuid",
+        "Int2"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "55039e1c9c22cf65275ea1de8282853d5ef9f4f23523e7e1feb90e773ae1f4ad"
+}

@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays, ar.active\n            FROM availability_rules ar\n            JOIN items i ON i.availability_rule_id = ar.id\n            WHERE i.id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "valid_from",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 2,
+        "name": "valid_to",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 3,
+        "name": "start_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 5,
+        "name": "weekdays",
+        "type_info": "Int2Array"
+      },
+      {
+        "ordinal": 6,
+        "name": "active",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "c1fee726e222c0b2dd60a4ba585057fdd999485f7fdf5e3c604cdd1587bb8d07"
+}

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT EXISTS(\n            SELECT 1 FROM scheduled_task_log\n            WHERE restaurant_id = $1\n              AND task_kind = 'menu_reset'\n              AND last_executed_date = $2\n        ) as \"exists!: bool\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!: bool",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Date"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4308e7ffa87fb157ea15ffed0ac7d189a671ea7957c4848415cf260c59e95dcc"
+}

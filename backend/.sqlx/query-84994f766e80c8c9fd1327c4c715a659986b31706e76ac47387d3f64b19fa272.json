@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE items SET availability_rule_id = NULL WHERE availability_rule_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "84994f766e80c8c9fd1327c4c715a659986b31706e76ac47387d3f64b19fa272"
+}

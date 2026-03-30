@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO scheduled_task_log (restaurant_id, task_kind, last_executed_date, last_executed_at)\n        VALUES ($1, 'menu_reset', $2, NOW())\n        ON CONFLICT (restaurant_id, task_kind, last_executed_date)\n        DO UPDATE SET last_executed_at = NOW(), updated_at = NOW()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3076e9a8f00518dd76a62064372ba44a6b4f6a02fb667cdb2d33c228085e9b6d"
+}

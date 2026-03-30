@@ -1,0 +1,81 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE offers\n            SET\n                menu_id      = COALESCE($1, menu_id),\n                title        = COALESCE($2, title),\n                description  = COALESCE($3, description),\n                base_price_cents = COALESCE($4, base_price_cents),\n                is_active    = COALESCE($5, is_active)\n            WHERE id = $6\n            RETURNING\n                id,\n                restaurant_id,\n                menu_id,\n                title as \"title: Name\",\n                description,\n                base_price_cents as \"base_price_cents: PriceCents\",\n                is_active,\n                created_at,\n                created_by,\n                availability_rule_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "restaurant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "menu_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "title: Name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "base_price_cents: PriceCents",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "availability_rule_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Int4",
+        "Bool",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "5c5b64ac425bdd7ede72537363cfec32548b893dbb723b0ea8d8dc7d591e5684"
+}

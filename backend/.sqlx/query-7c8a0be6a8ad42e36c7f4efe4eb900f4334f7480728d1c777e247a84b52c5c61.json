@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE menu_section_items\n        SET is_available = false,\n            updated_at = NOW(),\n            updated_by = $2\n        WHERE section_id IN (\n            SELECT ms.id FROM menu_sections ms\n            JOIN menus m ON ms.menu_id = m.id\n            WHERE m.restaurant_id = $1\n              AND m.permanent = false\n        )\n        AND is_available = true\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7c8a0be6a8ad42e36c7f4efe4eb900f4334f7480728d1c777e247a84b52c5c61"
+}

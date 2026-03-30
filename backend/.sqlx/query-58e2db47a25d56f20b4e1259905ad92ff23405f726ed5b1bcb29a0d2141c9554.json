@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE offers SET availability_rule_id = NULL WHERE availability_rule_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "58e2db47a25d56f20b4e1259905ad92ff23405f726ed5b1bcb29a0d2141c9554"
+}

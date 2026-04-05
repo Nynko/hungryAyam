@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: UrlString\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            FROM restaurants\n            WHERE id = $1\n            ",
+  "query": "\n            SELECT\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            FROM restaurants\n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -15,7 +15,7 @@
       },
       {
         "ordinal": 2,
-        "name": "image_url?: UrlString",
+        "name": "image_url?: ImageSource",
         "type_info": "Text"
       },
       {
@@ -60,5 +60,5 @@
       true
     ]
   },
-  "hash": "827b20eb00f1d01bc541f7b9639194ca78649221b31ce404c5da8c653e258d3a"
+  "hash": "ea19abd37460b8f179d62791e9bb7e68c1c97e40a847c309862743cf468c95a0"
 }

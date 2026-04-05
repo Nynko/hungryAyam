@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO items (restaurant_id, name, description, base_price_cents, image_url, created_by, updated_by)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            RETURNING\n                id,\n                restaurant_id,\n                name as \"name: Name\",\n                description,\n                base_price_cents as \"base_price_cents: PriceCents\",\n                image_url as \"image_url?: UrlString\",\n                active,\n                created_at,\n                updated_at,\n                created_by,\n                updated_by,\n                availability_rule_id\n            ",
+  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                name as \"name: Name\",\n                description,\n                base_price_cents as \"base_price_cents: PriceCents\",\n                image_url as \"image_url?: ImageSource\",\n                active,\n                created_at,\n                updated_at,\n                created_by,\n                updated_by,\n                availability_rule_id\n            FROM items\n            WHERE restaurant_id = $1 AND active = true\n            ORDER BY name ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -30,7 +30,7 @@
       },
       {
         "ordinal": 5,
-        "name": "image_url?: UrlString",
+        "name": "image_url?: ImageSource",
         "type_info": "Text"
       },
       {
@@ -66,12 +66,6 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Text",
-        "Text",
-        "Int4",
-        "Text",
-        "Uuid",
         "Uuid"
       ]
     },
@@ -90,5 +84,5 @@
       true
     ]
   },
-  "hash": "b4c04620eafe95d095eb006ff4dff2823dff1daeb6edc2eab5b97711f659fc5e"
+  "hash": "b48a95f515f4b9af1ea1d02ac3f547c8561c69eb44658e471b64650d7d7e0757"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE restaurants\n            SET name = COALESCE($1, name),\n                image_url = COALESCE($2, image_url),\n                updated_at = NOW(),\n                updated_by = $4\n            WHERE id = $3\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: UrlString\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
+  "query": "\n            INSERT INTO restaurants (name, image_url, created_by, updated_by)\n            VALUES ($1, $2, $3, $4)\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
   "describe": {
     "columns": [
       {
@@ -15,7 +15,7 @@
       },
       {
         "ordinal": 2,
-        "name": "image_url?: UrlString",
+        "name": "image_url?: ImageSource",
         "type_info": "Text"
       },
       {
@@ -63,5 +63,5 @@
       true
     ]
   },
-  "hash": "cf61a6e2cd32d1d8bd7f05dd796645038929f847de33c5de0acb101a328786b1"
+  "hash": "bc6c97cf0ce7480b410d34a2c0cf2a1b9e32eea1521b64270998b4212db639a5"
 }

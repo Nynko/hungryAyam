@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                name as \"name: Name\",\n                description,\n                base_price_cents as \"base_price_cents: PriceCents\",\n                image_url as \"image_url?: UrlString\",\n                active,\n                created_at,\n                updated_at,\n                created_by,\n                updated_by,\n                availability_rule_id\n            FROM items\n            WHERE restaurant_id = $1 AND active = true\n            ORDER BY name ASC\n            ",
+  "query": "\n            UPDATE items\n            SET name = COALESCE($1, name),\n                description = COALESCE($2, description),\n                base_price_cents = COALESCE($3, base_price_cents),\n                image_url = COALESCE($4, image_url),\n                active = COALESCE($5, active),\n                updated_at = NOW(),\n                updated_by = $7\n            WHERE id = $6\n            RETURNING\n                id,\n                restaurant_id,\n                name as \"name: Name\",\n                description,\n                base_price_cents as \"base_price_cents: PriceCents\",\n                image_url as \"image_url?: ImageSource\",\n                active,\n                created_at,\n                updated_at,\n                created_by,\n                updated_by,\n                availability_rule_id\n            ",
   "describe": {
     "columns": [
       {
@@ -30,7 +30,7 @@
       },
       {
         "ordinal": 5,
-        "name": "image_url?: UrlString",
+        "name": "image_url?: ImageSource",
         "type_info": "Text"
       },
       {
@@ -66,6 +66,12 @@
     ],
     "parameters": {
       "Left": [
+        "Text",
+        "Text",
+        "Int4",
+        "Text",
+        "Bool",
+        "Uuid",
         "Uuid"
       ]
     },
@@ -84,5 +90,5 @@
       true
     ]
   },
-  "hash": "3279e23c84183f1e04b60393ee1215e90672fd37b59f716fe18eee998f60e443"
+  "hash": "9d4e5cf1752531cd1b0830029e3e1db288449eec145f3787b7b6835454a046d9"
 }

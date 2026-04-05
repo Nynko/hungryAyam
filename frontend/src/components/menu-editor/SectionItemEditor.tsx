@@ -4,6 +4,7 @@ import { updateSectionItem, removeItem } from "@/stores/menuEditorStore";
 import { setupSortableItem } from "@/lib/dnd";
 import type { SortableItemState } from "@/lib/dnd";
 import DropIndicator from "./DropIndicator";
+import ImageUploadField from "@/components/ImageUploadField";
 
 interface SectionItemEditorProps {
   sectionId: string;
@@ -339,20 +340,12 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
             </div>
           </div>
 
-          {/* Image URL */}
+          {/* Image */}
           <div class="column is-4">
-            <div class="field">
-              <label class="label is-small">Image URL</label>
-              <div class="control">
-                <input
-                  class="input is-small"
-                  type="url"
-                  placeholder="https://..."
-                  value={item().image_url ?? ""}
-                  onInput={(e) => handleImageUrlChange(e.currentTarget.value)}
-                />
-              </div>
-            </div>
+            <ImageUploadField
+              value={item().image_url ?? null}
+              onChange={(url) => handleImageUrlChange(url ?? "")}
+            />
           </div>
 
           {/* Availability toggle + Remove */}

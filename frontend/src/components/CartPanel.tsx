@@ -1,4 +1,5 @@
 import { Show, For, createSignal, createMemo } from "solid-js";
+import { isImageSrc } from "@/lib/imageUrl";
 import type { MenuSectionItem } from "@bindings/MenuSectionItem";
 import {
   getCart,
@@ -419,25 +420,36 @@ export default function CartPanel(props: CartPanelProps) {
                     >
                       <div class="is-flex is-align-items-center">
                         <Show when={item().image_url}>
-                          <figure
-                            class="image is-24x24 mr-2"
+                          <div
+                            class="mr-2"
                             style={{
+                              width: "24px",
+                              height: "24px",
+                              "min-width": "24px",
                               "border-radius": "4px",
                               overflow: "hidden",
                               "flex-shrink": "0",
-                              "min-width": "24px",
+                              display: "flex",
+                              "align-items": "center",
+                              "justify-content": "center",
+                              "background-color": "var(--bulma-scheme-main-bis)",
                             }}
                           >
-                            <img
-                              src={item().image_url!}
-                              alt=""
-                              style={{
-                                "object-fit": "cover",
-                                width: "100%",
-                                height: "100%",
-                              }}
-                            />
-                          </figure>
+                            <Show
+                              when={isImageSrc(item().image_url!)}
+                              fallback={
+                                <span style={{ "font-size": "0.9rem", "line-height": "1" }}>
+                                  {item().image_url}
+                                </span>
+                              }
+                            >
+                              <img
+                                src={item().image_url!}
+                                alt=""
+                                style={{ "object-fit": "cover", width: "100%", height: "100%" }}
+                              />
+                            </Show>
+                          </div>
                         </Show>
                         <span class="has-text-weight-semibold is-size-6" style={{ "overflow": "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
                           {item().name}

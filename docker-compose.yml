@@ -26,9 +26,12 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-hungryayam}:${POSTGRES_PASSWORD:-hungryayam}@db:5432/${POSTGRES_DB:-hungryayam}
       BIND_ADDR: 0.0.0.0:3000
+      UPLOAD_DIR: /data/uploads
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - uploads_data:/data/uploads
     networks:
       - internal
     expose:
@@ -47,6 +50,8 @@ services:
       - "${APP_PORT:-8080}:80"
     depends_on:
       - backend
+    volumes:
+      - uploads_data:/usr/share/nginx/html/uploads:ro
     networks:
       - internal
 
@@ -56,3 +61,4 @@ networks:
 
 volumes:
   pgdata:
+  uploads_data:

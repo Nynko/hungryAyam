@@ -15,7 +15,8 @@ use crate::{
         menu::routes::menu_routes,
         order::routes::order_routes,
         offer::routes::offer_routes,
-        availability::routes::availability_routes
+        availability::routes::availability_routes,
+        upload::routes::upload_routes,
     },
     state::AppState
 };
@@ -41,7 +42,10 @@ pub fn build_app(state: AppState) -> Router {
         }
     };
 
-    Router::new()
+    // Each route group carries its own body-size limit so they don't interfere.
+    // A global RequestBodyLimitLayer would override per-router limits, so limits
+    // are applied per-group before merging.
+    let regular_routes = Router::new()
         .merge(setup_routes())
         .merge(restaurant_routes())
         .merge(user_routes())
@@ -52,9 +56,15 @@ pub fn build_app(state: AppState) -> Router {
         .merge(availability_routes())
         .merge(auth_routes())
         .merge(admin_auth_routes())
+        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024));
+
+    let upload_router = upload_routes()
+        .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024));
+
+    Router::new()
+        .merge(regular_routes)
+        .merge(upload_router)
         .layer(cors)
-        // Limit request body size to 2 MB (prevents abuse via large payloads)
-        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), setup_redirect_guard))
         .with_state(state)
 }

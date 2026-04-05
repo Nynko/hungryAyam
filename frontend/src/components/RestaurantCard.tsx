@@ -3,6 +3,7 @@ import { A } from "@solidjs/router";
 import type { Restaurant } from "@bindings/Restaurant";
 import { ClickableCard } from "@/components/Card";
 import { availabilityStatus } from "@/lib/availability";
+import { isImageSrc } from "@/lib/imageUrl";
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -38,28 +39,35 @@ export default function RestaurantCard(props: RestaurantCardProps) {
             <Show
               when={props.restaurant.image_url}
               fallback={
-                <span
-                  style={{
-                    "font-size": "4rem",
-                    position: "absolute",
-                    filter: !status().available ? "grayscale(1) opacity(0.5)" : undefined,
-                  }}
-                >
-                  🍽️
-                </span>
+                <span style={{ "font-size": "4rem", position: "absolute" }}>🍽️</span>
               }
             >
-              <img
-                src={props.restaurant.image_url!}
-                alt={props.restaurant.name}
-                style={{
-                  "object-fit": "contain",
-                  "max-width": "100%",
-                  "max-height": "100%",
-                  filter: !status().available ? "grayscale(1) opacity(0.5)" : undefined,
-                  transition: "filter 0.3s ease",
-                }}
-              />
+              <Show
+                when={isImageSrc(props.restaurant.image_url!)}
+                fallback={
+                  <span
+                    style={{
+                      "font-size": "4rem",
+                      position: "absolute",
+                      filter: !status().available ? "grayscale(1) opacity(0.5)" : undefined,
+                    }}
+                  >
+                    {props.restaurant.image_url}
+                  </span>
+                }
+              >
+                <img
+                  src={props.restaurant.image_url!}
+                  alt={props.restaurant.name}
+                  style={{
+                    "object-fit": "contain",
+                    "max-width": "100%",
+                    "max-height": "100%",
+                    filter: !status().available ? "grayscale(1) opacity(0.5)" : undefined,
+                    transition: "filter 0.3s ease",
+                  }}
+                />
+              </Show>
             </Show>
           </figure>
 

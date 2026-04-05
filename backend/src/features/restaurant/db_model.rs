@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::types::{name::Name, url::UrlString};
+use crate::types::{name::Name, url::ImageSource};
 
 /// RestaurantRow — maps directly to the `restaurants` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -9,7 +9,7 @@ use crate::types::{name::Name, url::UrlString};
 pub struct RestaurantRow {
     pub id: Uuid,
     pub name: Name,
-    pub image_url: Option<UrlString>,
+    pub image_url: Option<ImageSource>,
     pub created_at: DateTime<Utc>,
     pub created_by: Uuid,
     pub updated_at: DateTime<Utc>,

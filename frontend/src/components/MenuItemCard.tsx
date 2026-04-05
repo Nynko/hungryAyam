@@ -1,4 +1,5 @@
 import { Show, For } from "solid-js";
+import { isImageSrc } from "@/lib/imageUrl";
 import type { MenuSectionItem } from "@bindings/MenuSectionItem";
 
 interface MenuItemCardProps {
@@ -30,29 +31,39 @@ export default function MenuItemCard(props: MenuItemCardProps) {
       }}
     >
       <div class="columns is-mobile is-vcentered is-gapless">
-        {/* Image (if present) */}
+        {/* Image / emoji (if present) */}
         <Show when={item().image_url}>
           <div class="column is-narrow mr-3">
-            <figure
-              class="image is-64x64"
+            <div
               style={{
+                width: "64px",
+                height: "64px",
+                "min-width": "64px",
                 "border-radius": "8px",
                 overflow: "hidden",
-                "min-width": "64px",
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "background-color": "var(--bulma-scheme-main-bis)",
                 filter: !isAvailable() ? "grayscale(0.25)" : undefined,
                 opacity: !isAvailable() ? "0.7" : undefined,
               }}
             >
-              <img
-                src={item().image_url!}
-                alt={item().name}
-                style={{
-                  "object-fit": "cover",
-                  width: "100%",
-                  height: "100%",
-                }}
-              />
-            </figure>
+              <Show
+                when={isImageSrc(item().image_url!)}
+                fallback={
+                  <span style={{ "font-size": "2rem", "line-height": "1" }}>
+                    {item().image_url}
+                  </span>
+                }
+              >
+                <img
+                  src={item().image_url!}
+                  alt={item().name}
+                  style={{ "object-fit": "cover", width: "100%", height: "100%" }}
+                />
+              </Show>
+            </div>
           </div>
         </Show>
 

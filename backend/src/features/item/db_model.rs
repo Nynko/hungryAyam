@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::types::{
     name::Name,
     price::PriceCents,
-    url::UrlString,
+    url::ImageSource,
 };
 
 /// ItemRow - Database row representation of an item
@@ -16,7 +16,7 @@ pub struct ItemRow {
     pub name: Name,
     pub description: Option<String>,
     pub base_price_cents: PriceCents,
-    pub image_url: Option<UrlString>,
+    pub image_url: Option<ImageSource>,
     pub active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

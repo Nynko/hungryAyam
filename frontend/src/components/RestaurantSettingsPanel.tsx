@@ -13,6 +13,7 @@ import {
 } from "@/stores/orderStore";
 import { updateRestaurant as updateRestaurantApi, restaurantsError, clearRestaurantsError } from "@/stores/restaurantStore";
 import AvailabilityRuleEditor from "@/components/AvailabilityRuleEditor";
+import ImageUploadField from "@/components/ImageUploadField";
 
 interface RestaurantSettingsPanelProps {
   restaurantId: string;
@@ -324,50 +325,12 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
               </div>
 
               <div class="column is-6">
-                <div class="field">
-                  <label class="label">Image URL</label>
-                  <div class="control">
-                    <input
-                      class="input"
-                      type="url"
-                      placeholder="https://example.com/logo.png (optional)"
-                      value={restaurantImageUrl()}
-                      onInput={(e) => setRestaurantImageUrl(e.currentTarget.value)}
-                      disabled={restaurantSaving()}
-                    />
-                  </div>
-                </div>
+                <ImageUploadField
+                  value={restaurantImageUrl() || null}
+                  onChange={(url) => setRestaurantImageUrl(url ?? "")}
+                  disabled={restaurantSaving()}
+                />
               </div>
-
-              <Show when={restaurantImageUrl().trim()}>
-                <div class="column is-12">
-                  <div class="field">
-                    <label class="label is-small">Preview</label>
-                    <figure
-                      class="image is-3by2"
-                      style={{
-                        "max-width": "200px",
-                        "background-color": "var(--bulma-scheme-main-bis)",
-                        overflow: "hidden",
-                        "border-radius": "4px",
-                      }}
-                    >
-                      <img
-                        src={restaurantImageUrl().trim()}
-                        alt="Preview"
-                        style={{
-                          "object-fit": "cover",
-                          width: "100%",
-                          height: "100%",
-                        }}
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                    </figure>
-                  </div>
-                </div>
-              </Show>
 
               <div class="column is-12">
                 <div class="is-flex is-justify-content-flex-end">

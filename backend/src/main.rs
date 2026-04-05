@@ -43,6 +43,9 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("DATABASE_URL").context("DATABASE_URL is not set")?;
     let bind_addr =
         std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_string());
+    let upload_dir = std::path::PathBuf::from(
+        std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "/data/uploads".to_string()),
+    );
 
     // --------------------------------------------------
     // Database
@@ -79,9 +82,16 @@ async fn main() -> anyhow::Result<()> {
     let scheduler_notify = Arc::new(Notify::new());
 
     // --------------------------------------------------
+    // Upload directory
+    // --------------------------------------------------
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .context("failed to create upload directory")?;
+
+    // --------------------------------------------------
     // App state
     // --------------------------------------------------
-    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone());
+    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone(), upload_dir);
 
     // --------------------------------------------------
     // Background scheduler (menu auto-reset, session auto-close)

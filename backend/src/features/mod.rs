@@ -6,3 +6,4 @@ pub mod menu;
 pub mod order;
 pub mod offer;
 pub mod availability;
+pub mod upload;

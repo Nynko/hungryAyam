@@ -33,6 +33,7 @@ import {
 import { getOfferCartCount, fetchActiveOffers } from "@/stores/offerStore";
 import { showConfirm } from "@/stores/confirmStore";
 import { availabilityStatus } from "@/lib/availability";
+import { isImageSrc } from "@/lib/imageUrl";
 
 async function fetchRestaurant(id: string): Promise<Restaurant> {
   const res = await fetch(`/api/restaurants/${id}`);
@@ -230,24 +231,29 @@ export default function RestaurantPage() {
                 <Show when={r().image_url}>
                   <div class="card-image">
                     <figure
-                      class="image is-3by1"
                       style={{
                         "background-color": "var(--bulma-scheme-main-bis)",
+                        height: "120px",
+                        overflow: "hidden",
                         display: "flex",
                         "align-items": "center",
                         "justify-content": "center",
-                        overflow: "hidden",
                       }}
                     >
-                      <img
-                        src={r().image_url!}
-                        alt={r().name}
-                        style={{
-                          "object-fit": "contain",
-                          "max-width": "100%",
-                          "max-height": "100%",
-                        }}
-                      />
+                      <Show
+                        when={isImageSrc(r().image_url!)}
+                        fallback={
+                          <span style={{ "font-size": "4rem", "line-height": "1" }}>
+                            {r().image_url}
+                          </span>
+                        }
+                      >
+                        <img
+                          src={r().image_url!}
+                          alt={r().name}
+                          style={{ "object-fit": "cover", width: "100%", height: "100%" }}
+                        />
+                      </Show>
                     </figure>
                   </div>
                 </Show>

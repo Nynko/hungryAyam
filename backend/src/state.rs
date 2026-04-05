@@ -1,5 +1,5 @@
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use tokio::sync::Notify;
 use crate::{
     auth::{
@@ -60,12 +60,15 @@ pub struct AppState {
     /// about changes (e.g. session created/updated/closed, order settings
     /// changed). Call `scheduler_notify.notify_one()` after any such mutation.
     pub scheduler_notify: Arc<Notify>,
+    /// Directory where uploaded images are stored.
+    pub upload_dir: PathBuf,
 }
 
 pub fn build_state(
     setup_completed: Arc<std::sync::atomic::AtomicBool>,
     db: PgPool,
     scheduler_notify: Arc<Notify>,
+    upload_dir: PathBuf,
 ) -> AppState {
 
     // Create repositories
@@ -104,5 +107,6 @@ pub fn build_state(
         auth_service,
         session_repository,
         scheduler_notify,
+        upload_dir,
     }
 }

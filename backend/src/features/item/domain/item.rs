@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use ts_rs::TS;
 use hungry_ayam_derive::domain_struct;
 use crate::types::{
-    url::UrlString,
+    url::ImageSource,
     price::PriceCents,
     name::Name
 };
@@ -27,7 +27,7 @@ pub struct Item {
     pub name: Name,
     pub description: Option<String>,
     pub base_price_cents: PriceCents,
-    pub image_url: Option<UrlString>,
+    pub image_url: Option<ImageSource>,
     #[create_ignore]
     pub active: bool,
     #[derived_domain_ignore]

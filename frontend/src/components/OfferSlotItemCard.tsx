@@ -1,6 +1,7 @@
 import { Show, For, createMemo } from "solid-js";
 import type { Item } from "@bindings/Item";
 import { formatOfferPrice } from "@/stores/offerStore";
+import { isImageSrc } from "@/lib/imageUrl";
 
 interface OfferSlotItemCardProps {
   item: Item;
@@ -36,29 +37,39 @@ export default function OfferSlotItemCard(props: OfferSlotItemCardProps) {
       }}
     >
       <div class="columns is-mobile is-vcentered is-gapless">
-        {/* Image (if present) */}
+        {/* Image / emoji (if present) */}
         <Show when={item().image_url}>
           <div class="column is-narrow mr-3">
-            <figure
-              class="image is-48x48"
+            <div
               style={{
+                width: "48px",
+                height: "48px",
+                "min-width": "48px",
                 "border-radius": "8px",
                 overflow: "hidden",
-                "min-width": "48px",
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "background-color": "var(--bulma-scheme-main-bis)",
                 filter: isActive() ? undefined : "grayscale(0.25)",
                 opacity: isActive() ? "1" : "0.7",
               }}
             >
-              <img
-                src={item().image_url!}
-                alt={item().name}
-                style={{
-                  "object-fit": "cover",
-                  width: "100%",
-                  height: "100%",
-                }}
-              />
-            </figure>
+              <Show
+                when={isImageSrc(item().image_url!)}
+                fallback={
+                  <span style={{ "font-size": "1.6rem", "line-height": "1" }}>
+                    {item().image_url}
+                  </span>
+                }
+              >
+                <img
+                  src={item().image_url!}
+                  alt={item().name}
+                  style={{ "object-fit": "cover", width: "100%", height: "100%" }}
+                />
+              </Show>
+            </div>
           </div>
         </Show>
 

@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use ts_rs::TS;
 use hungry_ayam_derive::domain_struct;
 use crate::types::{
-    url::UrlString,
+    url::ImageSource,
     name::Name
 };
 use crate::features::availability::domain::AvailabilityRule;
@@ -19,7 +19,7 @@ pub struct Restaurant {
     #[update_required]
     pub id: Uuid,
     pub name: Name,
-    pub image_url: Option<UrlString>,
+    pub image_url: Option<ImageSource>,
     #[derived_domain_ignore]
     pub created_by: Uuid,
     #[derived_domain_ignore]

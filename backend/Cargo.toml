@@ -8,7 +8,7 @@ edition = "2021"
 hungry_ayam_derive = { path = "../hungry_ayam_derive" }
 
 # Core framework
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "multipart"] }
 tokio = { version = "1.49.0", features = ["full"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
@@ -32,13 +32,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # TypeScript generation
-ts-rs = { version = "7.1.1", features = ["uuid-impl", "chrono-impl", "url-impl"] }
+ts-rs = { version = "7.1.1", features = ["uuid-impl", "chrono-impl"] }
 
 # Environment variables
 dotenv = "0.15"
 chrono = { version = "0.4.43", features = ["serde"] }
 chrono-tz = "0.10"
-url = { version= "2.5.8", features = ["serde"]}
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+webp = "0.3"
 email_address = "0.2.9"
 enum_stringify = "0.6.4"
 argon2 = "0.5"

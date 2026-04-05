@@ -10,7 +10,7 @@ use crate::{
             domain::{CreateRestaurant, Restaurant, UpdateRestaurant},
         },
     },
-    types::{name::Name, url::UrlString},
+    types::{name::Name, url::ImageSource},
 };
 
 #[derive(Clone)]
@@ -36,7 +36,7 @@ impl RestaurantRepository {
             RETURNING
                 id,
                 name as "name: Name",
-                image_url as "image_url?: UrlString",
+                image_url as "image_url?: ImageSource",
                 created_at,
                 created_by,
                 updated_at,
@@ -61,7 +61,7 @@ impl RestaurantRepository {
             SELECT
                 id,
                 name as "name: Name",
-                image_url as "image_url?: UrlString",
+                image_url as "image_url?: ImageSource",
                 created_at,
                 created_by,
                 updated_at,
@@ -91,7 +91,7 @@ impl RestaurantRepository {
             SELECT
                 id,
                 name as "name: Name",
-                image_url as "image_url?: UrlString",
+                image_url as "image_url?: ImageSource",
                 created_at,
                 created_by,
                 updated_at,
@@ -125,7 +125,7 @@ impl RestaurantRepository {
             RETURNING
                 id,
                 name as "name: Name",
-                image_url as "image_url?: UrlString",
+                image_url as "image_url?: ImageSource",
                 created_at,
                 created_by,
                 updated_at,
@@ -158,7 +158,7 @@ impl RestaurantRepository {
             SELECT DISTINCT
                 r.id,
                 r.name as "name: Name",
-                r.image_url as "image_url?: UrlString",
+                r.image_url as "image_url?: ImageSource",
                 r.created_at,
                 r.created_by,
                 r.updated_at,

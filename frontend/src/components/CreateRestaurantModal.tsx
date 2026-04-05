@@ -6,6 +6,7 @@ import {
 } from "@/stores/restaurantStore";
 import { isAuthenticated } from "@/stores/authStore";
 import AuthPanel from "@/components/AuthPanel";
+import ImageUploadField from "@/components/ImageUploadField";
 import type { CreateRestaurant } from "@bindings/CreateRestaurant";
 
 interface CreateRestaurantModalProps {
@@ -119,53 +120,11 @@ export default function CreateRestaurantModal(props: CreateRestaurantModalProps)
                 </div>
               </div>
 
-              {/* Image URL field */}
-              <div class="field">
-                <label class="label">Image URL</label>
-                <div class="control">
-                  <input
-                    class="input"
-                    type="url"
-                    placeholder="https://example.com/logo.png (optional)"
-                    value={imageUrl()}
-                    onInput={(e) => setImageUrl(e.currentTarget.value)}
-                    disabled={submitting()}
-                  />
-                </div>
-                <p class="help">
-                  Optional — a logo or photo for the restaurant card.
-                </p>
-              </div>
-
-              {/* Image preview */}
-              <Show when={imageUrl().trim()}>
-                <div class="field">
-                  <label class="label">Preview</label>
-                  <figure
-                    class="image is-3by2"
-                    style={{
-                      "max-width": "240px",
-                      "background-color": "var(--bulma-scheme-main-bis)",
-                      overflow: "hidden",
-                      "border-radius": "4px",
-                    }}
-                  >
-                    <img
-                      src={imageUrl().trim()}
-                      alt="Preview"
-                      style={{
-                        "object-fit": "cover",
-                        width: "100%",
-                        height: "100%",
-                      }}
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display =
-                          "none";
-                      }}
-                    />
-                  </figure>
-                </div>
-              </Show>
+              <ImageUploadField
+                value={imageUrl() || null}
+                onChange={(url) => setImageUrl(url ?? "")}
+                disabled={submitting()}
+              />
             </section>
 
             <footer class="modal-card-foot">

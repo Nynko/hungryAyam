@@ -12,6 +12,7 @@ import type { OrderSession } from "@bindings/OrderSession";
 import type { ApiResponse } from "@bindings/ApiResponse";
 import type { OrderSessionStatus } from "@bindings/OrderSessionStatus";
 import { Card } from "@/components/Card";
+import { isImageSrc } from "@/lib/imageUrl";
 import ActiveSessionBanner from "@/components/ActiveSessionBanner";
 import { isAuthenticated } from "@/stores/authStore";
 import {
@@ -196,25 +197,31 @@ function ActiveSessionCard(props: {
         {/* Restaurant name link */}
         <div class="is-flex is-align-items-center mb-3" style={{ gap: "0.5rem" }}>
           <Show when={props.restaurant.image_url}>
-            <figure
-              class="image is-24x24"
-              style={{
-                "border-radius": "4px",
-                overflow: "hidden",
-                "flex-shrink": "0",
-                "min-width": "24px",
-              }}
-            >
-              <img
-                src={props.restaurant.image_url!}
-                alt={props.restaurant.name}
+            {isImageSrc(props.restaurant.image_url!) ? (
+              <figure
+                class="image is-24x24"
                 style={{
-                  "object-fit": "cover",
-                  width: "100%",
-                  height: "100%",
+                  "border-radius": "4px",
+                  overflow: "hidden",
+                  "flex-shrink": "0",
+                  "min-width": "24px",
                 }}
-              />
-            </figure>
+              >
+                <img
+                  src={props.restaurant.image_url!}
+                  alt={props.restaurant.name}
+                  style={{
+                    "object-fit": "cover",
+                    width: "100%",
+                    height: "100%",
+                  }}
+                />
+              </figure>
+            ) : (
+              <span style={{ "font-size": "1.25rem", "line-height": "1" }}>
+                {props.restaurant.image_url}
+              </span>
+            )}
           </Show>
           <A
             href={`/restaurants/${props.restaurant.id}`}
@@ -327,24 +334,30 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
             style={{ gap: "0.5rem" }}
           >
             <Show when={props.restaurant.image_url}>
-              <figure
-                class="image is-32x32"
-                style={{
-                  "border-radius": "6px",
-                  overflow: "hidden",
-                  "flex-shrink": "0",
-                }}
-              >
-                <img
-                  src={props.restaurant.image_url!}
-                  alt={props.restaurant.name}
+              {isImageSrc(props.restaurant.image_url!) ? (
+                <figure
+                  class="image is-32x32"
                   style={{
-                    "object-fit": "cover",
-                    width: "100%",
-                    height: "100%",
+                    "border-radius": "6px",
+                    overflow: "hidden",
+                    "flex-shrink": "0",
                   }}
-                />
-              </figure>
+                >
+                  <img
+                    src={props.restaurant.image_url!}
+                    alt={props.restaurant.name}
+                    style={{
+                      "object-fit": "cover",
+                      width: "100%",
+                      height: "100%",
+                    }}
+                  />
+                </figure>
+              ) : (
+                <span style={{ "font-size": "1.5rem", "line-height": "1" }}>
+                  {props.restaurant.image_url}
+                </span>
+              )}
             </Show>
             <span class="is-size-5">{props.restaurant.name}</span>
           </div>

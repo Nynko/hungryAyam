@@ -30,6 +30,7 @@ impl AppSetupRepository {
                 id,
                 max_menu_nesting_depth,
                 access_hash as "access_hash: HashedPassword",
+                editor_email_domain,
                 created_at,
                 updated_at
             "#,
@@ -50,6 +51,7 @@ impl AppSetupRepository {
                 id,
                 max_menu_nesting_depth,
                 access_hash as "access_hash: HashedPassword",
+                editor_email_domain,
                 created_at,
                 updated_at
             FROM app_settings
@@ -70,17 +72,20 @@ impl AppSetupRepository {
             UPDATE app_settings
             SET max_menu_nesting_depth = COALESCE($1, max_menu_nesting_depth),
                 access_hash = COALESCE($2, access_hash),
+                editor_email_domain = COALESCE($3, editor_email_domain),
                 updated_at = NOW()
             WHERE id = 1
             RETURNING
                 id,
                 max_menu_nesting_depth,
                 access_hash as "access_hash: HashedPassword",
+                editor_email_domain,
                 created_at,
                 updated_at
             "#,
             request.max_menu_nesting_depth,
-            request.access_hash.as_ref().map(|h| h.as_ref())
+            request.access_hash.as_ref().map(|h| h.as_ref()),
+            request.editor_email_domain.as_deref()
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -102,6 +107,38 @@ impl AppSetupRepository {
 
         // Default to 2 if not found
         Ok(result.unwrap_or(2))
+    }
+
+    /// Get the editor email domain setting.
+    pub async fn get_editor_email_domain(&self) -> Result<Option<String>> {
+        let result: Option<Option<String>> = sqlx::query_scalar!(
+            r#"
+            SELECT editor_email_domain
+            FROM app_settings
+            WHERE id = 1
+            "#
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result.flatten())
+    }
+
+    /// Set the editor email domain (None to clear).
+    pub async fn set_editor_email_domain(&self, domain: Option<&str>) -> Result<()> {
+        sqlx::query!(
+            r#"
+            UPDATE app_settings
+            SET editor_email_domain = $1,
+                updated_at = NOW()
+            WHERE id = 1
+            "#,
+            domain
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 
     /// Get the access hash for site-access verification.

@@ -18,6 +18,10 @@ pub struct AppSetup {
     /// SHA-256 hex hash of the shared site access code.
     /// The plaintext code is never stored — only this hash.
     pub access_hash: HashedPassword,
+    /// Email domain that makes registered users eligible for Editor role.
+    /// E.g. "example.com" — users with matching email can self-promote to Editor.
+    #[create_ignore]
+    pub editor_email_domain: Option<String>,
     #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]

@@ -171,6 +171,92 @@ impl AuthService {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // Self-service operations (authenticated user)
+    // ═══════════════════════════════════════════════════════════════
+
+    /// Upgrade the current guest to a password account.
+    ///
+    /// Role is always set to `User`. Sessions are invalidated so the
+    /// caller must re-authenticate with the new credentials.
+    pub async fn self_upgrade_to_password(
+        &self,
+        user_id: Uuid,
+        email: Email,
+        password: &ClearPassword,
+    ) -> Result<User> {
+        self.upgrade_to_password(user_id, email, password, UserRole::User)
+            .await
+    }
+
+    /// Toggle the current user between `User` and `Editor` roles.
+    ///
+    /// Only password users whose email domain matches `editor_email_domain`
+    /// are eligible. Admins cannot toggle (they stay Admin).
+    pub async fn toggle_editor(
+        &self,
+        user_id: Uuid,
+        editor_email_domain: &str,
+    ) -> Result<User> {
+        let user = self
+            .user_repository
+            .get_by_id(user_id)
+            .await?
+            .ok_or_else(|| anyhow!("User not found"))?;
+
+        if user.auth_method != AuthMethod::Password {
+            return Err(anyhow!("Only registered users can toggle editor role"));
+        }
+
+        let email = user
+            .email
+            .as_ref()
+            .ok_or_else(|| anyhow!("User has no email"))?;
+
+        // Compare domains (case-insensitive)
+        let user_domain = email.as_ref().domain();
+        if !user_domain.eq_ignore_ascii_case(editor_email_domain) {
+            return Err(anyhow!("Your email domain is not eligible for editor access"));
+        }
+
+        let new_role = match user.role.as_ref() {
+            Some(UserRole::User) => UserRole::Editor,
+            Some(UserRole::Editor) => UserRole::User,
+            Some(UserRole::Admin) => return Err(anyhow!("Admin users cannot toggle editor role")),
+            None => return Err(anyhow!("User has no role")),
+        };
+
+        self.user_repository
+            .update_role(user_id, new_role)
+            .await?
+            .ok_or_else(|| anyhow!("User not found during role toggle"))
+    }
+
+    /// Change the current user's display name.
+    ///
+    /// Returns an error if the name is already taken by another user.
+    pub async fn change_name(&self, user_id: Uuid, new_name: Name) -> Result<User> {
+        // Check name availability
+        if let Some(existing) = self.user_repository.get_by_name(new_name.as_ref()).await? {
+            if existing.id != user_id {
+                return Err(anyhow!("A user with this name already exists"));
+            }
+        }
+
+        let update = crate::features::user::domain::UpdateUser {
+            id: user_id,
+            name: Some(new_name),
+            email: None,
+            auth_method: None,
+            role: None,
+        };
+
+        self.user_repository
+            .update(update)
+            .await?
+            .ok_or_else(|| anyhow!("User not found"))
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // Admin-only operations
     // ═══════════════════════════════════════════════════════════════
     //

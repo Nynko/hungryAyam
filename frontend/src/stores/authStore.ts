@@ -273,6 +273,119 @@ async function logout(): Promise<void> {
   }
 }
 
+// ── Self-service: register (guest → password) ────────────────────
+
+/**
+ * Upgrade the current guest account to a password account via
+ * `POST /api/auth/register`.
+ *
+ * On success, existing sessions are invalidated — the caller should
+ * redirect to the login page.
+ */
+async function selfRegister(
+  email: string,
+  password: string,
+  name?: string,
+): Promise<boolean> {
+  try {
+    setAuthLoading(true);
+    setAuthError(null);
+
+    const body: Record<string, string> = { email, password };
+    if (name) body.name = name;
+
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const json: ApiResponse<null> = await res.json();
+
+    if (res.ok && json.success) {
+      // Sessions were invalidated — clear local state
+      setCurrentUser(null);
+      return true;
+    } else {
+      setAuthError(json.error ?? "Registration failed.");
+      return false;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setAuthError(msg);
+    return false;
+  } finally {
+    setAuthLoading(false);
+  }
+}
+
+// ── Self-service: toggle editor ──────────────────────────────────
+
+/**
+ * Toggle between User and Editor role via `POST /api/auth/toggle-editor`.
+ *
+ * Updates the local user on success.
+ */
+async function toggleEditor(): Promise<boolean> {
+  try {
+    setAuthLoading(true);
+    setAuthError(null);
+
+    const res = await fetch("/api/auth/toggle-editor", { method: "POST" });
+    const json: ApiResponse<User> = await res.json();
+
+    if (res.ok && json.success && json.data) {
+      setCurrentUser(json.data);
+      return true;
+    } else {
+      setAuthError(json.error ?? "Failed to toggle editor role.");
+      return false;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setAuthError(msg);
+    return false;
+  } finally {
+    setAuthLoading(false);
+  }
+}
+
+// ── Self-service: change name ────────────────────────────────────
+
+/**
+ * Change the current user's display name via `PUT /api/auth/profile/name`.
+ *
+ * Updates the local user on success.
+ */
+async function changeName(name: string): Promise<boolean> {
+  try {
+    setAuthLoading(true);
+    setAuthError(null);
+
+    const res = await fetch("/api/auth/profile/name", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+
+    const json: ApiResponse<User> = await res.json();
+
+    if (res.ok && json.success && json.data) {
+      setCurrentUser(json.data);
+      return true;
+    } else {
+      setAuthError(json.error ?? "Failed to change name.");
+      return false;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setAuthError(msg);
+    return false;
+  } finally {
+    setAuthLoading(false);
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 
 /**
@@ -305,5 +418,8 @@ export {
   loginAsGuest,
   login,
   logout,
+  selfRegister,
+  toggleEditor,
+  changeName,
   clearAuthError,
 };

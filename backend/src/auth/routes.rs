@@ -33,6 +33,10 @@ pub fn auth_routes() -> Router<AppState> {
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
+        .route("/api/auth/register", post(self_register))
+        .route("/api/auth/toggle-editor", post(toggle_editor))
+        .route("/api/auth/profile/name", put(change_name))
+        .route("/api/auth/editor-eligibility", get(check_editor_eligibility))
         .route("/api/admin/magic-link", get(get_magic_link_token))
 }
 
@@ -42,6 +46,7 @@ pub fn admin_auth_routes() -> Router<AppState> {
         .route("/api/admin/users/register", post(admin_register_user))
         .route("/api/admin/users/:id/upgrade", post(admin_upgrade_user))
         .route("/api/admin/users/:id/role", put(admin_change_role))
+        .route("/api/admin/settings/editor-domain", get(get_editor_domain).put(set_editor_domain))
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -101,6 +106,41 @@ pub struct UpgradeUserRequest {
 #[ts(export)]
 pub struct ChangeRoleRequest {
     pub role: UserRole,
+}
+
+/// Request body for self-registering (guest → password account).
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct SelfRegisterRequest {
+    pub email: Email,
+    pub password: ClearPassword,
+    /// Optional new display name. If omitted, the current name is kept.
+    pub name: Option<Name>,
+}
+
+/// Request body for changing display name.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct ChangeNameRequest {
+    pub name: Name,
+}
+
+/// Request body for setting the editor email domain.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct SetEditorDomainRequest {
+    /// The email domain (e.g. "example.com"). `null` to clear.
+    pub domain: Option<String>,
+}
+
+/// Response for editor eligibility check.
+#[derive(Debug, serde::Serialize, TS)]
+#[ts(export)]
+pub struct EditorEligibilityResponse {
+    /// Whether the user can toggle editor role.
+    pub eligible: bool,
+    /// Current role is Editor.
+    pub is_editor: bool,
 }
 
 /// Response containing user data and the session token.
@@ -304,6 +344,99 @@ pub async fn me(AuthUser(user): AuthUser) -> Result<ApiJson<ApiResponse<crate::f
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Self-service handlers (authenticated user)
+// ═══════════════════════════════════════════════════════════════════
+
+/// `POST /api/auth/register`
+///
+/// Upgrade the current guest account to a password-authenticated account.
+///
+/// All existing sessions are invalidated — the client must re-login
+/// with the new credentials after a successful upgrade.
+pub async fn self_register(
+    AuthUser(user): AuthUser,
+    State(state): State<AppState>,
+    ApiJson(request): ApiJson<SelfRegisterRequest>,
+) -> Result<ApiJson<ApiResponse<()>>, ApiError> {
+    // Optionally rename first
+    if let Some(new_name) = request.name {
+        state.auth_service.change_name(user.id, new_name).await?;
+    }
+
+    state
+        .auth_service
+        .self_upgrade_to_password(user.id, request.email, &request.password)
+        .await?;
+
+    Ok(ApiJson(ApiResponse::success(())))
+}
+
+/// `POST /api/auth/toggle-editor`
+///
+/// Toggle between User and Editor roles. Only eligible registered users
+/// whose email domain matches the configured `editor_email_domain`.
+pub async fn toggle_editor(
+    AuthUser(user): AuthUser,
+    State(state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<crate::features::user::domain::User>>, ApiError> {
+    let domain = state
+        .setup_repository
+        .get_editor_email_domain()
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::BadRequest("Editor self-service is not configured".to_string()))?;
+
+    let user = state.auth_service.toggle_editor(user.id, &domain).await?;
+
+    Ok(ApiJson(ApiResponse::success(user)))
+}
+
+/// `PUT /api/auth/profile/name`
+///
+/// Change the current user's display name.
+pub async fn change_name(
+    AuthUser(user): AuthUser,
+    State(state): State<AppState>,
+    ApiJson(request): ApiJson<ChangeNameRequest>,
+) -> Result<ApiJson<ApiResponse<crate::features::user::domain::User>>, ApiError> {
+    let user = state.auth_service.change_name(user.id, request.name).await?;
+
+    Ok(ApiJson(ApiResponse::success(user)))
+}
+
+/// `GET /api/auth/editor-eligibility`
+///
+/// Check if the current user is eligible to toggle Editor role.
+/// Returns eligibility status and current editor state.
+pub async fn check_editor_eligibility(
+    AuthUser(user): AuthUser,
+    State(state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<EditorEligibilityResponse>>, ApiError> {
+    let is_editor = user.role.as_ref().map(|r| r.is_editor_or_above()).unwrap_or(false)
+        && !user.role.as_ref().map(|r| r.is_admin()).unwrap_or(false);
+
+    let domain = state
+        .setup_repository
+        .get_editor_email_domain()
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let eligible = match (&domain, &user.email, &user.auth_method) {
+        (Some(d), Some(email), &crate::types::auth::AuthMethod::Password) => {
+            let user_domain = email.as_ref().domain();
+            user_domain.eq_ignore_ascii_case(d)
+                && !user.role.as_ref().map(|r| r.is_admin()).unwrap_or(false)
+        }
+        _ => false,
+    };
+
+    Ok(ApiJson(ApiResponse::success(EditorEligibilityResponse {
+        eligible,
+        is_editor,
+    })))
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Admin handlers
 // ═══════════════════════════════════════════════════════════════════
 
@@ -382,4 +515,39 @@ pub async fn admin_change_role(
         .await?;
 
     Ok(ApiJson(ApiResponse::success(user)))
+}
+
+/// `GET /api/admin/settings/editor-domain`
+///
+/// Get the currently configured editor email domain.
+pub async fn get_editor_domain(
+    AdminUser(_admin): AdminUser,
+    State(state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<Option<String>>>, ApiError> {
+    let domain = state
+        .setup_repository
+        .get_editor_email_domain()
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(ApiJson(ApiResponse::success(domain)))
+}
+
+/// `PUT /api/admin/settings/editor-domain`
+///
+/// Set or clear the editor email domain.
+pub async fn set_editor_domain(
+    AdminUser(_admin): AdminUser,
+    State(state): State<AppState>,
+    ApiJson(request): ApiJson<SetEditorDomainRequest>,
+) -> Result<ApiJson<ApiResponse<Option<String>>>, ApiError> {
+    let domain = request.domain.map(|d| d.trim().to_lowercase());
+
+    state
+        .setup_repository
+        .set_editor_email_domain(domain.as_deref())
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(ApiJson(ApiResponse::success(domain)))
 }

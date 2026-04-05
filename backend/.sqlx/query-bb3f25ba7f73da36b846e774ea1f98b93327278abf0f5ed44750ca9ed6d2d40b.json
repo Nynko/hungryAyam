@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE app_settings\n            SET editor_email_domain = $1,\n                updated_at = NOW()\n            WHERE id = 1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bb3f25ba7f73da36b846e774ea1f98b93327278abf0f5ed44750ca9ed6d2d40b"
+}

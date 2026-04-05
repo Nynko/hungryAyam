@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE app_settings\n            SET max_menu_nesting_depth = COALESCE($1, max_menu_nesting_depth),\n                access_hash = COALESCE($2, access_hash),\n                updated_at = NOW()\n            WHERE id = 1\n            RETURNING\n                id,\n                max_menu_nesting_depth,\n                access_hash as \"access_hash: HashedPassword\",\n                created_at,\n                updated_at\n            ",
+  "query": "\n            SELECT\n                id,\n                max_menu_nesting_depth,\n                access_hash as \"access_hash: HashedPassword\",\n                editor_email_domain,\n                created_at,\n                updated_at\n            FROM app_settings\n            WHERE id = 1\n            ",
   "describe": {
     "columns": [
       {
@@ -20,28 +20,31 @@
       },
       {
         "ordinal": 3,
+        "name": "editor_email_domain",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Left": [
-        "Int2",
-        "Text"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
       false,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "70c8b704b178493dc543acc98c793a4d1392d892b5aaf2884b4307ae45f4de8f"
+  "hash": "c7df7d44b42dd42bf2c90b869917648b7d127c0426fa3807f90d7d0cd57f8479"
 }

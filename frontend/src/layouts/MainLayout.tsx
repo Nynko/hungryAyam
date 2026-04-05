@@ -91,9 +91,12 @@ const MainLayout: ParentComponent = (props) => {
                   </button>
                 </Show>
 
-                {/* Password user: show "Log out" only */}
+                {/* Password user: show "My Account" + "Log out" */}
                 <Show when={isPasswordUser()}>
-                  <button class="button is-light" onClick={handleLogout}>
+                  <A href="/login" class="button is-light" onClick={closeBurger}>
+                    My Account
+                  </A>
+                  <button class="button is-light is-outlined" onClick={handleLogout}>
                     Log out
                   </button>
                 </Show>

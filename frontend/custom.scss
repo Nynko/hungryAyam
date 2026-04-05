@@ -24,6 +24,56 @@
     }
 }
 
+// Navbar-specific UI treatments: avoid Bulma's generic `is-light` look
+// on the primary navbar, which can feel washed out in dark mode.
+.navbar-user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tag.navbar-role-tag {
+    background-color: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: inherit;
+}
+
+.button.navbar-action-button {
+    background-color: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.24);
+    box-shadow: none;
+    color: inherit;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+
+    &:hover,
+    &:focus-visible {
+        background-color: rgba(255, 255, 255, 0.22);
+        border-color: rgba(255, 255, 255, 0.34);
+        color: inherit;
+    }
+
+    &.is-subtle {
+        background-color: transparent;
+        border-color: rgba(255, 255, 255, 0.24);
+    }
+
+    &.is-subtle:hover,
+    &.is-subtle:focus-visible {
+        background-color: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.32);
+    }
+}
+
+.editor-panel {
+    background-color: var(--bulma-scheme-main-bis);
+    border-left: 3px solid var(--bulma-border);
+}
+
+.editor-subpanel {
+    background-color: var(--bulma-scheme-main);
+    border-left: 3px solid var(--bulma-border-weak);
+}
+
 // ── Drag-and-drop ────────────────────────────────────────────────
 
 // Drag handle: visible grab cursor, subtle hover highlight

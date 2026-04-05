@@ -26,12 +26,13 @@ export default function OfferSlotItemCard(props: OfferSlotItemCardProps) {
   return (
     <div
       class="box p-3 mb-2"
+      classList={{
+        "has-background-light": !isActive() && props.quantity === 0,
+        "has-background-success-light": props.quantity > 0,
+      }}
       style={{
-        opacity: isActive() ? "1" : "0.45",
         position: "relative",
-        border: props.quantity > 0 ? "2px solid hsl(141, 53%, 53%)" : "1px solid transparent",
-        "background-color": props.quantity > 0 ? "hsl(141, 53%, 97%)" : undefined,
-        transition: "border-color 0.15s ease, background-color 0.15s ease",
+        transition: "background-color 0.15s ease",
       }}
     >
       <div class="columns is-mobile is-vcentered is-gapless">
@@ -44,6 +45,8 @@ export default function OfferSlotItemCard(props: OfferSlotItemCardProps) {
                 "border-radius": "8px",
                 overflow: "hidden",
                 "min-width": "48px",
+                filter: isActive() ? undefined : "grayscale(0.25)",
+                opacity: isActive() ? "1" : "0.7",
               }}
             >
               <img
@@ -67,7 +70,7 @@ export default function OfferSlotItemCard(props: OfferSlotItemCardProps) {
                 {item().name}
                 <Show when={!isActive()}>
                   <span
-                    class="tag is-warning is-light ml-2"
+                    class="tag is-warning ml-2"
                     style={{ "vertical-align": "middle", "font-size": "0.65rem" }}
                   >
                     Unavailable

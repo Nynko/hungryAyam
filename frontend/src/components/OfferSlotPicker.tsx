@@ -370,7 +370,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
                 <>
                   <Show when={index() > 0}>
                     <span
-                      class="has-text-grey-light mx-1"
+                      class="has-text-grey mx-1"
                       style={{ "font-size": "0.7rem" }}
                     >
                       ›
@@ -381,8 +381,8 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
                       isActive()
                         ? "is-primary"
                         : isComplete()
-                          ? "is-success is-light"
-                          : "is-light"
+                          ? "is-success"
+                          : ""
                     }`}
                     style={{ cursor: "pointer", transition: "all 0.15s ease" }}
                     onClick={() => goToStep(index())}
@@ -393,7 +393,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
                     {slot.label}
                     <Show when={isOptional()}>
                       <span
-                        class="ml-1 has-text-grey"
+                        class="ml-1"
                         style={{ "font-size": "0.65rem" }}
                       >
                         opt.
@@ -454,7 +454,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
                           ? "is-success"
                           : currentSelectionCount() > 0
                             ? "is-warning"
-                            : "is-light"
+                            : ""
                       }`}
                     >
                       {currentSelectionCount()} / {slot().max_items}
@@ -513,7 +513,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
                   !slotLoading() && currentAllowedItems().length === 0
                 }
               >
-                <div class="notification is-warning is-light has-text-centered">
+                <div class="notification is-warning has-text-centered">
                   <p>No items available for this slot right now.</p>
                 </div>
               </Show>
@@ -524,7 +524,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
 
       {/* Validation error */}
       <Show when={validationError()}>
-        <div class="notification is-danger is-light mt-3">
+        <div class="notification is-danger mt-3">
           <button
             class="delete"
             onClick={() => setValidationError(null)}
@@ -556,7 +556,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
       <div class="is-flex is-justify-content-space-between is-align-items-center mt-4">
         <div class="buttons">
           <button
-            class="button is-light"
+            class="button"
             disabled={isFirstStep()}
             onClick={goPrev}
           >
@@ -570,7 +570,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
         <div class="buttons">
           {/* Skip (optional slots) */}
           <Show when={currentSlot()?.min_items === 0 && !isLastStep()}>
-            <button class="button is-light" onClick={goNext}>
+            <button class="button" onClick={goNext}>
               Skip
             </button>
           </Show>
@@ -614,7 +614,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
       {/* Cancel link */}
       <div class="has-text-centered mt-3">
         <button
-          class="button is-text is-small has-text-grey"
+          class="button is-text is-small"
           onClick={props.onClose}
         >
           Cancel

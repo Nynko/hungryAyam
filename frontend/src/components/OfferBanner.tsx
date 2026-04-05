@@ -62,22 +62,9 @@ export default function OfferBanner(props: OfferBannerProps) {
             {(offer) => (
               <div class="column is-12">
                 <div
-                  class="box"
+                  class="box card-clickable"
                   style={{
-                    background:
-                      "linear-gradient(135deg, hsl(141, 53%, 96%) 0%, hsl(204, 71%, 96%) 100%)",
-                    border: "2px solid hsl(141, 53%, 80%)",
-                    cursor: "pointer",
-                    transition: "transform 0.15s ease, box-shadow 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-2px)";
-                    e.currentTarget.style.boxShadow =
-                      "0 4px 12px rgba(0,0,0,0.1)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "";
-                    e.currentTarget.style.boxShadow = "";
+                    "border-left": "4px solid var(--bulma-border)",
                   }}
                   onClick={() => props.onComposeOffer(offer)}
                 >

@@ -122,22 +122,6 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
 
   const handleReopen = () => doAction("reopen", reopenSession);
 
-  // ── Status-specific banner style ────────────────────────────────
-  const bannerClass = createMemo(() => {
-    switch (props.session.status) {
-      case "Open":
-        return "is-success";
-      case "Closed":
-        return "is-warning";
-      case "Sent":
-        return "is-info";
-      case "Cancelled":
-        return "is-danger";
-      default:
-        return "is-light";
-    }
-  });
-
   const statusEmoji = createMemo(() => {
     switch (props.session.status) {
       case "Open":
@@ -154,7 +138,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
   });
 
   return (
-    <div class={`notification ${bannerClass()} is-light mb-4`}>
+    <div class="notification mb-4">
       {/* Top row: status + countdown */}
       <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap" style={{ gap: "0.5rem" }}>
         <div>
@@ -171,7 +155,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
             <Show
               when={!hasEnded() && hasStarted()}
               fallback={
-                <span class="is-size-7 has-text-grey-dark">
+                <span class="is-size-7 has-text-weight-medium">
                   {countdownText()}
                 </span>
               }
@@ -202,7 +186,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
           })}
         </span>
         <Show when={props.session.allow_late}>
-          <span class="tag is-light is-small">Late orders allowed</span>
+          <span class="tag is-warning is-small">Late orders allowed</span>
         </Show>
         <span class="is-size-7">
           <strong>Orders:</strong> {orderCount()}
@@ -273,14 +257,14 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
 
             {/* Sent — terminal state, no actions */}
             <Show when={props.session.status === "Sent"}>
-              <span class="is-size-7 has-text-grey">
+              <span class="is-size-7 has-text-weight-medium">
                 Orders have been sent. This session is complete.
               </span>
             </Show>
 
             {/* Cancelled — terminal state */}
             <Show when={props.session.status === "Cancelled"}>
-              <span class="is-size-7 has-text-grey">
+              <span class="is-size-7 has-text-weight-medium">
                 This session was cancelled.
               </span>
             </Show>

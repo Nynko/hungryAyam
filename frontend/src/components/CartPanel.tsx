@@ -321,14 +321,7 @@ export default function CartPanel(props: CartPanelProps) {
           </p>
           <For each={offerCart()}>
             {(entry) => (
-              <div
-                class="box p-3 mb-2"
-                style={{
-                  background:
-                    "linear-gradient(135deg, hsl(141, 53%, 97%) 0%, hsl(204, 71%, 97%) 100%)",
-                  border: "1px solid hsl(141, 53%, 88%)",
-                }}
-              >
+              <div class="box p-3 mb-2 has-background-light">
                 {/* Offer title row */}
                 <div class="is-flex is-justify-content-space-between is-align-items-center mb-2">
                   <div>
@@ -387,7 +380,7 @@ export default function CartPanel(props: CartPanelProps) {
 
                 {/* Price breakdown */}
                 <Show when={entry.totalPriceCents > entry.basePriceCents}>
-                  <p class="is-size-7 has-text-grey mt-1" style={{ "border-top": "1px solid hsl(141, 53%, 88%)", "padding-top": "0.25rem" }}>
+                  <p class="is-size-7 has-text-grey mt-1" style={{ "border-top": "1px solid var(--bulma-border-weak)", "padding-top": "0.25rem" }}>
                     Base: ${formatOfferPrice(entry.basePriceCents)} + supplements: ${formatOfferPrice(entry.totalPriceCents - entry.basePriceCents)}
                   </p>
                 </Show>

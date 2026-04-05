@@ -472,13 +472,7 @@ export default function OfferEditor(props: OfferEditorProps) {
 
   // ── Render ─────────────────────────────────────────────────────
   return (
-    <div
-      class="box mb-5"
-      style={{
-        "border-left": "4px solid hsl(141, 53%, 53%)",
-        "background-color": "hsl(141, 53%, 98%)",
-      }}
-    >
+    <div class="box mb-5 has-background-light editor-panel">
       {/* ── Header ──────────────────────────────────────────── */}
       <div
         class="is-flex is-justify-content-space-between is-align-items-center"
@@ -494,14 +488,14 @@ export default function OfferEditor(props: OfferEditorProps) {
           </h3>
           <Show when={hasOffer()}>
             <span
-              class={`tag is-small ${existingOffer()!.is_active ? "is-success" : "is-warning is-light"}`}
+              class={`tag is-small ${existingOffer()!.is_active ? "is-success" : "is-warning"}`}
             >
               {existingOffer()!.is_active ? "Active" : "Inactive"}
             </span>
-            <span class="tag is-info is-light is-small">
+            <span class="tag is-info is-small">
               ${formatOfferPrice(existingOffer()!.base_price_cents)}
             </span>
-            <span class="tag is-light is-small">
+            <span class="tag is-small">
               {existingOffer()!.slots.length} slot
               {existingOffer()!.slots.length !== 1 ? "s" : ""}
             </span>
@@ -524,7 +518,7 @@ export default function OfferEditor(props: OfferEditorProps) {
         <div class="mt-4">
           {/* ── Messages ──────────────────────────────────── */}
           <Show when={localError()}>
-            <div class="notification is-danger is-light py-2 px-3 mb-3">
+            <div class="notification is-danger py-2 px-3 mb-3">
               <button
                 class="delete is-small"
                 onClick={() => setLocalError(null)}
@@ -533,13 +527,13 @@ export default function OfferEditor(props: OfferEditorProps) {
             </div>
           </Show>
           <Show when={offerError()}>
-            <div class="notification is-danger is-light py-2 px-3 mb-3">
+            <div class="notification is-danger py-2 px-3 mb-3">
               <button class="delete is-small" onClick={clearOfferError} />
               {offerError()}
             </div>
           </Show>
           <Show when={localSuccess()}>
-            <div class="notification is-success is-light py-2 px-3 mb-3">
+            <div class="notification is-success py-2 px-3 mb-3">
               <button
                 class="delete is-small"
                 onClick={() => setLocalSuccess(null)}
@@ -604,7 +598,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                     <div class="column is-3">
                       <p class="is-size-7 has-text-grey">Status</p>
                       <span
-                        class={`tag ${offer().is_active ? "is-success" : "is-warning is-light"}`}
+                        class={`tag ${offer().is_active ? "is-success" : "is-warning"}`}
                       >
                         {offer().is_active ? "Active" : "Inactive"}
                       </span>
@@ -623,10 +617,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                   </h4>
                   <For each={offer().slots}>
                     {(slot) => (
-                      <div
-                        class="box p-3 mb-2"
-                        style={{ "background-color": "white" }}
-                      >
+                      <div class="box p-3 mb-2 has-background-light">
                         <div class="is-flex is-justify-content-space-between is-align-items-center">
                           <div>
                             <span class="has-text-weight-semibold">
@@ -638,7 +629,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                                 : `${slot.min_items}–${slot.max_items} items`}
                             </span>
                             <Show when={slot.min_items === 0}>
-                              <span class="tag is-light is-small ml-2">
+                              <span class="tag is-small ml-2">
                                 optional
                               </span>
                             </Show>
@@ -648,11 +639,11 @@ export default function OfferEditor(props: OfferEditorProps) {
                             style={{ gap: "0.5rem" }}
                           >
                             <Show when={slot.supplement_cents > 0}>
-                              <span class="tag is-warning is-light is-small">
+                              <span class="tag is-warning is-small">
                                 +${formatOfferPrice(slot.supplement_cents)}
                               </span>
                             </Show>
-                            <span class="tag is-info is-light is-small">
+                            <span class="tag is-info is-small">
                               {slot.constraints.length} constraint
                               {slot.constraints.length !== 1 ? "s" : ""}
                             </span>
@@ -685,7 +676,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                               return (
                                 <p class="is-size-7 has-text-grey">
                                   <span
-                                    class="tag is-light mr-1"
+                                    class="tag mr-1"
                                     style={{ "font-size": "0.6rem" }}
                                   >
                                     {kindKey}
@@ -856,7 +847,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                 </div>
 
                 <Show when={draft.slots.length === 0}>
-                  <div class="notification is-light has-text-centered py-3">
+                  <div class="notification has-text-centered py-3">
                     <p class="has-text-grey is-size-7">
                       No slots yet. Add at least one slot (e.g. "Starter",
                       "Main", "Dessert").
@@ -867,13 +858,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                 {/* Index keyed by position — stable DOM, no focus loss */}
                 <Index each={draft.slots}>
                   {(slot, slotIndex) => (
-                    <div
-                      class="box p-3 mb-3"
-                      style={{
-                        "background-color": "white",
-                        "border-left": "3px solid hsl(204, 71%, 53%)",
-                      }}
-                    >
+                    <div class="box p-3 mb-3 has-background-light editor-subpanel">
                       {/* Slot header with remove button */}
                       <div class="is-flex is-justify-content-space-between is-align-items-center mb-2">
                         <span class="has-text-weight-semibold is-size-6">
@@ -1008,7 +993,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                             Constraints ({slot().constraints.length})
                           </span>
                           <button
-                            class="button is-small is-light"
+                            class="button is-small"
                             onClick={() => addConstraint(slotIndex)}
                           >
                             <span
@@ -1234,7 +1219,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                 </button>
 
                 <button
-                  class="button is-light is-small"
+                  class="button is-small"
                   disabled={saving()}
                   onClick={cancelEditing}
                 >

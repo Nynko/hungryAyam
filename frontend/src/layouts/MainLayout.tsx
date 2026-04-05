@@ -70,10 +70,10 @@ const MainLayout: ParentComponent = (props) => {
             {/* Authenticated user info */}
             <Show when={isAuthenticated()}>
               <div class="navbar-item">
-                <span class="has-text-weight-semibold">
-                  👤 {currentUser()?.name}
+                <span class="has-text-weight-semibold navbar-user-chip">
+                  <span>👤 {currentUser()?.name}</span>
                   <Show when={isGuest()}>
-                    <span class="tag is-light is-small ml-2">guest</span>
+                    <span class="tag is-small navbar-role-tag">guest</span>
                   </Show>
                 </span>
               </div>
@@ -83,27 +83,27 @@ const MainLayout: ParentComponent = (props) => {
               <div class="buttons">
                 {/* Guest: show "Log in" to upgrade + "Log out" */}
                 <Show when={isGuest()}>
-                  <A href="/login" class="button is-light" onClick={closeBurger}>
+                  <A href="/login" class="button navbar-action-button" onClick={closeBurger}>
                     Log in
                   </A>
-                  <button class="button is-light is-outlined" onClick={handleLogout}>
+                  <button class="button navbar-action-button is-subtle" onClick={handleLogout}>
                     Log out
                   </button>
                 </Show>
 
                 {/* Password user: show "My Account" + "Log out" */}
                 <Show when={isPasswordUser()}>
-                  <A href="/login" class="button is-light" onClick={closeBurger}>
+                  <A href="/login" class="button navbar-action-button" onClick={closeBurger}>
                     My Account
                   </A>
-                  <button class="button is-light is-outlined" onClick={handleLogout}>
+                  <button class="button navbar-action-button is-subtle" onClick={handleLogout}>
                     Log out
                   </button>
                 </Show>
 
                 {/* Not authenticated: show "Log in" */}
                 <Show when={!isAuthenticated()}>
-                  <A href="/login" class="button is-light" onClick={closeBurger}>
+                  <A href="/login" class="button navbar-action-button" onClick={closeBurger}>
                     Log in
                   </A>
                 </Show>

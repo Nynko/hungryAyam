@@ -24,8 +24,8 @@ export default function MenuItemCard(props: MenuItemCardProps) {
   return (
     <div
       class="box p-3"
+      classList={{ "has-background-light": !isAvailable() }}
       style={{
-        opacity: isAvailable() ? "1" : "0.5",
         position: "relative",
       }}
     >
@@ -39,6 +39,8 @@ export default function MenuItemCard(props: MenuItemCardProps) {
                 "border-radius": "8px",
                 overflow: "hidden",
                 "min-width": "64px",
+                filter: !isAvailable() ? "grayscale(0.25)" : undefined,
+                opacity: !isAvailable() ? "0.7" : undefined,
               }}
             >
               <img
@@ -61,7 +63,7 @@ export default function MenuItemCard(props: MenuItemCardProps) {
               <p class="has-text-weight-semibold is-size-6 mb-0">
                 {item().name}
                 <Show when={!isAvailable()}>
-                  <span class="tag is-warning is-light ml-2" style={{ "vertical-align": "middle" }}>
+                  <span class="tag is-warning ml-2" style={{ "vertical-align": "middle" }}>
                     Unavailable
                   </span>
                 </Show>

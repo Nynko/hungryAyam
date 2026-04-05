@@ -30,8 +30,10 @@ export default function OrderableMenuItemCard(props: OrderableMenuItemCardProps)
   return (
     <div
       class="box p-3"
+      classList={{
+        "has-background-light": !isAvailable(),
+      }}
       style={{
-        opacity: isAvailable() ? "1" : "0.5",
         position: "relative",
       }}
     >
@@ -45,6 +47,8 @@ export default function OrderableMenuItemCard(props: OrderableMenuItemCardProps)
                 "border-radius": "8px",
                 overflow: "hidden",
                 "min-width": "64px",
+                filter: !isAvailable() ? "grayscale(0.25)" : undefined,
+                opacity: !isAvailable() ? "0.7" : undefined,
               }}
             >
               <img
@@ -68,7 +72,7 @@ export default function OrderableMenuItemCard(props: OrderableMenuItemCardProps)
                 {item().name}
                 <Show when={!isAvailable()}>
                   <span
-                    class="tag is-warning is-light ml-2"
+                    class="tag is-warning ml-2"
                     style={{ "vertical-align": "middle" }}
                   >
                     Unavailable
@@ -118,7 +122,7 @@ export default function OrderableMenuItemCard(props: OrderableMenuItemCardProps)
               <Show
                 when={isAvailable()}
                 fallback={
-                  <span class="tag is-light is-small">N/A</span>
+                  <span class="tag is-warning is-small">N/A</span>
                 }
               >
                 <button

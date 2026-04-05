@@ -250,7 +250,7 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
     <div>
       {/* ── Error ─────────────────────────────────────────── */}
       <Show when={error()}>
-        <div class="notification is-danger is-light py-2 px-3 mb-2" style={{ "font-size": "0.85rem" }}>
+        <div class="notification is-danger py-2 px-3 mb-2" style={{ "font-size": "0.85rem" }}>
           <button class="delete is-small" onClick={() => setError(null)} />
           {error()}
         </div>
@@ -258,7 +258,7 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
 
       {/* ── Success ───────────────────────────────────────── */}
       <Show when={success()}>
-        <div class="notification is-success is-light py-2 px-3 mb-2" style={{ "font-size": "0.85rem" }}>
+        <div class="notification is-success py-2 px-3 mb-2" style={{ "font-size": "0.85rem" }}>
           <button class="delete is-small" onClick={() => setSuccess(null)} />
           {success()}
         </div>
@@ -319,10 +319,9 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
       {/* ── Edit mode ─────────────────────────────────────── */}
       <Show when={editing()}>
         <div
-          class="box p-3 mt-2"
+          class="box p-3 mt-2 has-background-light"
           style={{
-            "border-left": "3px solid hsl(204, 71%, 53%)",
-            "background-color": "hsl(204, 71%, 98%)",
+            "border-left": "3px solid var(--bulma-border)",
           }}
         >
           <div class="is-flex is-justify-content-space-between is-align-items-center mb-3">
@@ -425,7 +424,7 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
                   <For each={WEEKDAY_LABELS}>
                     {(label, idx) => (
                       <button
-                        class={`button is-small ${weekdays().includes(idx()) ? "is-primary" : "is-light"}`}
+                        class={`button is-small ${weekdays().includes(idx()) ? "is-primary" : ""}`}
                         disabled={saving() || !active()}
                         onClick={() => toggleWeekday(idx())}
                         type="button"
@@ -457,7 +456,7 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
               <span>{props.rule ? "Save Rule" : "Create Rule"}</span>
             </button>
             <button
-              class="button is-light is-small"
+              class="button is-small"
               disabled={saving()}
               onClick={cancelEditing}
             >

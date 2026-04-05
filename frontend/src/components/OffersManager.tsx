@@ -466,13 +466,7 @@ export default function OffersManager(props: OffersManagerProps) {
   // ── Offer form renderer (shared between create and edit) ───────
   const renderOfferForm = () => {
     return (
-      <div
-        class="box mb-4"
-        style={{
-          "border-left": "4px solid hsl(141, 53%, 53%)",
-          "background-color": "hsl(141, 53%, 98%)",
-        }}
-      >
+      <div class="box mb-4 has-background-light">
         <div class="is-flex is-justify-content-space-between is-align-items-center mb-3">
           <h4 class="title is-5 mb-0">
             {creating() ? "➕ New Offer" : "✏️ Edit Offer"}
@@ -602,7 +596,7 @@ export default function OffersManager(props: OffersManagerProps) {
           </div>
 
           <Show when={draft.slots.length === 0}>
-            <div class="notification is-light has-text-centered py-3">
+            <div class="notification has-text-centered py-3">
               <p class="has-text-grey is-size-7">
                 No slots yet. Add at least one (e.g. "Starter", "Main",
                 "Drink").
@@ -616,8 +610,7 @@ export default function OffersManager(props: OffersManagerProps) {
               <div
                 class="box p-3 mb-3"
                 style={{
-                  "background-color": "white",
-                  "border-left": "3px solid hsl(204, 71%, 53%)",
+                  "border-left": "3px solid var(--bulma-border)",
                 }}
               >
                 {/* Slot header */}
@@ -752,7 +745,7 @@ export default function OffersManager(props: OffersManagerProps) {
                       Constraints ({slot().constraints.length})
                     </span>
                     <button
-                      class="button is-small is-light"
+                      class="button is-small"
                       onClick={() => addConstraint(slotIndex)}
                     >
                       <span
@@ -977,7 +970,7 @@ export default function OffersManager(props: OffersManagerProps) {
           </button>
 
           <button
-            class="button is-light is-small"
+            class="button is-small"
             disabled={saving()}
             onClick={cancelEditing}
           >
@@ -1018,23 +1011,23 @@ export default function OffersManager(props: OffersManagerProps) {
                 {offer.title}
               </span>
               <span
-                class={`tag is-small ${offer.is_active ? "is-success" : "is-warning is-light"}`}
+                class={`tag is-small ${offer.is_active ? "is-success" : "is-warning"}`}
               >
                 {offer.is_active ? "Active" : "Inactive"}
               </span>
-              <span class="tag is-info is-light is-small">
+              <span class="tag is-info is-small">
                 ${formatOfferPrice(offer.base_price_cents)}
               </span>
               <Show when={offer.menu_id}>
                 <span
-                  class="tag is-light is-small"
+                  class="tag is-small"
                   title={`Linked to menu: ${menuNameById(offer.menu_id!)}`}
                 >
                   📋 {menuNameById(offer.menu_id!)}
                 </span>
               </Show>
               <Show when={!offer.menu_id}>
-                <span class="tag is-light is-small" title="Standalone offer">
+                <span class="tag is-small" title="Standalone offer">
                   🌐 Standalone
                 </span>
               </Show>
@@ -1072,7 +1065,7 @@ export default function OffersManager(props: OffersManagerProps) {
                               <span class="mx-1">|</span>
                             </Show>
                             <span
-                              class="tag is-light mr-1"
+                              class="tag mr-1"
                               style={{
                                 "font-size": "0.55rem",
                                 "vertical-align": "middle",
@@ -1092,7 +1085,7 @@ export default function OffersManager(props: OffersManagerProps) {
                     </For>
                     <Show when={slot.supplement_cents > 0}>
                       <span
-                        class="tag is-warning is-light ml-2"
+                        class="tag is-warning ml-2"
                         style={{ "font-size": "0.55rem" }}
                       >
                         slot: +${formatOfferPrice(slot.supplement_cents)}
@@ -1142,7 +1135,7 @@ export default function OffersManager(props: OffersManagerProps) {
         </div>
 
         {/* ── Availability Rule ────────────────────────────────── */}
-        <div class="mt-2 pt-2" style={{ "border-top": "1px solid hsl(0, 0%, 93%)" }}>
+        <div class="mt-2 pt-2" style={{ "border-top": "1px solid var(--bulma-border-weak)" }}>
           <div class="is-flex is-align-items-center mb-1">
             <span class="is-size-7 has-text-weight-semibold has-text-grey-dark mr-1">🕐</span>
             <span class="is-size-7 has-text-weight-semibold has-text-grey-dark">Availability</span>
@@ -1169,10 +1162,10 @@ export default function OffersManager(props: OffersManagerProps) {
         >
           <h2 class="title is-4 mb-0">🏷️ Offers</h2>
           <Show when={loaded() && offers().length > 0}>
-            <span class="tag is-primary is-light">{offers().length}</span>
+            <span class="tag is-primary">{offers().length}</span>
           </Show>
           <button
-            class="button is-small is-light"
+            class="button is-small"
             onClick={() => setCollapsed((c) => !c)}
             title={collapsed() ? "Expand" : "Collapse"}
           >
@@ -1197,7 +1190,7 @@ export default function OffersManager(props: OffersManagerProps) {
       <Show when={!collapsed()}>
         {/* Messages */}
         <Show when={localError()}>
-          <div class="notification is-danger is-light py-2 px-3 mb-3">
+          <div class="notification is-danger py-2 px-3 mb-3">
             <button
               class="delete is-small"
               onClick={() => setLocalError(null)}
@@ -1206,13 +1199,13 @@ export default function OffersManager(props: OffersManagerProps) {
           </div>
         </Show>
         <Show when={offerError()}>
-          <div class="notification is-danger is-light py-2 px-3 mb-3">
+          <div class="notification is-danger py-2 px-3 mb-3">
             <button class="delete is-small" onClick={clearOfferError} />
             {offerError()}
           </div>
         </Show>
         <Show when={localSuccess()}>
-          <div class="notification is-success is-light py-2 px-3 mb-3">
+          <div class="notification is-success py-2 px-3 mb-3">
             <button
               class="delete is-small"
               onClick={() => setLocalSuccess(null)}
@@ -1241,7 +1234,7 @@ export default function OffersManager(props: OffersManagerProps) {
             when={offers().length > 0}
             fallback={
               <Show when={!isEditing()}>
-                <div class="notification is-light has-text-centered">
+                <div class="notification has-text-centered">
                   <p class="is-size-4 mb-2">🏷️</p>
                   <p class="has-text-grey">
                     No offers yet. Create one to set up combos or deals.

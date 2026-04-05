@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::{EditorUser, SiteAccess},
+    auth::middleware::EditorUser,
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::offer::{
         domain::Offer,
@@ -65,7 +65,6 @@ pub async fn create_offer(
 
 /// Get an offer by ID (with slots and constraints).
 pub async fn get_offer(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Offer>>, ApiError> {
@@ -110,7 +109,6 @@ pub async fn delete_offer(
 
 /// List all offers for a restaurant (with slots and constraints).
 pub async fn list_offers_for_restaurant(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Offer>>>, ApiError> {
@@ -123,7 +121,6 @@ pub async fn list_offers_for_restaurant(
 
 /// List only active offers for a restaurant (with slots and constraints).
 pub async fn list_active_offers_for_restaurant(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Offer>>>, ApiError> {
@@ -169,7 +166,6 @@ pub async fn deactivate_offer(
 /// Get the resolved list of allowed item IDs for a specific offer slot.
 /// Resolves item, tag, and section constraints into concrete item IDs.
 pub async fn get_allowed_items_for_slot(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(slot_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Uuid>>>, ApiError> {
@@ -213,7 +209,6 @@ pub struct ValidateOfferSelectionResponse {
 /// Returns whether the selection is valid, the base price, and the computed total
 /// (including slot and constraint supplements).
 pub async fn validate_selection(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(offer_id): Path<Uuid>,
     ApiJson(request): ApiJson<ValidateOfferSelectionRequest>,

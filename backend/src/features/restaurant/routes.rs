@@ -4,7 +4,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::{EditorUser, SiteAccess},
+    auth::middleware::EditorUser,
     errors::{
         api_errors::ApiError,
         json_extractor::ApiJson,
@@ -36,7 +36,6 @@ pub async fn create_restaurant(
 
 /// Get all restaurants
 pub async fn list_restaurants(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
 ) -> Result<ApiJson<ApiResponse<Vec<Restaurant>>>, ApiError> {
     let restaurants = app_state.restaurant_service.list_restaurants().await?;
@@ -45,7 +44,6 @@ pub async fn list_restaurants(
 
 /// Get restaurants with active order sessions
 pub async fn list_active_restaurants(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
 ) -> Result<ApiJson<ApiResponse<Vec<Restaurant>>>, ApiError> {
     let restaurants = app_state.restaurant_service.list_active_restaurants().await?;
@@ -54,7 +52,6 @@ pub async fn list_active_restaurants(
 
 /// Get a restaurant by ID
 pub async fn get_restaurant(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Restaurant>>, ApiError> {

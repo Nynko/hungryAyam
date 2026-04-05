@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::{EditorUser, SiteAccess},
+    auth::middleware::EditorUser,
     features::item::{
         domain::{
             item::Item,
@@ -64,7 +64,6 @@ pub async fn create_batch_items(
 
 /// Get an item by ID
 pub async fn get_item(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Item>>, ApiError> {
@@ -77,7 +76,6 @@ pub async fn get_item(
 
 /// List all items for a specific restaurant
 pub async fn list_items_for_restaurant(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Item>>>, ApiError> {
@@ -87,7 +85,6 @@ pub async fn list_items_for_restaurant(
 
 /// List only active items for a specific restaurant
 pub async fn list_active_items_for_restaurant(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Item>>>, ApiError> {
@@ -126,7 +123,6 @@ pub async fn delete_item(
 
 /// List all tags
 pub async fn list_tags(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
 ) -> Result<ApiJson<ApiResponse<Vec<Tag>>>, ApiError> {
     let tags = app_state.item_service.list_tags().await?;
@@ -135,7 +131,6 @@ pub async fn list_tags(
 
 /// Get a tag by ID
 pub async fn get_tag(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Tag>>, ApiError> {

@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::{AuthUser, EditorUser, SiteAccess},
+    auth::middleware::{AuthUser, EditorUser},
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::order::{
         domain::{
@@ -89,7 +89,6 @@ pub async fn create_session(
 
 /// Get an order session by ID (with orders and items)
 pub async fn get_session(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSession>>, ApiError> {
@@ -195,7 +194,6 @@ pub async fn reopen_session(
 
 /// List all sessions for a restaurant (most recent first)
 pub async fn list_sessions_for_restaurant(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<OrderSession>>>, ApiError> {
@@ -208,7 +206,6 @@ pub async fn list_sessions_for_restaurant(
 
 /// Get the currently active (Open) session for a restaurant
 pub async fn get_active_session(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Option<OrderSession>>>, ApiError> {
@@ -237,7 +234,6 @@ pub async fn create_order(
 
 /// Get an order by ID (with items)
 pub async fn get_order(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Order>>, ApiError> {
@@ -265,7 +261,6 @@ pub async fn delete_order(
 
 /// List all orders in a session (with items)
 pub async fn list_orders_for_session(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Order>>>, ApiError> {
@@ -278,7 +273,6 @@ pub async fn list_orders_for_session(
 
 /// List lightweight order summaries for a session (no item details)
 pub async fn list_order_summaries(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<OrderSummary>>>, ApiError> {
@@ -306,7 +300,6 @@ pub async fn list_my_orders_in_session(
 
 /// Get order settings for a restaurant (creates defaults if none exist)
 pub async fn get_order_settings(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<RestaurantOrderSettings>>, ApiError> {

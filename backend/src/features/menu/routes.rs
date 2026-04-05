@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::{AuthUser, EditorUser, SiteAccess},
+    auth::middleware::{AuthUser, EditorUser},
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::menu::{
         domain::menu::Menu,
@@ -47,7 +47,6 @@ pub async fn create_menu(
 
 /// Get a menu by ID with full structure
 pub async fn get_menu(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Menu>>, ApiError> {
@@ -61,7 +60,6 @@ pub async fn get_menu(
 
 /// List all menus for a restaurant
 pub async fn list_menus_for_restaurant(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Menu>>>, ApiError> {
@@ -74,7 +72,6 @@ pub async fn list_menus_for_restaurant(
 
 /// List only active menus for a restaurant
 pub async fn list_active_menus_for_restaurant(
-    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(restaurant_id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<Vec<Menu>>>, ApiError> {

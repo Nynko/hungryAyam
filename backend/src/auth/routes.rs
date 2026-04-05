@@ -11,7 +11,9 @@ use uuid::Uuid;
 
 use crate::{
     auth::middleware::{
-        AdminUser, AuthUser, SiteAccess, build_clear_session_cookie, build_clear_site_access_cookie, build_session_cookie, build_site_access_cookie
+        AdminUser, AuthUser, SiteAccess,
+        build_clear_session_cookie, build_clear_site_access_cookie, build_clear_site_access_hint_cookie,
+        build_session_cookie, build_site_access_cookie, build_site_access_hint_cookie
     },
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     state::AppState,
@@ -25,12 +27,13 @@ use crate::{
 /// Public auth routes (no authentication required).
 pub fn auth_routes() -> Router<AppState> {
     Router::new()
-        .route("/api/auth/site-access", post(verify_site_access))
+        .route("/api/auth/site-access", get(check_site_access).post(verify_site_access))
         .route("/api/auth/site-access/:token", get(verify_site_access_token))
         .route("/api/auth/guest", post(create_guest))
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
+        .route("/api/admin/magic-link", get(get_magic_link_token))
 }
 
 /// Admin-only auth routes (require Admin role).
@@ -119,6 +122,14 @@ pub struct AuthResponseDto {
 // Site access handlers
 // ═══════════════════════════════════════════════════════════════════
 
+/// `GET /api/auth/site-access`
+///
+/// Check whether the caller already has a valid `site_access` cookie.
+/// Returns 200 if granted, 403 if not (via the `SiteAccess` extractor).
+pub async fn check_site_access(_site: SiteAccess) -> ApiJson<ApiResponse<SiteAccessResponse>> {
+    ApiJson(ApiResponse::success(SiteAccessResponse { granted: true }))
+}
+
 /// `POST /api/auth/site-access`
 ///
 /// Verify the shared site password. The plaintext code is hashed with
@@ -147,9 +158,17 @@ pub async fn verify_site_access(
     }
 
     let cookie = build_site_access_cookie(&stored_hash, 365);
+    let hint = build_site_access_hint_cookie(365);
     let body = ApiJson(ApiResponse::success(SiteAccessResponse { granted: true }));
 
-    Ok((StatusCode::OK, [(header::SET_COOKIE, cookie)], body))
+    Ok((
+        StatusCode::OK,
+        AppendHeaders([
+            (header::SET_COOKIE, cookie),
+            (header::SET_COOKIE, hint),
+        ]),
+        body,
+    ))
 }
 
 /// `GET /api/auth/site-access/:hash`
@@ -175,9 +194,17 @@ pub async fn verify_site_access_token(
     }
 
     let cookie = build_site_access_cookie(&stored_hash, 365);
+    let hint = build_site_access_hint_cookie(365);
     let body = ApiJson(ApiResponse::success(SiteAccessResponse { granted: true }));
 
-    Ok((StatusCode::OK, [(header::SET_COOKIE, cookie)], body))
+    Ok((
+        StatusCode::OK,
+        AppendHeaders([
+            (header::SET_COOKIE, cookie),
+            (header::SET_COOKIE, hint),
+        ]),
+        body,
+    ))
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -256,10 +283,12 @@ pub async fn login(
 pub async fn logout() -> impl IntoResponse {
     let clear_session = build_clear_session_cookie();
     let clear_site = build_clear_site_access_cookie();
+    let clear_hint = build_clear_site_access_hint_cookie();
     (
         AppendHeaders([
             (header::SET_COOKIE, clear_session),
             (header::SET_COOKIE, clear_site),
+            (header::SET_COOKIE, clear_hint),
         ]),
         ApiJson(ApiResponse::success(())),
     )
@@ -316,6 +345,24 @@ pub async fn admin_upgrade_user(
         .await?;
 
     Ok(ApiJson(ApiResponse::success(user)))
+}
+
+/// `GET /api/admin/magic-link`
+///
+/// Returns the site-access token (SHA-256 hash) used to build shareable
+/// magic links. Admin only.
+pub async fn get_magic_link_token(
+    AdminUser(_admin): AdminUser,
+    State(state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<String>>, ApiError> {
+    let hash = state
+        .setup_repository
+        .get_access_hash()
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or(ApiError::NotFound)?;
+
+    Ok(ApiJson(ApiResponse::success(hash.as_ref().to_string())))
 }
 
 /// `PUT /api/admin/users/:id/role`

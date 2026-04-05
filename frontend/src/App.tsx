@@ -12,16 +12,33 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Setup from "./pages/Setup";
 import { setupCompleted, setupLoading, setupError, checkSetupStatus } from "./stores/setupStore";
-import { checkAuth } from "./stores/authStore";
+import { checkAuth, checkSiteAccess, hasSiteAccess, verifyMagicLink } from "./stores/authStore";
 
 function SetupLayout(props: { children?: any }) {
   return <>{props.children}</>;
 }
 
 export default function App() {
-  onMount(() => {
+  onMount(async () => {
     checkSetupStatus();
-    checkAuth();
+
+    // Check for a magic-link token in ?access=<token> or #<token>
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("access") ?? (window.location.hash.slice(1) || null);
+    if (token) {
+      await verifyMagicLink(token);
+      // Remove the token from the URL without adding a history entry
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState(null, "", cleanUrl);
+    }
+
+    await checkAuth();
+
+    // If no session granted site access, check if the hint cookie signals
+    // that the HttpOnly site_access cookie is already present
+    if (!hasSiteAccess() && document.cookie.includes("site_access_hint=1")) {
+      await checkSiteAccess();
+    }
   });
 
   return (

@@ -114,6 +114,50 @@ async function verifySiteAccess(code: string): Promise<boolean> {
   }
 }
 
+// ── Check site access cookie ──────────────────────────────────────
+
+/**
+ * Check whether the `site_access` cookie is already valid by calling
+ * `GET /api/auth/site-access`. Sets `hasSiteAccess` if the server
+ * confirms the cookie. Should only be called when `hasSiteAccess` is false.
+ */
+async function checkSiteAccess(): Promise<void> {
+  try {
+    const res = await fetch("/api/auth/site-access");
+    if (res.ok) {
+      setHasSiteAccess(true);
+    } else {
+      // Real cookie is gone — clear the stale hint so we don't re-check on next load
+      document.cookie = "site_access_hint=; Max-Age=0; Path=/; SameSite=Lax";
+    }
+  } catch (e) {
+    // Silently ignore — network error
+  }
+}
+
+// ── Magic link ───────────────────────────────────────────────────
+
+/**
+ * Verify a magic-link token via `GET /api/auth/site-access/:token`.
+ *
+ * The token is the SHA-256 hash of the site access code, embedded
+ * directly in the shared URL. On success the server sets the
+ * `site_access` HttpOnly cookie and we track it locally.
+ */
+async function verifyMagicLink(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/auth/site-access/${encodeURIComponent(token)}`);
+    if (res.ok) {
+      setHasSiteAccess(true);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error("[authStore] verifyMagicLink failed:", e);
+    return false;
+  }
+}
+
 // ── Guest login ───────────────────────────────────────────────────
 
 export interface GuestLoginResult {
@@ -255,7 +299,9 @@ export {
 
   // Actions
   checkAuth,
+  checkSiteAccess,
   verifySiteAccess,
+  verifyMagicLink,
   loginAsGuest,
   login,
   logout,

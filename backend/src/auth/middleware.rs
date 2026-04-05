@@ -292,6 +292,26 @@ pub fn build_site_access_cookie(access_token: &str, max_age_days: i64) -> String
     )
 }
 
+/// Helper to build a non-HttpOnly hint cookie indicating site access is granted.
+///
+/// This companion cookie (`site_access_hint=1`) is readable by JavaScript so
+/// the frontend can skip the `/api/auth/site-access` check on page load when
+/// the real HttpOnly cookie is already present.
+pub fn build_site_access_hint_cookie(max_age_days: i64) -> String {
+    let max_age_secs = max_age_days * 24 * 60 * 60;
+    let secure = if std::env::var("SECURE_COOKIES").as_deref() == Ok("false") { "" } else { "; Secure" };
+    format!(
+        "site_access_hint=1; SameSite=Lax; Path=/; Max-Age={}{}",
+        max_age_secs, secure
+    )
+}
+
+/// Helper to build a `Set-Cookie` header value that clears the site-access hint cookie.
+pub fn build_clear_site_access_hint_cookie() -> String {
+    let secure = if std::env::var("SECURE_COOKIES").as_deref() == Ok("false") { "" } else { "; Secure" };
+    format!("site_access_hint=; SameSite=Lax; Path=/; Max-Age=0{}", secure)
+}
+
 /// Helper to build a `Set-Cookie` header value that clears the site-access cookie.
 pub fn build_clear_site_access_cookie() -> String {
     let secure = if std::env::var("SECURE_COOKIES").as_deref() == Ok("false") { "" } else { "; Secure" };

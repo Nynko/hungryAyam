@@ -124,7 +124,7 @@ export default function RestaurantPage() {
 
   const refreshMyOrders = async () => {
     const session = getActiveSession(params.id);
-    if (!session) {
+    if (!session || !isAuthenticated()) {
       setMyOrders([]);
       return;
     }

@@ -117,7 +117,7 @@ const MainLayout: ParentComponent = (props) => {
       <footer class="footer">
         <div class="content has-text-centered">
           <p>
-            <strong>{appTitle}</strong> — Group food ordering made simple.
+            <strong>HungryAyam</strong> — Group food ordering made simple.
           </p>
         </div>
       </footer>

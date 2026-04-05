@@ -192,6 +192,7 @@ impl AuthService {
     ///
     /// Only password users whose email domain matches `editor_email_domain`
     /// are eligible. Admins cannot toggle (they stay Admin).
+    /// If `editor_email_domain` is `"*"`, any email domain is accepted.
     pub async fn toggle_editor(
         &self,
         user_id: Uuid,
@@ -212,10 +213,12 @@ impl AuthService {
             .as_ref()
             .ok_or_else(|| anyhow!("User has no email"))?;
 
-        // Compare domains (case-insensitive)
-        let user_domain = email.as_ref().domain();
-        if !user_domain.eq_ignore_ascii_case(editor_email_domain) {
-            return Err(anyhow!("Your email domain is not eligible for editor access"));
+        // Compare domains (case-insensitive). "*" acts as a wildcard (any domain allowed).
+        if editor_email_domain != "*" {
+            let user_domain = email.as_ref().domain();
+            if !user_domain.eq_ignore_ascii_case(editor_email_domain) {
+                return Err(anyhow!("Your email domain is not eligible for editor access"));
+            }
         }
 
         let new_role = match user.role.as_ref() {

@@ -423,9 +423,11 @@ pub async fn check_editor_eligibility(
 
     let eligible = match (&domain, &user.email, &user.auth_method) {
         (Some(d), Some(email), &crate::types::auth::AuthMethod::Password) => {
-            let user_domain = email.as_ref().domain();
-            user_domain.eq_ignore_ascii_case(d)
-                && !user.role.as_ref().map(|r| r.is_admin()).unwrap_or(false)
+            let domain_ok = d == "*" || {
+                let user_domain = email.as_ref().domain();
+                user_domain.eq_ignore_ascii_case(d)
+            };
+            domain_ok && !user.role.as_ref().map(|r| r.is_admin()).unwrap_or(false)
         }
         _ => false,
     };

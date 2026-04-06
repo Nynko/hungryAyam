@@ -231,8 +231,8 @@ async fn test_create_item_with_tags_by_name(pool: PgPool) {
     let router = app(pool);
 
     let tags = json!([
-        { "name": "Spicy" },
-        { "name": "Vegetarian" }
+        { "New": "Spicy" },
+        { "New": "Vegetarian" }
     ]);
 
     let data = create_item_with_tags(
@@ -324,7 +324,7 @@ async fn test_create_item_tag_deduplication_by_name(pool: PgPool) {
         restaurant_id,
         "Item A",
         500,
-        json!([{ "name": "Halal" }]),
+        json!([{ "New": "Halal" }]),
         &token,
     )
     .await;
@@ -336,7 +336,7 @@ async fn test_create_item_tag_deduplication_by_name(pool: PgPool) {
         restaurant_id,
         "Item B",
         600,
-        json!([{ "name": "Halal" }]),
+        json!([{ "New": "Halal" }]),
         &token,
     )
     .await;
@@ -369,7 +369,7 @@ async fn test_create_batch_items(pool: PgPool) {
             "description": "Second item",
             "base_price_cents": 200,
             "image_url": null,
-            "tags": [{ "name": "New" }]
+            "tags": [{ "New": "New" }]
         },
         {
             "restaurant_id": restaurant_id,
@@ -455,7 +455,7 @@ async fn test_get_item_includes_tags(pool: PgPool) {
         restaurant_id,
         "Tagged Item",
         1500,
-        json!([{ "name": "Spicy" }, { "name": "Chicken" }]),
+        json!([{ "New": "Spicy" }, { "New": "Chicken" }]),
         &token,
     )
     .await;
@@ -548,7 +548,7 @@ async fn test_list_items_includes_tags(pool: PgPool) {
         restaurant_id,
         "TaggedList Item",
         500,
-        json!([{ "name": "Vegan" }]),
+        json!([{ "New": "Vegan" }]),
         &token,
     )
     .await;
@@ -815,7 +815,7 @@ async fn test_update_item_add_tags(pool: PgPool) {
     // Update with tags
     let update_payload = json!({
         "id": item_id,
-        "tags": [{ "name": "Spicy" }, { "name": "Hot" }],
+        "tags": [{ "New": "Spicy" }, { "New": "Hot" }],
     });
 
     let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
@@ -839,7 +839,7 @@ async fn test_update_item_replace_tags(pool: PgPool) {
         restaurant_id,
         "Replace Tags",
         500,
-        json!([{ "name": "OldTag1" }, { "name": "OldTag2" }]),
+        json!([{ "New": "OldTag1" }, { "New": "OldTag2" }]),
         &token,
     )
     .await;
@@ -849,7 +849,7 @@ async fn test_update_item_replace_tags(pool: PgPool) {
     // Replace with completely new tags
     let update_payload = json!({
         "id": item_id,
-        "tags": [{ "name": "NewTag1" }, { "name": "NewTag2" }, { "name": "NewTag3" }],
+        "tags": [{ "New": "NewTag1" }, { "New": "NewTag2" }, { "New": "NewTag3" }],
     });
 
     let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
@@ -876,7 +876,7 @@ async fn test_update_item_remove_all_tags(pool: PgPool) {
         restaurant_id,
         "Remove Tags",
         500,
-        json!([{ "name": "ToRemove" }]),
+        json!([{ "New": "ToRemove" }]),
         &token,
     )
     .await;
@@ -905,7 +905,7 @@ async fn test_update_item_without_tags_field_preserves_existing_tags(pool: PgPoo
         restaurant_id,
         "Preserve Tags",
         500,
-        json!([{ "name": "Keep Me" }]),
+        json!([{ "New": "Keep Me" }]),
         &token,
     )
     .await;
@@ -937,7 +937,7 @@ async fn test_update_item_tags_by_existing_id(pool: PgPool) {
         restaurant_id,
         "Tag Source",
         500,
-        json!([{ "name": "SharedTag" }]),
+        json!([{ "New": "SharedTag" }]),
         &token,
     )
     .await;
@@ -950,7 +950,7 @@ async fn test_update_item_tags_by_existing_id(pool: PgPool) {
     // Update second item to use the existing tag by ID
     let update_payload = json!({
         "id": second_id,
-        "tags": [{ "id": tag_id }],
+        "tags": [{ "Existing": tag_id }],
     });
 
     let (status, body) = post_auth(&router, "/api/update-item", update_payload, &token).await;
@@ -1060,7 +1060,7 @@ async fn test_list_tags_after_item_creation(pool: PgPool) {
         restaurant_id,
         "Item1",
         500,
-        json!([{ "name": "Chicken" }, { "name": "Spicy" }]),
+        json!([{ "New": "Chicken" }, { "New": "Spicy" }]),
         &token,
     )
     .await;
@@ -1070,7 +1070,7 @@ async fn test_list_tags_after_item_creation(pool: PgPool) {
         restaurant_id,
         "Item2",
         600,
-        json!([{ "name": "Vegetarian" }, { "name": "Spicy" }]),  // Spicy is shared
+        json!([{ "New": "Vegetarian" }, { "New": "Spicy" }]),  // Spicy is shared
         &token,
     )
     .await;
@@ -1096,7 +1096,7 @@ async fn test_get_tag_by_id(pool: PgPool) {
         restaurant_id,
         "Tagged",
         500,
-        json!([{ "name": "Halal" }]),
+        json!([{ "New": "Halal" }]),
         &token,
     )
     .await;
@@ -1129,7 +1129,7 @@ async fn test_update_tag_rename(pool: PgPool) {
         restaurant_id,
         "Tag Rename Item",
         500,
-        json!([{ "name": "OldTagName" }]),
+        json!([{ "New": "OldTagName" }]),
         &token,
     )
     .await;
@@ -1178,7 +1178,7 @@ async fn test_update_tag_reflected_in_items(pool: PgPool) {
         restaurant_id,
         "Shared Tag Item 1",
         500,
-        json!([{ "name": "SharedTag" }]),
+        json!([{ "New": "SharedTag" }]),
         &token,
     )
     .await;
@@ -1190,7 +1190,7 @@ async fn test_update_tag_reflected_in_items(pool: PgPool) {
         restaurant_id,
         "Shared Tag Item 2",
         600,
-        json!([{ "id": tag_id }]),
+        json!([{ "Existing": tag_id }]),
         &token,
     )
     .await;
@@ -1219,7 +1219,7 @@ async fn test_delete_tag(pool: PgPool) {
         restaurant_id,
         "Delete Tag Item",
         500,
-        json!([{ "name": "ToDelete" }, { "name": "ToKeep" }]),
+        json!([{ "New": "ToDelete" }, { "New": "ToKeep" }]),
         &token,
     )
     .await;
@@ -1271,7 +1271,7 @@ async fn test_delete_tag_cascade_removes_from_all_items(pool: PgPool) {
         restaurant_id,
         "Cascade Item 1",
         500,
-        json!([{ "name": "CascadeTag" }]),
+        json!([{ "New": "CascadeTag" }]),
         &token,
     )
     .await;
@@ -1283,7 +1283,7 @@ async fn test_delete_tag_cascade_removes_from_all_items(pool: PgPool) {
         restaurant_id,
         "Cascade Item 2",
         600,
-        json!([{ "id": tag_id }]),
+        json!([{ "Existing": tag_id }]),
         &token,
     )
     .await;
@@ -1317,7 +1317,7 @@ async fn test_create_and_get_item_round_trip(pool: PgPool) {
         restaurant_id,
         "Round Trip",
         1234,
-        json!([{ "name": "A" }, { "name": "B" }]),
+        json!([{ "New": "A" }, { "New": "B" }]),
         &token,
     )
     .await;
@@ -1438,7 +1438,7 @@ async fn test_multiple_items_same_restaurant_different_tags(pool: PgPool) {
         restaurant_id,
         "Chicken Rice",
         1200,
-        json!([{ "name": "Chicken" }, { "name": "Rice" }]),
+        json!([{ "New": "Chicken" }, { "New": "Rice" }]),
         &token,
     )
     .await;
@@ -1448,7 +1448,7 @@ async fn test_multiple_items_same_restaurant_different_tags(pool: PgPool) {
         restaurant_id,
         "Veggie Bowl",
         1000,
-        json!([{ "name": "Vegetarian" }, { "name": "Rice" }]),
+        json!([{ "New": "Vegetarian" }, { "New": "Rice" }]),
         &token,
     )
     .await;

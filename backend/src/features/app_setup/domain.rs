@@ -6,7 +6,7 @@ use ts_rs::TS;
 use crate::types::password::HashedPassword;
 
 // Remove derive(TS) and #[ts(export)] if the front end dto diverge from the domain
-#[domain_struct(create, update)]
+#[domain_struct(create, update(all_optional))]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AppSetup {

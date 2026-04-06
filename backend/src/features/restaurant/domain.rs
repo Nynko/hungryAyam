@@ -9,7 +9,7 @@ use crate::types::{
 };
 use crate::features::availability::domain::AvailabilityRule;
 
-#[domain_struct(create, update)]
+#[domain_struct(create, update(all_optional))]
 // Remove derive(TS) and #[ts(export)] if the front end dto diverge from the domain
 // With validated types implementing sqlx traits, we can derive FromRow directly!
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

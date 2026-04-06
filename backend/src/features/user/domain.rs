@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 
 use crate::types::{auth::AuthMethod, email::Email, name::Name, role::UserRole};
 
-#[domain_struct(create, update)]
+#[domain_struct(create, update(all_optional))]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct User {

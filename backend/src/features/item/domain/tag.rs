@@ -7,7 +7,7 @@ use crate::types::name::Name;
 
 /// Tag domain struct - represents a tag that can be attached to items.
 /// Tags are used for categorization (e.g., vegetarian, spicy, allergens, etc.)
-#[domain_struct(update)]
+#[domain_struct(update(all_optional))]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Tag {

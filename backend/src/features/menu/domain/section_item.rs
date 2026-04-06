@@ -8,7 +8,7 @@ use crate::types::price::PriceCents;
 
 /// MenuSectionItem domain struct - links a catalog item to a menu section
 /// Contains position and optional price override for menu-specific pricing
-#[domain_struct(create, update, unit_create)]
+#[domain_struct(create, update(all_optional), unit_create)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct MenuSectionItem {

@@ -14,7 +14,7 @@ use super::tag::Tag;
 
 /// Item domain struct - represents a product/dish that can be sold
 /// Tags are part of the domain model (fetched from junction table)
-#[domain_struct(create, update, unit_create)]
+#[domain_struct(create, update(all_optional), unit_create)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Item {

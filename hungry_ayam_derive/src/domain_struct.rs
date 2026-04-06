@@ -88,9 +88,7 @@ impl Parse for DomainStructArgs {
             match entry {
                 ArgEntry::Simple(ident) => {
                     let name = ident.to_string();
-                    // Backward compat: bare `update` defaults to all_optional
-                    let all_optional = name == "update";
-                    variants.push(VariantConfig { name, all_optional });
+                    variants.push(VariantConfig { name, all_optional: false });
                 }
                 ArgEntry::WithModifier(ident, modifier) => {
                     let name = ident.to_string();

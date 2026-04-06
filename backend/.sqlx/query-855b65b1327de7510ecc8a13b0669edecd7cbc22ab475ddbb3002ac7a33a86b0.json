@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                    INSERT INTO tags (name)\n                    VALUES ($1)\n                    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name\n                    RETURNING id, name as \"name: Name\"\n                    ",
+  "query": "\n                        INSERT INTO tags (name)\n                        VALUES ($1)\n                        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name\n                        RETURNING id, name as \"name: Name\"\n                        ",
   "describe": {
     "columns": [
       {
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "ef82f44ac7b19a0c510a09257289544c40af3fe57f8c46514c7e46f2b148766e"
+  "hash": "855b65b1327de7510ecc8a13b0669edecd7cbc22ab475ddbb3002ac7a33a86b0"
 }

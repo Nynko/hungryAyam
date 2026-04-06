@@ -29,7 +29,7 @@ const MainLayout: ParentComponent = (props) => {
         <div class="navbar-brand">
           <A href="/" class="navbar-item has-text-weight-bold is-size-5" onClick={closeBurger}>
             <Show when={appImageUrl} fallback={<span class="mr-2">🐔</span>}>
-              <img src={appImageUrl} alt={appTitle} class="mr-2" style={{ "max-height": "1.75rem" }} />
+              <img src={appImageUrl} alt={appTitle} class="mr-2" style={{ height: "1.2em", width: "auto" }} />
             </Show>
             {appTitle}
           </A>

@@ -8,12 +8,12 @@ export default function Home() {
       <div class="hero-body">
         <div class="container has-text-centered">
           <Show when={appImageUrl} fallback={<span class="title is-1">🐔</span>}>
-            <img src={appImageUrl} alt={appTitle}/>
+            <img src={appImageUrl} alt={appTitle} style={{ height: "10rem", width: "auto" }} />
           </Show>
           <p class="title is-1">{appTitle}</p>
-          <p class="subtitle is-4">
+          {/*<p class="subtitle is-4">
             Group food ordering made simple.
-          </p>
+          </p>*/}
           <div class="buttons is-centered mt-5">
             <A href="/restaurants" class="button is-light is-medium">
               🍽️ Browse Restaurants

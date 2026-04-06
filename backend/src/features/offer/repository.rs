@@ -64,9 +64,9 @@ impl OfferRepository {
         .await?;
 
         let mut slots = Vec::with_capacity(request.slots.len());
-        for slot_req in &request.slots {
+        for (pos, slot_req) in request.slots.iter().enumerate() {
             let slot = self
-                .create_slot_in_tx(&mut tx, offer_row.id, slot_req)
+                .create_slot_in_tx(&mut tx, offer_row.id, pos as i32, slot_req)
                 .await?;
             slots.push(slot);
         }
@@ -218,9 +218,9 @@ impl OfferRepository {
                 .await?;
 
             let mut slots = Vec::with_capacity(new_slots.len());
-            for slot_req in &new_slots {
+            for (pos, slot_req) in new_slots.iter().enumerate() {
                 let slot = self
-                    .create_slot_in_tx(&mut tx, offer_row.id, &slot_req.into())
+                    .create_slot_in_tx(&mut tx, offer_row.id, pos as i32, &slot_req.into())
                     .await?;
                 slots.push(slot);
             }
@@ -455,26 +455,29 @@ impl OfferRepository {
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         offer_id: Uuid,
+        position: i32,
         request: &CreateOfferSlot,
     ) -> Result<OfferSlot> {
         let slot_row = sqlx::query_as!(
             OfferSlotRow,
             r#"
-            INSERT INTO offer_slots (offer_id, label, min_items, max_items, supplement_cents)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO offer_slots (offer_id, label, min_items, max_items, supplement_cents, position)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING
                 id,
                 offer_id,
                 label as "label: Name",
                 min_items,
                 max_items,
-                supplement_cents
+                supplement_cents,
+                position
             "#,
             offer_id,
             request.label.as_ref(),
             request.min_items,
             request.max_items,
             request.supplement_cents,
+            position,
         )
         .fetch_one(&mut **tx)
         .await?;
@@ -527,10 +530,11 @@ impl OfferRepository {
                 label as "label: Name",
                 min_items,
                 max_items,
-                supplement_cents
+                supplement_cents,
+                position
             FROM offer_slots
             WHERE offer_id = $1
-            ORDER BY id
+            ORDER BY position
             "#,
             offer_id,
         )
@@ -555,10 +559,11 @@ impl OfferRepository {
                 label as "label: Name",
                 min_items,
                 max_items,
-                supplement_cents
+                supplement_cents,
+                position
             FROM offer_slots
             WHERE offer_id = $1
-            ORDER BY id
+            ORDER BY position
             "#,
             offer_id,
         )
@@ -689,10 +694,11 @@ impl OfferRepository {
                 label as "label: Name",
                 min_items,
                 max_items,
-                supplement_cents
+                supplement_cents,
+                position
             FROM offer_slots
             WHERE offer_id = ANY($1)
-            ORDER BY id
+            ORDER BY offer_id, position
             "#,
             &offer_ids,
         )
@@ -807,6 +813,7 @@ impl OfferRepository {
             min_items: row.min_items,
             max_items: row.max_items,
             supplement_cents: row.supplement_cents,
+            position: row.position,
             constraints,
         }
     }

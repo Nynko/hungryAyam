@@ -47,7 +47,13 @@ export interface ItemDragData {
   index: number;
 }
 
-export type DragData = SectionDragData | ItemDragData;
+export interface SlotDragData {
+  type: "slot";
+  id: string;
+  index: number;
+}
+
+export type DragData = SectionDragData | ItemDragData | SlotDragData;
 
 // ─── Type guards ──────────────────────────────────────────────────
 
@@ -57,6 +63,10 @@ export function isSectionDragData(data: Record<string, unknown>): boolean {
 
 export function isItemDragData(data: Record<string, unknown>): boolean {
   return data.type === "item" && typeof data.id === "string" && typeof data.sectionId === "string";
+}
+
+export function isSlotDragData(data: Record<string, unknown>): boolean {
+  return data.type === "slot" && typeof data.id === "string";
 }
 
 // ─── Index computation ────────────────────────────────────────────

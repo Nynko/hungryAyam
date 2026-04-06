@@ -92,7 +92,7 @@ export default function OfferBanner(props: OfferBannerProps) {
                     {/* Right: price + action */}
                     <div class="has-text-right">
                       <p class="has-text-weight-bold is-size-4 has-text-primary mb-1">
-                        ${formatOfferPrice(offer.base_price_cents)}
+                        €{formatOfferPrice(offer.base_price_cents)}
                         <Show when={hasSupplements(offer)}>
                           <span class="is-size-7 has-text-grey has-text-weight-normal ml-1">
                             +suppl.

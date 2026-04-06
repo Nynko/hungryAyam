@@ -1,4 +1,4 @@
-import { Show, For, Index, createSignal, createEffect, onMount } from "solid-js";
+import { Show, For, Index, createSignal, createEffect, onMount, onCleanup } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import type { Offer } from "@bindings/Offer";
 import type { OfferSlot } from "@bindings/OfferSlot";
@@ -24,6 +24,9 @@ import {
 } from "@/stores/offerStore";
 import { showConfirm } from "@/stores/confirmStore";
 import { editorState } from "@/stores/menuEditorStore";
+import { setupSortableItem, setupSortableMonitor } from "@/lib/dnd";
+import type { SortableItemState, Edge } from "@/lib/dnd";
+import DropIndicator from "./DropIndicator";
 
 // ══════════════════════════════════════════════════════════════════
 // Types
@@ -232,6 +235,17 @@ export default function OfferEditor(props: OfferEditorProps) {
     }
   });
 
+  // ── Slot drag-and-drop monitor ─────────────────────────────────
+  onMount(() => {
+    const cleanup = setupSortableMonitor({
+      type: "slot",
+      onReorder: (_id, sourceIndex, destinationIndex) => {
+        moveSlot(sourceIndex, destinationIndex);
+      },
+    });
+    onCleanup(cleanup);
+  });
+
   // ── Flat sections for the constraint picker ────────────────────
   const flatSections = () => flattenSections(props.menuSections);
 
@@ -265,6 +279,15 @@ export default function OfferEditor(props: OfferEditorProps) {
     setDraft(
       produce((d) => {
         d.slots[slotIndex].constraints.splice(constraintIndex, 1);
+      }),
+    );
+  };
+
+  const moveSlot = (fromIndex: number, toIndex: number) => {
+    setDraft(
+      produce((d) => {
+        const [slot] = d.slots.splice(fromIndex, 1);
+        d.slots.splice(toIndex, 0, slot);
       }),
     );
   };
@@ -493,7 +516,7 @@ export default function OfferEditor(props: OfferEditorProps) {
               {existingOffer()!.is_active ? "Active" : "Inactive"}
             </span>
             <span class="tag is-info is-small">
-              ${formatOfferPrice(existingOffer()!.base_price_cents)}
+              €{formatOfferPrice(existingOffer()!.base_price_cents)}
             </span>
             <span class="tag is-small">
               {existingOffer()!.slots.length} slot
@@ -592,7 +615,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                     <div class="column is-3">
                       <p class="is-size-7 has-text-grey">Base Price</p>
                       <p class="has-text-weight-semibold">
-                        ${formatOfferPrice(offer().base_price_cents)}
+                        €{formatOfferPrice(offer().base_price_cents)}
                       </p>
                     </div>
                     <div class="column is-3">
@@ -640,7 +663,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                           >
                             <Show when={slot.supplement_cents > 0}>
                               <span class="tag is-warning is-small">
-                                +${formatOfferPrice(slot.supplement_cents)}
+                                +€{formatOfferPrice(slot.supplement_cents)}
                               </span>
                             </Show>
                             <span class="tag is-info is-small">
@@ -686,7 +709,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                                     : kindValue.slice(0, 12) + "…"}
                                   <Show when={constraint.supplement_cents > 0}>
                                     <span class="has-text-warning-dark ml-1">
-                                      (+$
+                                      (+€
                                       {formatOfferPrice(
                                         constraint.supplement_cents,
                                       )}
@@ -770,7 +793,7 @@ export default function OfferEditor(props: OfferEditorProps) {
 
                 <div class="column is-3">
                   <div class="field">
-                    <label class="label is-small">Base Price ($) *</label>
+                    <label class="label is-small">Base Price (€) *</label>
                     <div class="control">
                       <input
                         class="input is-small"
@@ -855,24 +878,60 @@ export default function OfferEditor(props: OfferEditorProps) {
                   </div>
                 </Show>
 
-                {/* Index keyed by position — stable DOM, no focus loss */}
-                <Index each={draft.slots}>
-                  {(slot, slotIndex) => (
-                    <div class="box p-3 mb-3 has-background-light editor-subpanel">
-                      {/* Slot header with remove button */}
+                {/* For keyed by identity — supports drag-to-reorder */}
+                <For each={draft.slots}>
+                  {(slot, slotIndex) => {
+                    let containerRef!: HTMLDivElement;
+                    let handleRef!: HTMLSpanElement;
+                    const [isDragging, setIsDragging] = createSignal(false);
+                    const [closestEdge, setClosestEdge] = createSignal<Edge | null>(null);
+
+                    createEffect(() => {
+                      if (!containerRef || !handleRef) return;
+                      const state = setupSortableItem({
+                        element: containerRef,
+                        dragHandle: handleRef,
+                        getData: () => ({
+                          type: "slot" as const,
+                          id: slot.tempId,
+                          index: slotIndex(),
+                        }),
+                        acceptType: "slot",
+                      });
+                      createEffect(() => setIsDragging(state.isDragging()));
+                      createEffect(() => setClosestEdge(state.closestEdge()));
+                      onCleanup(state.cleanup);
+                    });
+
+                    return (
+                    <div
+                      ref={(el) => { containerRef = el; }}
+                      class="box p-3 mb-3 has-background-light editor-subpanel"
+                      style={{ position: "relative", opacity: isDragging() ? "0.4" : "1" }}
+                    >
+                      <DropIndicator edge={closestEdge()} gap="0.75rem" />
+                      {/* Slot header with drag handle and remove button */}
                       <div class="is-flex is-justify-content-space-between is-align-items-center mb-2">
-                        <span class="has-text-weight-semibold is-size-6">
-                          Slot {slotIndex + 1}
-                          <Show when={slot().label}>
-                            <span class="has-text-grey has-text-weight-normal ml-1">
-                              — {slot().label}
-                            </span>
-                          </Show>
-                        </span>
+                        <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
+                          <span
+                            ref={(el) => { handleRef = el; }}
+                            class="drag-handle has-text-grey-light"
+                            style={{ "font-size": "1.1rem" }}
+                            title="Drag to reorder"
+                          >⠿</span>
+                          <span class="has-text-weight-semibold is-size-6">
+                            Slot {slotIndex() + 1}
+                            <Show when={slot.label}>
+                              <span class="has-text-grey has-text-weight-normal ml-1">
+                                — {slot.label}
+                              </span>
+                            </Show>
+                          </span>
+                        </div>
                         <button
                           class="delete is-small"
                           title="Remove slot"
-                          onClick={() => removeSlot(slotIndex)}
+                          onClick={() => removeSlot(slotIndex())}
                         />
                       </div>
 
@@ -886,11 +945,11 @@ export default function OfferEditor(props: OfferEditorProps) {
                                 class="input is-small"
                                 type="text"
                                 placeholder="e.g. Starter"
-                                value={slot().label}
+                                value={slot.label}
                                 onInput={(e) =>
                                   setDraft(
                                     "slots",
-                                    slotIndex,
+                                    slotIndex(),
                                     "label",
                                     e.currentTarget.value,
                                   )
@@ -908,11 +967,11 @@ export default function OfferEditor(props: OfferEditorProps) {
                                 class="input is-small"
                                 type="number"
                                 min="0"
-                                value={slot().minItems}
+                                value={slot.minItems}
                                 onInput={(e) =>
                                   setDraft(
                                     "slots",
-                                    slotIndex,
+                                    slotIndex(),
                                     "minItems",
                                     parseInt(e.currentTarget.value) || 0,
                                   )
@@ -930,11 +989,11 @@ export default function OfferEditor(props: OfferEditorProps) {
                                 class="input is-small"
                                 type="number"
                                 min="0"
-                                value={slot().maxItems}
+                                value={slot.maxItems}
                                 onInput={(e) =>
                                   setDraft(
                                     "slots",
-                                    slotIndex,
+                                    slotIndex(),
                                     "maxItems",
                                     parseInt(e.currentTarget.value) || 0,
                                   )
@@ -947,7 +1006,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                         <div class="column is-4">
                           <div class="field">
                             <label class="label is-small">
-                              Slot Supplement ($)
+                              Slot Supplement (€)
                             </label>
                             <div class="control">
                               <input
@@ -955,11 +1014,11 @@ export default function OfferEditor(props: OfferEditorProps) {
                                 type="text"
                                 inputmode="decimal"
                                 placeholder="0.00"
-                                value={slot().supplementDisplay}
+                                value={slot.supplementDisplay}
                                 onInput={(e) =>
                                   setDraft(
                                     "slots",
-                                    slotIndex,
+                                    slotIndex(),
                                     "supplementDisplay",
                                     e.currentTarget.value,
                                   )
@@ -970,7 +1029,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                                   );
                                   setDraft(
                                     "slots",
-                                    slotIndex,
+                                    slotIndex(),
                                     "supplementDisplay",
                                     centsToDollars(cents),
                                   );
@@ -978,9 +1037,9 @@ export default function OfferEditor(props: OfferEditorProps) {
                               />
                             </div>
                             <p class="help">
-                              {dollarsToCents(slot().supplementDisplay) === 0
+                              {dollarsToCents(slot.supplementDisplay) === 0
                                 ? "Included in base"
-                                : `+$${centsToDollars(dollarsToCents(slot().supplementDisplay))}`}
+                                : `+€${centsToDollars(dollarsToCents(slot.supplementDisplay))}`}
                             </p>
                           </div>
                         </div>
@@ -990,11 +1049,11 @@ export default function OfferEditor(props: OfferEditorProps) {
                       <div class="mt-2">
                         <div class="is-flex is-justify-content-space-between is-align-items-center mb-1">
                           <span class="is-size-7 has-text-weight-semibold has-text-grey-dark">
-                            Constraints ({slot().constraints.length})
+                            Constraints ({slot.constraints.length})
                           </span>
                           <button
                             class="button is-small"
-                            onClick={() => addConstraint(slotIndex)}
+                            onClick={() => addConstraint(slotIndex())}
                           >
                             <span
                               class="icon is-small"
@@ -1006,13 +1065,13 @@ export default function OfferEditor(props: OfferEditorProps) {
                           </button>
                         </div>
 
-                        <Show when={slot().constraints.length === 0}>
+                        <Show when={slot.constraints.length === 0}>
                           <p class="has-text-grey is-size-7 is-italic ml-2">
                             Add constraints to define which items are allowed.
                           </p>
                         </Show>
 
-                        <Index each={slot().constraints}>
+                        <Index each={slot.constraints}>
                           {(constraint, cIndex) => {
                             const kindKey = () =>
                               constraintKindKey(constraint().kind);
@@ -1043,7 +1102,7 @@ export default function OfferEditor(props: OfferEditorProps) {
 
                                       setDraft(
                                         "slots",
-                                        slotIndex,
+                                        slotIndex(),
                                         "constraints",
                                         cIndex,
                                         "kind",
@@ -1068,7 +1127,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                                       onChange={(e) => {
                                         setDraft(
                                           "slots",
-                                          slotIndex,
+                                          slotIndex(),
                                           "constraints",
                                           cIndex,
                                           "kind",
@@ -1126,7 +1185,7 @@ export default function OfferEditor(props: OfferEditorProps) {
 
                                         setDraft(
                                           "slots",
-                                          slotIndex,
+                                          slotIndex(),
                                           "constraints",
                                           cIndex,
                                           "kind",
@@ -1137,7 +1196,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                                   </div>
                                 </Show>
 
-                                {/* Constraint supplement ($) */}
+                                {/* Constraint supplement (€) */}
                                 <div
                                   class="control"
                                   style={{ width: "80px" }}
@@ -1147,12 +1206,12 @@ export default function OfferEditor(props: OfferEditorProps) {
                                     type="text"
                                     inputmode="decimal"
                                     placeholder="0.00"
-                                    title="Supplement ($)"
+                                    title="Supplement (€)"
                                     value={constraint().supplementDisplay}
                                     onInput={(e) =>
                                       setDraft(
                                         "slots",
-                                        slotIndex,
+                                        slotIndex(),
                                         "constraints",
                                         cIndex,
                                         "supplementDisplay",
@@ -1165,7 +1224,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                                       );
                                       setDraft(
                                         "slots",
-                                        slotIndex,
+                                        slotIndex(),
                                         "constraints",
                                         cIndex,
                                         "supplementDisplay",
@@ -1182,7 +1241,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                                     constraint().supplementDisplay,
                                   ) === 0
                                     ? "incl."
-                                    : `+$${centsToDollars(dollarsToCents(constraint().supplementDisplay))}`}
+                                    : `+€${centsToDollars(dollarsToCents(constraint().supplementDisplay))}`}
                                 </span>
 
                                 {/* Remove constraint */}
@@ -1190,7 +1249,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                                   class="delete is-small"
                                   title="Remove constraint"
                                   onClick={() =>
-                                    removeConstraint(slotIndex, cIndex)
+                                    removeConstraint(slotIndex(), cIndex)
                                   }
                                 />
                               </div>
@@ -1199,8 +1258,9 @@ export default function OfferEditor(props: OfferEditorProps) {
                         </Index>
                       </div>
                     </div>
-                  )}
-                </Index>
+                    );
+                  }}
+                </For>
               </div>
 
               {/* ── Form actions ───────────────────────────── */}

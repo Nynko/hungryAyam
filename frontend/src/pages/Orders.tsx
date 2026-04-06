@@ -83,7 +83,7 @@ function SessionOrderList(props: { session: OrderSession }) {
             {orders().length} order{orders().length !== 1 ? "s" : ""}
           </span>
           <span class="tag is-light">
-            Total: ${formatPrice(totalRevenue())}
+            Total: €{formatPrice(totalRevenue())}
           </span>
         </div>
 
@@ -165,7 +165,7 @@ function SessionOrderList(props: { session: OrderSession }) {
                       </Show>
                     </td>
                     <td class="has-text-weight-bold">
-                      ${formatPrice(order.total_price_cents)}
+                      €{formatPrice(order.total_price_cents)}
                     </td>
                     <td>{fmtDate(order.created_at)}</td>
                   </tr>
@@ -521,7 +521,7 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                             </span>
                             <Show when={totalCents() > 0}>
                               <span class="is-size-7 has-text-weight-bold">
-                                ${formatPrice(totalCents())}
+                                €{formatPrice(totalCents())}
                               </span>
                             </Show>
                             <span class="icon is-small has-text-grey">

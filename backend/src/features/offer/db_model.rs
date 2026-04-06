@@ -29,6 +29,7 @@ pub struct OfferSlotRow {
     pub min_items: i32,
     pub max_items: i32,
     pub supplement_cents: i32,
+    pub position: i32,
 }
 
 /// OfferSlotConstraintRow — maps directly to the `offer_slot_constraints` table.

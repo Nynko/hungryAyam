@@ -28,7 +28,7 @@ type SlotSelectionMap = Record<string, number>;
 
 export default function OfferSlotPicker(props: OfferSlotPickerProps) {
   const slots = () =>
-    [...props.offer.slots].sort((a, b) => a.label.localeCompare(b.label));
+    [...props.offer.slots].sort((a, b) => a.position - b.position);
 
   // ── Navigation ─────────────────────────────────────────────────
   const [currentStepIndex, setCurrentStepIndex] = createSignal(0);
@@ -463,7 +463,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
                     {/* Slot supplement hint */}
                     <Show when={slot().supplement_cents > 0}>
                       <p class="is-size-7 has-text-grey mt-1">
-                        Slot: +${formatOfferPrice(slot().supplement_cents)}
+                        Slot: +€{formatOfferPrice(slot().supplement_cents)}
                       </p>
                     </Show>
                   </div>
@@ -541,11 +541,11 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
         <div>
           <span class="has-text-grey is-size-7">Estimated total</span>
           <p class="has-text-weight-bold is-size-5">
-            ${formatOfferPrice(displayTotal())}
+            €{formatOfferPrice(displayTotal())}
           </p>
           <Show when={displayTotal() > props.offer.base_price_cents}>
             <p class="is-size-7 has-text-grey">
-              Base: ${formatOfferPrice(props.offer.base_price_cents)} +
+              Base: €{formatOfferPrice(props.offer.base_price_cents)} +
               supplements
             </p>
           </Show>
@@ -604,7 +604,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
                 <span>🛒</span>
               </span>
               <span>
-                Add to Cart — ${formatOfferPrice(displayTotal())}
+                Add to Cart — €{formatOfferPrice(displayTotal())}
               </span>
             </button>
           </Show>

@@ -771,7 +771,7 @@ export default function SectionEditor(props: SectionEditorProps) {
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="Price ($)"
+                    placeholder="Price (€)"
                     value={newItemPrice()}
                     onInput={(e) => setNewItemPrice(e.currentTarget.value)}
                     onKeyDown={(e) => {

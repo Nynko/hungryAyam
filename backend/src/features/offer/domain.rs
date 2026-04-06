@@ -133,6 +133,10 @@ pub struct OfferSlot {
     /// this slot. 0 = included in the offer base price.
     #[serde(default)]
     pub supplement_cents: i32,
+    /// Display order for the slot within the offer. Lower = first.
+    #[create_ignore]
+    #[update_ignore]
+    pub position: i32,
 
     /// Constraints for this slot (populated when loading a full offer).
     /// On create, nested `CreateOfferSlotConstraint` items are expected.

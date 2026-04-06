@@ -139,7 +139,7 @@ export default function OfferSlotItemCard(props: OfferSlotItemCardProps) {
                 }
               >
                 <span class="tag is-warning is-light is-small">
-                  +${formatOfferPrice(props.supplementCents)}
+                  +€{formatOfferPrice(props.supplementCents)}
                 </span>
               </Show>
 

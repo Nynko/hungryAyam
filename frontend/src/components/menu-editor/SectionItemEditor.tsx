@@ -221,13 +221,13 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
         {/* Price + toggle */}
         <div class="is-flex is-align-items-center ml-3" style={{ "flex-shrink": "0" }}>
           <span class="has-text-weight-bold is-size-6 mr-3" style={{ "white-space": "nowrap" }}>
-            ${formatPrice(displayPrice())}
+            €{formatPrice(displayPrice())}
             <Show when={props.sectionItem.price_override_cents != null}>
               <span
                 class="has-text-grey is-size-7 ml-1"
                 style={{ "text-decoration": "line-through" }}
               >
-                ${formatPrice(item().base_price_cents)}
+                €{formatPrice(item().base_price_cents)}
               </span>
             </Show>
           </span>
@@ -295,7 +295,7 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
           {/* Base price */}
           <div class="column is-4">
             <div class="field">
-              <label class="label is-small">Base price ($)</label>
+              <label class="label is-small">Base price (€)</label>
               <div class="control">
                 <input
                   class="input is-small"
@@ -314,7 +314,7 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
           <div class="column is-4">
             <div class="field">
               <label class="label is-small">
-                Price override ($)
+                Price override (€)
                 <span class="has-text-grey-light has-text-weight-normal"> — optional</span>
               </label>
               <div class="control">

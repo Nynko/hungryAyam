@@ -183,7 +183,7 @@ export default function CartPanel(props: CartPanelProps) {
 
     if (totalPlaced > 0) {
       setSuccessMessage(
-        `Order placed! Total: $${formatPrice(lastTotalCents)} (${totalPlaced} item${totalPlaced !== 1 ? "s" : ""})`,
+        `Order placed! Total: €${formatPrice(lastTotalCents)} (${totalPlaced} item${totalPlaced !== 1 ? "s" : ""})`,
       );
       props.onOrderPlaced?.();
     }
@@ -332,7 +332,7 @@ export default function CartPanel(props: CartPanelProps) {
                   </div>
                   <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
                     <span class="has-text-weight-bold">
-                      ${formatOfferPrice(entry.totalPriceCents)}
+                      €{formatOfferPrice(entry.totalPriceCents)}
                     </span>
                     <button
                       class="button is-small is-danger is-outlined"
@@ -358,7 +358,7 @@ export default function CartPanel(props: CartPanelProps) {
                           {slotGroup.label}
                           <Show when={slotGroup.slotSupplementCents > 0}>
                             <span class="tag is-warning is-light ml-1" style={{ "font-size": "0.6rem" }}>
-                              +${formatOfferPrice(slotGroup.slotSupplementCents)}
+                              +€{formatOfferPrice(slotGroup.slotSupplementCents)}
                             </span>
                           </Show>
                         </p>
@@ -368,7 +368,7 @@ export default function CartPanel(props: CartPanelProps) {
                               • {item.name}
                               <Show when={item.supplementCents > 0}>
                                 <span class="has-text-warning-dark ml-1">
-                                  (+${formatOfferPrice(item.supplementCents)})
+                                  (+€{formatOfferPrice(item.supplementCents)})
                                 </span>
                               </Show>
                             </p>
@@ -382,7 +382,7 @@ export default function CartPanel(props: CartPanelProps) {
                 {/* Price breakdown */}
                 <Show when={entry.totalPriceCents > entry.basePriceCents}>
                   <p class="is-size-7 has-text-grey mt-1" style={{ "border-top": "1px solid var(--bulma-border-weak)", "padding-top": "0.25rem" }}>
-                    Base: ${formatOfferPrice(entry.basePriceCents)} + supplements: ${formatOfferPrice(entry.totalPriceCents - entry.basePriceCents)}
+                    Base: €{formatOfferPrice(entry.basePriceCents)} + supplements: €{formatOfferPrice(entry.totalPriceCents - entry.basePriceCents)}
                   </p>
                 </Show>
               </div>
@@ -500,14 +500,14 @@ export default function CartPanel(props: CartPanelProps) {
                       class="has-text-weight-bold ml-3"
                       style={{ "white-space": "nowrap", "min-width": "3.5rem", "text-align": "right" }}
                     >
-                      ${formatPrice(group.lineTotalCents)}
+                      €{formatPrice(group.lineTotalCents)}
                     </span>
                   </div>
 
                   {/* Unit price hint when qty > 1 */}
                   <Show when={group.quantity > 1}>
                     <p class="has-text-grey is-size-7 mt-1" style={{ "padding-left": item().image_url ? "32px" : "0" }}>
-                      ${formatPrice(group.unitPriceCents)} each
+                      €{formatPrice(group.unitPriceCents)} each
                     </p>
                   </Show>
 
@@ -562,7 +562,7 @@ export default function CartPanel(props: CartPanelProps) {
         >
           <span class="has-text-weight-bold is-size-5">Total</span>
           <span class="has-text-weight-bold is-size-5">
-            ${formatPrice(combinedTotal())}
+            €{formatPrice(combinedTotal())}
           </span>
         </div>
 
@@ -571,13 +571,13 @@ export default function CartPanel(props: CartPanelProps) {
           <div class="is-size-7 has-text-grey mb-3">
             <div class="is-flex is-justify-content-space-between">
               <span>À la carte items</span>
-              <span>${formatPrice(total())}</span>
+              <span>€{formatPrice(total())}</span>
             </div>
             <div class="is-flex is-justify-content-space-between">
               <span>
                 Offer{offerCount() > 1 ? "s" : ""} ({offerCount()})
               </span>
-              <span>${formatPrice(offerTotal())}</span>
+              <span>€{formatPrice(offerTotal())}</span>
             </div>
           </div>
         </Show>
@@ -615,7 +615,7 @@ export default function CartPanel(props: CartPanelProps) {
             <span class="icon">
               <span>🛒</span>
             </span>
-            <span>Place Order — ${formatPrice(combinedTotal())}</span>
+            <span>Place Order — €{formatPrice(combinedTotal())}</span>
           </button>
         </Show>
       </Show>

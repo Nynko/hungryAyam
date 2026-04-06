@@ -97,14 +97,14 @@ export default function MenuItemCard(props: MenuItemCardProps) {
             {/* Price */}
             <div class="has-text-right ml-3" style={{ "white-space": "nowrap" }}>
               <p class="has-text-weight-bold is-size-6">
-                ${formatPrice(displayPrice())}
+                €{formatPrice(displayPrice())}
               </p>
               <Show when={hasOverride()}>
                 <p
                   class="has-text-grey is-size-7"
                   style={{ "text-decoration": "line-through" }}
                 >
-                  ${formatPrice(item().base_price_cents)}
+                  €{formatPrice(item().base_price_cents)}
                 </p>
               </Show>
             </div>

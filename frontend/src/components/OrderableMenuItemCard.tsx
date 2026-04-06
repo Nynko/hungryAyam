@@ -119,14 +119,14 @@ export default function OrderableMenuItemCard(props: OrderableMenuItemCardProps)
               }}
             >
               <p class="has-text-weight-bold is-size-6 mb-0">
-                ${formatPrice(displayPrice())}
+                €{formatPrice(displayPrice())}
               </p>
               <Show when={hasOverride()}>
                 <p
                   class="has-text-grey is-size-7 mb-0"
                   style={{ "text-decoration": "line-through" }}
                 >
-                  ${formatPrice(item().base_price_cents)}
+                  €{formatPrice(item().base_price_cents)}
                 </p>
               </Show>
 

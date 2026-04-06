@@ -366,7 +366,7 @@ export default function RestaurantPage() {
                           const handleDelete = async () => {
                             const confirmed = await showConfirm({
                               title: "Delete order?",
-                              message: `Remove this order (${totalItems()} item${totalItems() !== 1 ? "s" : ""}, $${formatPrice(order.total_price_cents)})?`,
+                              message: `Remove this order (${totalItems()} item${totalItems() !== 1 ? "s" : ""}, €${formatPrice(order.total_price_cents)})?`,
                               confirmText: "Delete",
                               danger: true,
                             });
@@ -390,7 +390,7 @@ export default function RestaurantPage() {
                                 </span>
                                 <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
                                   <span class="has-text-weight-bold">
-                                    ${formatPrice(order.total_price_cents)}
+                                    €{formatPrice(order.total_price_cents)}
                                   </span>
                                   <Show when={sessionIsOpen()}>
                                     <button
@@ -415,7 +415,7 @@ export default function RestaurantPage() {
                                           {group.quantity > 1 ? `${group.quantity}× ` : ""}{group.itemName}
                                         </span>
                                         <span class="has-text-grey">
-                                          ${formatPrice(group.itemPriceCents * group.quantity)}
+                                          €{formatPrice(group.itemPriceCents * group.quantity)}
                                         </span>
                                       </div>
                                       <Show when={group.notes.length > 0}>

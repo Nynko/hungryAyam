@@ -495,7 +495,7 @@ export default function OffersManager(props: OffersManagerProps) {
 
           <div class="column is-3">
             <div class="field">
-              <label class="label is-small">Base Price ($) *</label>
+              <label class="label is-small">Base Price (€) *</label>
               <div class="control">
                 <input
                   class="input is-small"
@@ -700,7 +700,7 @@ export default function OffersManager(props: OffersManagerProps) {
 
                   <div class="column is-4">
                     <div class="field">
-                      <label class="label is-small">Slot Supplement ($)</label>
+                      <label class="label is-small">Slot Supplement (€)</label>
                       <div class="control">
                         <input
                           class="input is-small"
@@ -732,7 +732,7 @@ export default function OffersManager(props: OffersManagerProps) {
                       <p class="help">
                         {dollarsToCents(slot().supplementDisplay) === 0
                           ? "Included in base"
-                          : `+$${centsToDollars(dollarsToCents(slot().supplementDisplay))}`}
+                          : `+€${centsToDollars(dollarsToCents(slot().supplementDisplay))}`}
                       </p>
                     </div>
                   </div>
@@ -892,14 +892,14 @@ export default function OffersManager(props: OffersManagerProps) {
                             </div>
                           </Show>
 
-                          {/* Supplement ($) */}
+                          {/* Supplement (€) */}
                           <div class="control" style={{ width: "80px" }}>
                             <input
                               class="input is-small"
                               type="text"
                               inputmode="decimal"
                               placeholder="0.00"
-                              title="Supplement ($)"
+                              title="Supplement (€)"
                               value={constraint().supplementDisplay}
                               onInput={(e) =>
                                 setDraft(
@@ -933,7 +933,7 @@ export default function OffersManager(props: OffersManagerProps) {
                             {dollarsToCents(constraint().supplementDisplay) ===
                             0
                               ? "incl."
-                              : `+$${centsToDollars(dollarsToCents(constraint().supplementDisplay))}`}
+                              : `+€${centsToDollars(dollarsToCents(constraint().supplementDisplay))}`}
                           </span>
 
                           {/* Remove */}
@@ -1016,7 +1016,7 @@ export default function OffersManager(props: OffersManagerProps) {
                 {offer.is_active ? "Active" : "Inactive"}
               </span>
               <span class="tag is-info is-small">
-                ${formatOfferPrice(offer.base_price_cents)}
+                €{formatOfferPrice(offer.base_price_cents)}
               </span>
               <Show when={offer.menu_id}>
                 <span
@@ -1076,7 +1076,7 @@ export default function OffersManager(props: OffersManagerProps) {
                             <span>{display}</span>
                             <Show when={c.supplement_cents > 0}>
                               <span class="has-text-warning-dark ml-1">
-                                (+${formatOfferPrice(c.supplement_cents)})
+                                (+€{formatOfferPrice(c.supplement_cents)})
                               </span>
                             </Show>
                           </>
@@ -1088,7 +1088,7 @@ export default function OffersManager(props: OffersManagerProps) {
                         class="tag is-warning ml-2"
                         style={{ "font-size": "0.55rem" }}
                       >
-                        slot: +${formatOfferPrice(slot.supplement_cents)}
+                        slot: +€{formatOfferPrice(slot.supplement_cents)}
                       </span>
                     </Show>
                   </div>

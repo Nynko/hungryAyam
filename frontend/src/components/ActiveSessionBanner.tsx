@@ -193,7 +193,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
         </span>
         <Show when={totalRevenue() > 0}>
           <span class="is-size-7">
-            <strong>Total:</strong> ${(totalRevenue() / 100).toFixed(2)}
+            <strong>Total:</strong> €{(totalRevenue() / 100).toFixed(2)}
           </span>
         </Show>
       </div>

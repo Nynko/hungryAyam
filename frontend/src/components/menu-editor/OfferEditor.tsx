@@ -1,4 +1,4 @@
-import { Show, For, Index, createSignal, createEffect, onMount, onCleanup } from "solid-js";
+import { Show, For, Index, createSignal, createEffect, onMount } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import type { Offer } from "@bindings/Offer";
 import type { OfferSlot } from "@bindings/OfferSlot";
@@ -24,9 +24,6 @@ import {
 } from "@/stores/offerStore";
 import { showConfirm } from "@/stores/confirmStore";
 import { editorState } from "@/stores/menuEditorStore";
-import { setupSortableItem, setupSortableMonitor } from "@/lib/dnd";
-import type { SortableItemState, Edge } from "@/lib/dnd";
-import DropIndicator from "./DropIndicator";
 
 // ══════════════════════════════════════════════════════════════════
 // Types
@@ -233,17 +230,6 @@ export default function OfferEditor(props: OfferEditorProps) {
     if (id) {
       loadLinkedOffer();
     }
-  });
-
-  // ── Slot drag-and-drop monitor ─────────────────────────────────
-  onMount(() => {
-    const cleanup = setupSortableMonitor({
-      type: "slot",
-      onReorder: (_id, sourceIndex, destinationIndex) => {
-        moveSlot(sourceIndex, destinationIndex);
-      },
-    });
-    onCleanup(cleanup);
   });
 
   // ── Flat sections for the constraint picker ────────────────────
@@ -878,47 +864,26 @@ export default function OfferEditor(props: OfferEditorProps) {
                   </div>
                 </Show>
 
-                {/* For keyed by identity — supports drag-to-reorder */}
                 <For each={draft.slots}>
-                  {(slot, slotIndex) => {
-                    let containerRef!: HTMLDivElement;
-                    let handleRef!: HTMLSpanElement;
-                    const [isDragging, setIsDragging] = createSignal(false);
-                    const [closestEdge, setClosestEdge] = createSignal<Edge | null>(null);
-
-                    createEffect(() => {
-                      if (!containerRef || !handleRef) return;
-                      const state = setupSortableItem({
-                        element: containerRef,
-                        dragHandle: handleRef,
-                        getData: () => ({
-                          type: "slot" as const,
-                          id: slot.tempId,
-                          index: slotIndex(),
-                        }),
-                        acceptType: "slot",
-                      });
-                      createEffect(() => setIsDragging(state.isDragging()));
-                      createEffect(() => setClosestEdge(state.closestEdge()));
-                      onCleanup(state.cleanup);
-                    });
-
-                    return (
-                    <div
-                      ref={(el) => { containerRef = el; }}
-                      class="box p-3 mb-3 has-background-light editor-subpanel"
-                      style={{ position: "relative", opacity: isDragging() ? "0.4" : "1" }}
-                    >
-                      <DropIndicator edge={closestEdge()} gap="0.75rem" />
-                      {/* Slot header with drag handle and remove button */}
+                  {(slot, slotIndex) => (
+                    <div class="box p-3 mb-3 has-background-light editor-subpanel">
+                      {/* Slot header with move buttons and remove button */}
                       <div class="is-flex is-justify-content-space-between is-align-items-center mb-2">
                         <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
-                          <span
-                            ref={(el) => { handleRef = el; }}
-                            class="drag-handle has-text-grey-light"
-                            style={{ "font-size": "1.1rem" }}
-                            title="Drag to reorder"
-                          >⠿</span>
+                          <div class="buttons are-small has-addons mb-0">
+                            <button
+                              class="button is-small"
+                              disabled={slotIndex() === 0}
+                              onClick={() => moveSlot(slotIndex(), slotIndex() - 1)}
+                              title="Move up"
+                            >↑</button>
+                            <button
+                              class="button is-small"
+                              disabled={slotIndex() === draft.slots.length - 1}
+                              onClick={() => moveSlot(slotIndex(), slotIndex() + 1)}
+                              title="Move down"
+                            >↓</button>
+                          </div>
                           <span class="has-text-weight-semibold is-size-6">
                             Slot {slotIndex() + 1}
                             <Show when={slot.label}>
@@ -1258,8 +1223,7 @@ export default function OfferEditor(props: OfferEditorProps) {
                         </Index>
                       </div>
                     </div>
-                    );
-                  }}
+                  )}
                 </For>
               </div>
 

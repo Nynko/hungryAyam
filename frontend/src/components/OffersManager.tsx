@@ -1,4 +1,4 @@
-import { Show, For, Index, createSignal, onMount, createMemo } from "solid-js";
+import { Show, For, Index, createSignal, createEffect, onMount, onCleanup, createMemo } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import type { Offer } from "@bindings/Offer";
 import type { OfferSlot } from "@bindings/OfferSlot";
@@ -25,6 +25,9 @@ import {
   clearOfferError,
 } from "@/stores/offerStore";
 import { showConfirm } from "@/stores/confirmStore";
+import { setupSortableItem, setupSortableMonitor, computeReorderIndex, extractClosestEdge } from "@/lib/dnd";
+import type { SortableItemState } from "@/lib/dnd";
+import DropIndicator from "@/components/menu-editor/DropIndicator";
 
 // ══════════════════════════════════════════════════════════════════
 // Draft types (local to this component)
@@ -269,6 +272,27 @@ export default function OffersManager(props: OffersManagerProps) {
     );
   };
 
+  const moveSlot = (from: number, to: number) => {
+    if (to < 0 || to >= draft.slots.length) return;
+    setDraft(
+      produce((d) => {
+        const [moved] = d.slots.splice(from, 1);
+        d.slots.splice(to, 0, moved);
+      }),
+    );
+  };
+
+  // ── Slot DnD monitor ──────────────────────────────────────────
+  onMount(() => {
+    const cleanup = setupSortableMonitor({
+      type: "slot",
+      onReorder: (_sourceId, sourceIndex, destinationIndex) => {
+        moveSlot(sourceIndex, destinationIndex);
+      },
+    });
+    onCleanup(cleanup);
+  });
+
   const addConstraint = (slotIndex: number) => {
     setDraft(
       produce((d) => {
@@ -466,7 +490,7 @@ export default function OffersManager(props: OffersManagerProps) {
   // ── Offer form renderer (shared between create and edit) ───────
   const renderOfferForm = () => {
     return (
-      <div class="box mb-4 has-background-light">
+      <div class="box mb-4 editor-panel">
         <div class="is-flex is-justify-content-space-between is-align-items-center mb-3">
           <h4 class="title is-5 mb-0">
             {creating() ? "➕ New Offer" : "✏️ Edit Offer"}
@@ -606,23 +630,66 @@ export default function OffersManager(props: OffersManagerProps) {
 
           {/* Index keyed by position — stable DOM, no focus loss */}
           <Index each={draft.slots}>
-            {(slot, slotIndex) => (
+            {(slot, slotIndex) => {
+              let slotContainerRef!: HTMLDivElement;
+              let slotHandleRef!: HTMLSpanElement;
+
+              const [slotIsDragging, setSlotIsDragging] = createSignal(false);
+              const [slotClosestEdge, setSlotClosestEdge] = createSignal<ReturnType<SortableItemState["closestEdge"]>>(null);
+
+              createEffect(() => {
+                const el = slotContainerRef;
+                const handle = slotHandleRef;
+                if (!el || !handle) return;
+
+                const state = setupSortableItem({
+                  element: el,
+                  dragHandle: handle,
+                  getData: () => ({
+                    type: "slot" as const,
+                    id: slot().tempId,
+                    index: slotIndex,
+                  }),
+                  acceptType: "slot",
+                });
+
+                createEffect(() => setSlotIsDragging(state.isDragging()));
+                createEffect(() => setSlotClosestEdge(state.closestEdge()));
+
+                onCleanup(state.cleanup);
+              });
+
+              return (
               <div
+                ref={(el) => { slotContainerRef = el; }}
                 class="box p-3 mb-3"
                 style={{
+                  position: "relative",
                   "border-left": "3px solid var(--bulma-border)",
+                  opacity: slotIsDragging() ? "0.4" : "1",
                 }}
               >
+                <DropIndicator edge={slotClosestEdge()} gap="0.75rem" />
                 {/* Slot header */}
                 <div class="is-flex is-justify-content-space-between is-align-items-center mb-2">
-                  <span class="has-text-weight-semibold is-size-6">
-                    Slot {slotIndex + 1}
-                    <Show when={slot().label}>
-                      <span class="has-text-grey has-text-weight-normal ml-1">
-                        — {slot().label}
-                      </span>
-                    </Show>
-                  </span>
+                  <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
+                    <span
+                      ref={(el) => { slotHandleRef = el; }}
+                      class="drag-handle has-text-grey mr-1"
+                      style={{ cursor: "grab", "font-size": "1.1rem", "user-select": "none", "line-height": "1" }}
+                      title="Drag to reorder"
+                    >
+                      ☰
+                    </span>
+                    <span class="has-text-weight-semibold is-size-6">
+                      Slot {slotIndex + 1}
+                      <Show when={slot().label}>
+                        <span class="has-text-grey has-text-weight-normal ml-1">
+                          — {slot().label}
+                        </span>
+                      </Show>
+                    </span>
+                  </div>
                   <button
                     class="delete is-small"
                     title="Remove slot"
@@ -950,7 +1017,8 @@ export default function OffersManager(props: OffersManagerProps) {
                   </Index>
                 </div>
               </div>
-            )}
+              );
+            }}
           </Index>
         </div>
 

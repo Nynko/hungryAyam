@@ -3,11 +3,6 @@
 //! Custom derive macros for domain-driven design patterns.
 //!
 //! - [`domain_struct`] — Generate derived structs from a domain struct
-//! - [`IntoDomain`] — Convert DTOs/DB models into domain objects
-//!
-//! ```text
-//! DTO/DB Model ──IntoDomain──▶ Domain ──domain_struct──▶ CreateX / UpdateX / {Name}X
-//! ```
 //!
 //! ## `domain_struct`
 //!
@@ -61,24 +56,12 @@
 //!
 //! Type resolution priority: `{name}_type` > `derived_type` > `{name}_nested` / `derived_nested` > original.
 //! `{name}_ignore` / `derived_domain_ignore` is always checked first.
-//!
-//! ## `IntoDomain`
-//!
-//! | Attribute | Description |
-//! |-----------|-------------|
-//! | `#[into_domain(Type)]` | Target domain type (required) |
-//! | `#[into_domain_name = "field"]` | Rename field in target |
-//! | `#[into_domain_ignored]` | Skip field |
-//! | `#[into_domain_with(fn)]` | Custom conversion (fn must return `Result<T, E>`) |
 
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
 
 use crate::domain_struct::impl_domain_struct;
-use crate::into_domain::impl_into_domain_derive;
 
 mod domain_struct;
-mod into_domain;
 
 /// Generate derived variant structs from a domain struct.
 ///
@@ -100,26 +83,4 @@ mod into_domain;
 #[proc_macro_attribute]
 pub fn domain_struct(args: TokenStream, input: TokenStream) -> TokenStream {
     impl_domain_struct(args, input)
-}
-
-/// Derive `IntoDomain<T>` for converting structs to domain objects.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// #[derive(IntoDomain)]
-/// #[into_domain(User)]
-/// pub struct UserRow {
-///     pub id: Uuid,
-///     #[into_domain_name = "user_email"]
-///     #[into_domain_with(parse_email)]
-///     pub email: Option<String>,
-///     #[into_domain_ignored]
-///     pub internal: String,
-/// }
-/// ```
-#[proc_macro_derive(IntoDomain, attributes(into_domain, into_domain_name, into_domain_ignored, into_domain_with))]
-pub fn into_domain_derive(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    impl_into_domain_derive(input)
 }

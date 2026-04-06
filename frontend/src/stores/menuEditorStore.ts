@@ -148,6 +148,20 @@ export interface DraftMenu {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Tag wire-format helpers
+// ═══════════════════════════════════════════════════════════════════
+
+type TagInput = { New: string } | { Existing: string };
+
+function toTagInputs(tags: { id: string | null; name: string | null }[]): TagInput[] {
+  return tags.flatMap(({ id, name }): TagInput[] => {
+    if (id) return [{ Existing: id }];
+    if (name) return [{ New: name }];
+    return [];
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Conversion helpers: API types ↔ Draft types
 // ═══════════════════════════════════════════════════════════════════
 
@@ -211,7 +225,6 @@ function draftSectionItemToCreate(si: DraftSectionItem): CreateMenuSectionItem {
       description: si.item.description,
       base_price_cents: si.item.base_price_cents,
       image_url: si.item.image_url,
-      tags: si.item.tags,
     },
   };
 }
@@ -329,6 +342,7 @@ function mergeActions(
           is_available: n.is_available ?? o.is_available,
           item: n.item ?? o.item,
         },
+        item_tags: null,
       },
     };
   }
@@ -909,9 +923,9 @@ function addItemToSection(
             base_price_cents: itemData.base_price_cents,
             image_url: itemData.image_url ?? null,
             active: true,
-            tags: itemData.tags ?? [],
           },
         },
+        item_tags: toTagInputs(itemData.tags ?? []),
       },
     });
   }
@@ -973,10 +987,10 @@ function updateSectionItem(
                 base_price_cents: updates.item.base_price_cents ?? null,
                 image_url: updates.item.image_url !== undefined ? updates.item.image_url : null,
                 active: null,
-                tags: null,
               }
             : null,
         },
+        item_tags: null,
       },
     });
   }
@@ -1008,6 +1022,7 @@ function removeItem(sectionId: string, itemId: string): void {
           is_available: false,
           item: null,
         },
+        item_tags: null,
       },
     });
   }

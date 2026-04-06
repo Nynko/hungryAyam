@@ -10,7 +10,7 @@ use crate::types::{
 };
 use crate::features::availability::domain::AvailabilityRule;
 
-use super::tag::{Tag, EitherTag};
+use super::tag::Tag;
 
 /// Item domain struct - represents a product/dish that can be sold
 /// Tags are part of the domain model (fetched from junction table)
@@ -39,10 +39,10 @@ pub struct Item {
     #[derived_domain_ignore]
     pub updated_by: Uuid,
 
-    /// Tags attached to this item
-    /// Domain uses Vec<Tag> (full objects), Create/Update use Vec<TagInput>
-    #[serde(default)] /// For TS : Create default if not present
-    #[derived_type(Vec<EitherTag>)]
+    /// Tags attached to this item (read model — full objects fetched from DB).
+    /// Excluded from all variants; handled explicitly in DTO layer via TagInput.
+    #[serde(default)]
+    #[derived_domain_ignore]
     pub tags: Vec<Tag>,
 
     /// Optional availability rule controlling when this item is available.

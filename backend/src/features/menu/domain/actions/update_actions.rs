@@ -1,39 +1,80 @@
-use serde::{Serialize,Deserialize};
+use serde::{Serialize, Deserialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::{
-    features::menu::domain::{
-        menu::UpdateMenu, section::{
-            UnitCreateMenuSection,
-            UpdateMenuSection
+    features::{
+        item::domain::tag::TagInput,
+        menu::domain::{
+            menu::UpdateMenu,
+            section::{UnitCreateMenuSection, UpdateMenuSection},
+            section_item::{UnitCreateMenuSectionItem, UpdateMenuSectionItem},
         },
-        section_item::{
-            UnitCreateMenuSectionItem,
-            UpdateMenuSectionItem
-        }
     },
-    types::{actions::EntityRef, position::Position
-    }
+    types::{actions::EntityRef, position::Position},
 };
 
-
-/// For Update a user can either replace the full menu by deleting/creating OR he can:
-/// 1. Update an item (price, name...) or a section (name) or the menu (name)
-/// 2. Add an item / Add a section (see create actions)
-/// 3. Change the order (position) of an item or subsection or section
-/// 4. Change an item of section (or a subsection of section)
-
+/// Actions available when updating a menu. A user can either replace the full
+/// menu (delete + recreate) or send a sequence of these granular actions:
+///
+/// 1. Update scalar fields — menu name, section name, or catalog item fields
+/// 2. Add a section or item
+/// 3. Reorder — change position of a section or item
+/// 4. Reparent — move an item to a different section, or a subsection under another section
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum UpdateMenuAction {
     UpdateMenu(UpdateMenu),
-    UpdateMenuSection{ section_id: Uuid, update: UpdateMenuSection},
-    UpdateMenuSectionItem { item_id: Uuid, update: UpdateMenuSectionItem},
-    AddSection {parent_id : EntityRef, section: UnitCreateMenuSection}, // EntityRef because the parent_id can be another section or the menu itself
-    AddItem {section_id: EntityRef, item: UnitCreateMenuSectionItem},
-    ChangePositionSection {section_id : EntityRef, position: Position},
-    ChangePositionItem { item_id : EntityRef, position: Position},
-    ChangeSectionForItem { item_id: EntityRef, section_id : EntityRef},
-    ChangeSectionForSubSection { subsection_id: EntityRef, section_id: EntityRef}
+
+    UpdateMenuSection {
+        section_id: Uuid,
+        update: UpdateMenuSection,
+    },
+
+    /// Update a menu section item (position, price override, availability) and
+    /// optionally the underlying catalog item's scalar fields and/or tags.
+    /// `item_tags` replaces all tags on the catalog item when provided.
+    UpdateMenuSectionItem {
+        item_id: Uuid,
+        update: UpdateMenuSectionItem,
+        #[serde(default)]
+        item_tags: Option<Vec<TagInput>>,
+    },
+
+    /// Add a new section to the menu.
+    /// `parent_id` is an `EntityRef` because the parent can be either the menu
+    /// itself or another section (subsection nesting).
+    AddSection {
+        parent_id: EntityRef,
+        section: UnitCreateMenuSection,
+    },
+
+    /// Add a new item to a section, creating the catalog item inline.
+    /// `item_tags` optionally sets tags on the newly created catalog item.
+    AddItem {
+        section_id: EntityRef,
+        item: UnitCreateMenuSectionItem,
+        #[serde(default)]
+        item_tags: Vec<TagInput>,
+    },
+
+    ChangePositionSection {
+        section_id: EntityRef,
+        position: Position,
+    },
+
+    ChangePositionItem {
+        item_id: EntityRef,
+        position: Position,
+    },
+
+    ChangeSectionForItem {
+        item_id: EntityRef,
+        section_id: EntityRef,
+    },
+
+    ChangeSectionForSubSection {
+        subsection_id: EntityRef,
+        section_id: EntityRef,
+    },
 }

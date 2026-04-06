@@ -573,13 +573,13 @@ async fn test_update_menu_section_item_with_catalog_and_tags(pool: PgPool) {
                             "item": {
                                 "id": catalog_item_id,
                                 "name": "Special Nasi Goreng",
-                                "base_price_cents": 1800,
-                                "tags": [
-                                    { "name": "spicy" },
-                                    { "name": "rice" }
-                                ]
+                                "base_price_cents": 1800
                             }
-                        }
+                        },
+                        "item_tags": [
+                            { "New": "spicy" },
+                            { "New": "rice" }
+                        ]
                     }
                 }
             ]

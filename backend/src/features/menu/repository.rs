@@ -5,7 +5,11 @@ use uuid::Uuid;
 use crate::{
     features::{
         availability::{db_model::AvailabilityRuleRow, domain::AvailabilityRule},
-        item::{domain::{item::Item, tag::Tag}, repository::ItemRepository},
+        item::{
+            domain::item::Item,
+            dto::CreateItemRequest,
+            repository::ItemRepository,
+        },
         menu::{
             db_model::{MenuRow, MenuSectionItemRow, MenuSectionRow},
             domain::{
@@ -343,6 +347,7 @@ impl MenuRepository {
                 UpdateMenuAction::UpdateMenuSectionItem {
                     item_id,
                     update,
+                    item_tags,
                 } => {
                     // item_id is a plain Uuid — always targets an existing
                     // menu_section_item row.
@@ -394,62 +399,18 @@ impl MenuRepository {
                         .execute(&mut *tx)
                         .await?;
 
-                        // Update tags for the catalog item within the transaction.
-                        if let Some(ref tag_inputs) = item_update.tags {
-                            // Remove existing tag associations.
-                            sqlx::query!(
-                                "DELETE FROM item_tags WHERE item_id = $1",
-                                item_update.id
-                            )
-                            .execute(&mut *tx)
-                            .await?;
+                    }
 
-                            for input in tag_inputs {
-                                if !input.is_valid() {
-                                    continue;
-                                }
+                    // Optionally replace tags on the catalog item.
+                    if let Some(tags) = item_tags {
+                        let catalog_item_id = sqlx::query_scalar!(
+                            r#"SELECT item_id FROM menu_section_items WHERE id = $1"#,
+                            *item_id
+                        )
+                        .fetch_one(&mut *tx)
+                        .await?;
 
-                                let tag = if let Some(tag_id) = input.id {
-                                    // Reference existing tag by ID.
-                                    match sqlx::query_as!(
-                                        Tag,
-                                        r#"SELECT id, name as "name: Name" FROM tags WHERE id = $1"#,
-                                        tag_id
-                                    )
-                                    .fetch_optional(&mut *tx)
-                                    .await?
-                                    {
-                                        Some(t) => t,
-                                        None => continue, // Skip unknown tag IDs
-                                    }
-                                } else if let Some(ref tag_name) = input.name {
-                                    // Upsert tag by name.
-                                    sqlx::query_as!(
-                                        Tag,
-                                        r#"
-                                        INSERT INTO tags (name)
-                                        VALUES ($1)
-                                        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-                                        RETURNING id, name as "name: Name"
-                                        "#,
-                                        tag_name.as_ref()
-                                    )
-                                    .fetch_one(&mut *tx)
-                                    .await?
-                                } else {
-                                    continue;
-                                };
-
-                                // Associate the tag with the item.
-                                sqlx::query!(
-                                    "INSERT INTO item_tags (item_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                                    item_update.id,
-                                    tag.id
-                                )
-                                .execute(&mut *tx)
-                                .await?;
-                            }
-                        }
+                        self.item_repository.set_item_tags(catalog_item_id, tags.to_vec()).await?;
                     }
 
                     Some(row_id)
@@ -506,7 +467,7 @@ impl MenuRepository {
                 }
 
                 // ── 5. AddItem ────────────────────────────────────────
-                UpdateMenuAction::AddItem { section_id, item } => {
+                UpdateMenuAction::AddItem { section_id, item, item_tags } => {
                     let resolved_section_id = section_id.resolve(&result_ids)?;
 
                     // Verify the section exists and belongs to this menu.
@@ -573,6 +534,11 @@ impl MenuRepository {
                     )
                     .fetch_one(&mut *tx)
                     .await?;
+
+                    // Set tags on the newly created catalog item if provided.
+                    if !item_tags.is_empty() {
+                        self.item_repository.set_item_tags(new_item_id, item_tags.to_vec()).await?;
+                    }
 
                     Some(row_id)
                 }
@@ -937,7 +903,10 @@ impl MenuRepository {
             // NOTE: this goes through item_repository which uses its own pool
             // connection (outside the current transaction). A future improvement
             // would be to make item creation transaction-aware.
-            let catalog_item = self.item_repository.create(user_id, input.item).await?;
+            let catalog_item = self.item_repository.create(
+                user_id,
+                CreateItemRequest { item: input.item, tags: vec![] },
+            ).await?;
 
             let item_row = sqlx::query_as!(
                 MenuSectionItemRow,

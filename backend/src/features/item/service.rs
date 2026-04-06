@@ -59,7 +59,7 @@ impl ItemService {
     /// Update an item (with tags if provided)
     /// Note: Name and price validation happens automatically during deserialization via validated_type
     pub async fn update_item(&self, user_id: Uuid, request: UpdateItemRequest) -> Result<Option<Item>> {
-        if self.repository.get_by_id(request.id).await?.is_none() {
+        if self.repository.get_by_id(request.item.id).await?.is_none() {
             return Ok(None);
         }
 

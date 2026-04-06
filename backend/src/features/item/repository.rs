@@ -12,7 +12,7 @@ use crate::{
             db_model::ItemRow,
             domain::{
                 item::Item,
-                tag::{EitherTag, Tag, UpdateTag},
+                tag::{TagInput, Tag, UpdateTag},
             },
             dto::{CreateItemRequest, UpdateItemRequest},
         },
@@ -53,11 +53,11 @@ impl ItemRepository {
                 updated_by,
                 availability_rule_id
             "#,
-            request.restaurant_id,
-            request.name.as_ref(),
-            request.description,
-            request.base_price_cents.as_ref(),
-            request.image_url.as_ref().map(|u| u.to_string()),
+            request.item.restaurant_id,
+            request.item.name.as_ref(),
+            request.item.description,
+            request.item.base_price_cents.as_ref(),
+            request.item.image_url.as_ref().map(|u| u.to_string()),
             user_id,
             user_id,
         )
@@ -220,12 +220,12 @@ impl ItemRepository {
                 updated_by,
                 availability_rule_id
             "#,
-            request.name.as_ref().map(|n| n.as_ref()),
-            request.description,
-            request.base_price_cents.as_ref().map(|p| p.as_ref()),
-            request.image_url.as_ref().map(|u| u.to_string()),
-            request.active,
-            request.id,
+            request.item.name.as_ref().map(|n| n.as_ref()),
+            request.item.description,
+            request.item.base_price_cents.as_ref().map(|p| p.as_ref()),
+            request.item.image_url.as_ref().map(|u| u.to_string()),
+            request.item.active,
+            request.item.id,
             user_id
         )
         .fetch_optional(&self.pool)
@@ -235,9 +235,9 @@ impl ItemRepository {
             Some(row) => {
                 // Update tags if provided
                 let tags = if let Some(tag_inputs) = request.tags {
-                    self.set_item_tags(request.id, tag_inputs).await?
+                    self.set_item_tags(request.item.id, tag_inputs).await?
                 } else {
-                    self.get_tags_for_item(request.id).await?
+                    self.get_tags_for_item(request.item.id).await?
                 };
                 let rule = if let Some(rule_id) = row.availability_rule_id {
                     sqlx::query_as!(
@@ -360,9 +360,9 @@ impl ItemRepository {
         Ok(tags)
     }
 
-    /// Set tags for an item using TagInput (replaces existing associations)
-    /// TagInput can specify either an existing tag by ID or create/find by name
-    pub async fn set_item_tags(&self, item_id: Uuid, tag_inputs: Vec<EitherTag>) -> Result<Vec<Tag>> {
+    /// Set tags for an item using TagInput (replaces existing associations).
+    /// `TagInput::Existing(id)` references a tag by ID; `TagInput::New(name)` upserts by name.
+    pub async fn set_item_tags(&self, item_id: Uuid, tag_inputs: Vec<TagInput>) -> Result<Vec<Tag>> {
         // Delete existing tag associations
         sqlx::query!("DELETE FROM item_tags WHERE item_id = $1", item_id)
             .execute(&self.pool)
@@ -375,33 +375,28 @@ impl ItemRepository {
         let mut tags = Vec::new();
 
         for input in tag_inputs {
-            // Skip invalid inputs
-            if !input.is_valid() {
-                continue;
-            }
-
-            let tag = if let Some(tag_id) = input.id {
-                // Use existing tag by ID
-                match self.get_tag_by_id(tag_id).await? {
-                    Some(tag) => tag,
-                    None => continue, // Skip if tag doesn't exist
+            let tag = match input {
+                TagInput::Existing(tag_id) => {
+                    match self.get_tag_by_id(tag_id).await? {
+                        Some(tag) => tag,
+                        None => continue, // Skip if tag doesn't exist
+                    }
                 }
-            } else if let Some(tag_name) = input.name {
-                // Create or find tag by name (upsert)
-                sqlx::query_as!(
-                    Tag,
-                    r#"
-                    INSERT INTO tags (name)
-                    VALUES ($1)
-                    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-                    RETURNING id, name as "name: Name"
-                    "#,
-                    tag_name.as_ref()
-                )
-                .fetch_one(&self.pool)
-                .await?
-            } else {
-                continue;
+                TagInput::New(tag_name) => {
+                    // Create or find tag by name (upsert)
+                    sqlx::query_as!(
+                        Tag,
+                        r#"
+                        INSERT INTO tags (name)
+                        VALUES ($1)
+                        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+                        RETURNING id, name as "name: Name"
+                        "#,
+                        tag_name.as_ref()
+                    )
+                    .fetch_one(&self.pool)
+                    .await?
+                }
             };
 
             // Associate tag with item

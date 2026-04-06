@@ -17,6 +17,7 @@ use crate::{
         offer::routes::offer_routes,
         availability::routes::availability_routes,
         upload::routes::upload_routes,
+        menu_scan::routes::menu_scan_routes,
     },
     state::AppState
 };
@@ -61,9 +62,14 @@ pub fn build_app(state: AppState) -> Router {
     let upload_router = upload_routes()
         .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024));
 
+    // Menu scan: up to 5 images × 10 MB each + overhead
+    let menu_scan_router = menu_scan_routes()
+        .layer(RequestBodyLimitLayer::new(55 * 1024 * 1024));
+
     Router::new()
         .merge(regular_routes)
         .merge(upload_router)
+        .merge(menu_scan_router)
         .layer(cors)
         .layer(middleware::from_fn_with_state(state.clone(), setup_redirect_guard))
         .with_state(state)

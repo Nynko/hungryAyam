@@ -5,6 +5,7 @@
     "npm:@atlaskit/pragmatic-drag-and-drop@^1.7.7": "1.7.7",
     "npm:@solidjs/router@~0.15.4": "0.15.4_solid-js@1.9.10__seroval@1.3.2",
     "npm:bulma@^1.0.4": "1.0.4",
+    "npm:heic2any@^0.0.4": "0.0.4",
     "npm:sass@^1.97.3": "1.97.3",
     "npm:solid-devtools@~0.34.3": "0.34.4_solid-js@1.9.10__seroval@1.3.2_vite@7.2.6__sass@1.97.3__picomatch@4.0.3_@babel+core@7.28.5_sass@1.97.3",
     "npm:solid-js@^1.9.5": "1.9.10_seroval@1.3.2",
@@ -815,6 +816,9 @@
     "gensync@1.0.0-beta.2": {
       "integrity": "sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg=="
     },
+    "heic2any@0.0.4": {
+      "integrity": "sha512-3lLnZiDELfabVH87htnRolZ2iehX9zwpRyGNz22GKXIu0fznlblf0/ftppXKNqS26dqFSeqfIBhAmAj/uSp0cA=="
+    },
     "html-entities@2.3.3": {
       "integrity": "sha512-DV5Ln36z34NNTDgnz0EWGBLZENelNAtkiFA4kyNOG2tDI6Mz1uSWiq1wAKdyjnJwyDiDO7Fa2SO1CTxPXL8VxA=="
     },
@@ -1059,6 +1063,7 @@
         "npm:@atlaskit/pragmatic-drag-and-drop@^1.7.7",
         "npm:@solidjs/router@~0.15.4",
         "npm:bulma@^1.0.4",
+        "npm:heic2any@^0.0.4",
         "npm:sass@^1.97.3",
         "npm:solid-devtools@~0.34.3",
         "npm:solid-js@^1.9.5",

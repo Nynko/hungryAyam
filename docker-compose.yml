@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-hungryayam}:${POSTGRES_PASSWORD:-hungryayam}@db:5432/${POSTGRES_DB:-hungryayam}
       BIND_ADDR: 0.0.0.0:3000
       UPLOAD_DIR: /data/uploads
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

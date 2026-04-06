@@ -71,7 +71,7 @@ async fn seed_second_user(pool: &PgPool) -> (Uuid, String) {
 /// Build a fully-wired Router backed by the given pool.
 fn app(pool: PgPool) -> Router {
     let setup_done = Arc::new(AtomicBool::new(true));
-    let state = build_state(setup_done, pool, Arc::new(Notify::new()));
+    let state = build_state(setup_done, pool, Arc::new(Notify::new()), std::path::PathBuf::from("/tmp/test_uploads"));
     build_app(state)
 }
 

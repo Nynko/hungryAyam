@@ -38,7 +38,8 @@ use crate::{
         availability::{
             repository::AvailabilityRepository,
             service::AvailabilityService
-        }
+        },
+        menu_scan::service::MenuScanService
     }
 };
 
@@ -60,6 +61,7 @@ pub struct AppState {
     /// about changes (e.g. session created/updated/closed, order settings
     /// changed). Call `scheduler_notify.notify_one()` after any such mutation.
     pub scheduler_notify: Arc<Notify>,
+    pub menu_scan_service: MenuScanService,
     /// Directory where uploaded images are stored.
     pub upload_dir: PathBuf,
 }
@@ -92,6 +94,7 @@ pub fn build_state(
     let offer_service = OfferService::new(offer_repository);
     let availability_service = AvailabilityService::new(availability_repository);
     let order_service = OrderService::new(order_repository, offer_service.clone(), scheduler_notify.clone());
+    let menu_scan_service = MenuScanService::new();
 
     AppState {
         setup_completed,
@@ -106,6 +109,7 @@ pub fn build_state(
         availability_service,
         auth_service,
         session_repository,
+        menu_scan_service,
         scheduler_notify,
         upload_dir,
     }

@@ -11,6 +11,8 @@ import type { UpdateMenuActionsRequest } from "@bindings/UpdateMenuActionsReques
 import type { ResetMenuRequest } from "@bindings/ResetMenuRequest";
 import type { ResetMenuResponse } from "@bindings/ResetMenuResponse";
 import type { ApiResponse } from "@bindings/ApiResponse";
+import type { MenuScanResponse } from "@bindings/MenuScanResponse";
+import type { ScannedSection } from "@bindings/ScannedSection";
 
 // ═══════════════════════════════════════════════════════════════════
 // Position helpers
@@ -394,6 +396,65 @@ function initNewMenu(restaurantId: string): void {
     tempIdToActionIndex.clear();
     setEditorError(null);
     setDirty(false);
+  });
+}
+
+/**
+ * Initialize the store from an AI-scanned menu result.
+ * Maps the scan response into DraftMenu format so the user can review/edit.
+ */
+function initFromScan(restaurantId: string, scan: MenuScanResponse): void {
+  const mapSection = (s: ScannedSection, parentId: string | null): DraftSection => ({
+    id: tempId(),
+    isNew: true,
+    menu_id: "",
+    parent_id: parentId,
+    name: s.name,
+    description: s.description,
+    position: s.position * POSITION_GAP,
+    is_active: true,
+    items: s.items.map((si) => ({
+      id: tempId(),
+      isNew: true,
+      section_id: "",
+      position: si.position * POSITION_GAP,
+      price_override_cents: null,
+      is_available: true,
+      item: {
+        id: tempId(),
+        isNew: true,
+        restaurant_id: restaurantId,
+        name: si.item.name,
+        description: si.item.description,
+        base_price_cents: si.item.base_price_cents,
+        image_url: null,
+        active: true,
+        tags: si.item.tags.map((t) => ({ id: null, name: t.name })),
+      },
+    })),
+    subsections: s.subsections.map((sub) => mapSection(sub, null)),
+  });
+
+  batch(() => {
+    setEditorState(
+      reconcile({
+        draft: {
+          id: null,
+          restaurant_id: restaurantId,
+          name: scan.name,
+          description: scan.description,
+          is_active: true,
+          permanent: true,
+          sections: scan.sections.map((s) => mapSection(s, null)),
+        },
+        isNewMenu: true,
+        originalMenu: null,
+      })
+    );
+    setActionQueue([]);
+    tempIdToActionIndex.clear();
+    setEditorError(null);
+    setDirty(true);
   });
 }
 
@@ -1254,6 +1315,7 @@ export {
 
   // Initialization
   initNewMenu,
+  initFromScan,
   loadMenuForEditing,
   fetchAndLoadMenu,
 

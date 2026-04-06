@@ -4,9 +4,11 @@ import type { Restaurant } from "@bindings/Restaurant";
 import type { Menu } from "@bindings/Menu";
 import type { MenuSection } from "@bindings/MenuSection";
 import type { ApiResponse } from "@bindings/ApiResponse";
+import type { MenuScanResponse } from "@bindings/MenuScanResponse";
 import MenuEditorToolbar from "@/components/menu-editor/MenuEditorToolbar";
 import SectionEditor from "@/components/menu-editor/SectionEditor";
 import CreateModeSelector from "@/components/menu-editor/CreateModeSelector";
+import MenuScanUpload from "@/components/menu-editor/MenuScanUpload";
 import OfferEditor from "@/components/menu-editor/OfferEditor";
 import {
   editorState,
@@ -14,6 +16,7 @@ import {
   editorError,
   dirty,
   initNewMenu,
+  initFromScan,
   fetchAndLoadMenu,
   addSection,
   moveSectionToIndex,
@@ -48,6 +51,7 @@ export default function MenuEditor() {
   const availabilityOnly = () =>
     !isEditor() && isEditMode() && !editorState.draft.permanent;
   const [modeSelected, setModeSelected] = createSignal(false);
+  const [scanMode, setScanMode] = createSignal(false);
   const [showAddSection, setShowAddSection] = createSignal(false);
   const [newSectionName, setNewSectionName] = createSignal("");
 
@@ -92,6 +96,20 @@ export default function MenuEditor() {
   const handleSelectManual = () => {
     initNewMenu(params.id);
     setModeSelected(true);
+  };
+
+  const handleSelectAutomatic = () => {
+    setScanMode(true);
+  };
+
+  const handleScanComplete = (result: MenuScanResponse) => {
+    initFromScan(params.id, result);
+    setScanMode(false);
+    setModeSelected(true);
+  };
+
+  const handleScanCancel = () => {
+    setScanMode(false);
   };
 
   const handleSaved = () => {
@@ -173,7 +191,7 @@ export default function MenuEditor() {
         </Show>
 
         {/* ── Mode selector (create only) ──────────────────── */}
-        <Show when={!isEditMode() && !modeSelected() && !editorLoading() && isAuthenticated()}>
+        <Show when={!isEditMode() && !modeSelected() && !scanMode() && !editorLoading() && isAuthenticated()}>
           <div class="mb-5">
             <div class="has-text-centered mb-4">
               <h1 class="title is-3">
@@ -186,8 +204,19 @@ export default function MenuEditor() {
                 </Show>
               </h1>
             </div>
-            <CreateModeSelector onSelectManual={handleSelectManual} />
+            <CreateModeSelector
+              onSelectManual={handleSelectManual}
+              onSelectAutomatic={handleSelectAutomatic}
+            />
           </div>
+        </Show>
+
+        {/* ── Scan upload (automatic mode) ─────────────────── */}
+        <Show when={scanMode()}>
+          <MenuScanUpload
+            onScanComplete={handleScanComplete}
+            onCancel={handleScanCancel}
+          />
         </Show>
 
         {/* ── Main editor ──────────────────────────────────── */}

@@ -1,9 +1,8 @@
-import { Show } from "solid-js";
-import { Card, ClickableCard } from "@/components/Card";
+import { ClickableCard } from "@/components/Card";
 
 interface CreateModeSelectorProps {
   onSelectManual: () => void;
-  onSelectAutomatic?: () => void;
+  onSelectAutomatic: () => void;
 }
 
 export default function CreateModeSelector(props: CreateModeSelectorProps) {
@@ -39,41 +38,25 @@ export default function CreateModeSelector(props: CreateModeSelectorProps) {
           </ClickableCard>
         </div>
 
-        {/* Automatic mode (coming soon) */}
+        {/* Automatic mode */}
         <div class="column is-6">
           <ClickableCard
-            onClick={() => {}}
-            disabled
-            style={{ height: "100%", position: "relative" }}
+            onClick={() => props.onSelectAutomatic()}
+            style={{ height: "100%" }}
           >
             <div class="card-content has-text-centered">
               <span style={{ "font-size": "3rem" }}>📸</span>
               <p class="title is-5 mt-3 mb-2">Automatic</p>
               <p class="has-text-grey is-size-6">
-                Upload a photo of a menu — OCR and AI will read it and build the
+                Upload photos of a menu — AI will read it and build the
                 structure for you automatically.
               </p>
               <div class="mt-4">
-                <button class="button is-static" disabled>
-                  <span class="icon is-small mr-1">🚧</span>
-                  <span>Coming soon</span>
+                <button class="button is-primary is-outlined">
+                  Upload photos
                 </button>
               </div>
             </div>
-
-            {/* "Coming soon" ribbon */}
-            <Show when={true}>
-              <span
-                class="tag is-warning"
-                style={{
-                  position: "absolute",
-                  top: "0.75rem",
-                  right: "0.75rem",
-                }}
-              >
-                Coming soon
-              </span>
-            </Show>
           </ClickableCard>
         </div>
       </div>

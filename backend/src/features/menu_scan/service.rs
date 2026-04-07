@@ -22,9 +22,15 @@ const GLOBAL_DAILY_LIMIT: u32 = 20;
 const PER_USER_DAILY_LIMIT: u32 = 5;
 
 /// Maximum number of images to download from a webpage.
-const MAX_URL_IMAGES: usize = 10;
+const MAX_URL_IMAGES: usize = 20;
 /// Maximum size per downloaded image (5 MB).
 const MAX_URL_IMAGE_BYTES: usize = 5 * 1024 * 1024;
+/// Maximum number of paginated pages to follow.
+const MAX_PAGES: u32 = 10;
+/// Maximum number of detail pages (individual products) to fetch.
+const MAX_DETAIL_PAGES: usize = 50;
+/// Maximum total HTTP requests per scan.
+const MAX_TOTAL_REQUESTS: usize = 60;
 
 const SYSTEM_PROMPT: &str = r#"You are a menu digitization assistant. You receive one or more photographs of a restaurant menu. Extract all menu items, organizing them into sections as they appear on the physical menu.
 
@@ -225,7 +231,7 @@ impl MenuScanService {
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
 
         let http_client = Client::builder()
-            .timeout(std::time::Duration::from_secs(90))
+            .timeout(std::time::Duration::from_secs(120))
             .build()
             .expect("failed to build HTTP client");
 
@@ -354,7 +360,9 @@ impl MenuScanService {
         self.call_anthropic(SYSTEM_PROMPT, content).await
     }
 
-    /// Scan a menu from a URL: fetch the page, extract images, and send to AI.
+    /// Scan a menu from a URL: fetch the page (following pagination and
+    /// internal links to category/product detail pages), extract images,
+    /// and send everything to AI.
     pub async fn scan_menu_url(
         &self,
         url: &str,
@@ -362,59 +370,129 @@ impl MenuScanService {
     ) -> Result<MenuScanResponse, ApiError> {
         self.check_preconditions(user_id)?;
 
-        // Fetch the page HTML
-        let page_response = self
-            .http_client
-            .get(url)
-            .header("User-Agent", "Mozilla/5.0 (compatible; HungryAyam/1.0)")
-            .send()
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch URL {url}: {e}");
-                ApiError::BadRequest(format!("Could not fetch the URL: {e}"))
-            })?;
-
-        if !page_response.status().is_success() {
-            return Err(ApiError::BadRequest(format!(
-                "URL returned status {}",
-                page_response.status()
-            )));
-        }
-
-        let html = page_response.text().await.map_err(|e| {
-            tracing::error!("Failed to read page body from {url}: {e}");
-            ApiError::BadRequest("Could not read the page content.".into())
-        })?;
-
-        // Extract image URLs from HTML
         let base_url = url::Url::parse(url).map_err(|e| {
             ApiError::BadRequest(format!("Invalid URL: {e}"))
         })?;
-        let image_urls = extract_image_urls(&html, &base_url);
+
+        let mut listing_html = String::new();
+        let mut all_image_urls: Vec<String> = Vec::new();
+        let mut seen_image_urls = std::collections::HashSet::new();
+        let mut seen_pages = std::collections::HashSet::new();
+        let mut detail_links: Vec<String> = Vec::new();
+        let mut seen_detail_links = std::collections::HashSet::new();
+        let mut total_requests = 0usize;
+
+        // ── Phase 1: Fetch listing pages (follow pagination) ─────
+        let mut current_url = url.to_string();
+        let mut listing_pages = 0u32;
+
+        loop {
+            if listing_pages >= MAX_PAGES || total_requests >= MAX_TOTAL_REQUESTS {
+                break;
+            }
+            if !seen_pages.insert(current_url.clone()) {
+                break; // Already visited
+            }
+
+            let html = self.fetch_page(&current_url).await?;
+            total_requests += 1;
+            listing_pages += 1;
+
+            // Collect images
+            for img_url in extract_image_urls(&html, &base_url) {
+                if seen_image_urls.insert(img_url.clone()) {
+                    all_image_urls.push(img_url);
+                }
+            }
+
+            // Collect internal links (potential product/category pages)
+            for link in extract_internal_links(&html, &base_url) {
+                if seen_detail_links.insert(link.clone()) {
+                    detail_links.push(link);
+                }
+            }
+
+            listing_html.push_str(&html);
+            listing_html.push_str("\n\n<!-- === NEXT LISTING PAGE === -->\n\n");
+
+            // Follow pagination
+            match extract_next_page_url(&html, &base_url) {
+                Some(next) if !seen_pages.contains(&next) => {
+                    tracing::info!("Following pagination to: {next}");
+                    current_url = next;
+                }
+                _ => break,
+            }
+        }
 
         tracing::info!(
-            "Fetched {} chars of HTML and found {} images from {url}",
-            html.len(),
-            image_urls.len()
+            "Phase 1: {listing_pages} listing page(s), {} internal links found from {url}",
+            detail_links.len()
         );
 
-        // Download images concurrently (limit to MAX_URL_IMAGES)
-        let urls_to_fetch: Vec<_> = image_urls.into_iter().take(MAX_URL_IMAGES).collect();
+        // ── Phase 2: Fetch detail pages (product/category pages) ─
+        let mut detail_html = String::new();
+        let detail_limit = detail_links.len().min(MAX_DETAIL_PAGES);
+        let mut detail_fetched = 0usize;
+
+        for link in detail_links.iter().take(detail_limit) {
+            if total_requests >= MAX_TOTAL_REQUESTS {
+                break;
+            }
+            // Skip links that are the same as pages already fetched
+            if seen_pages.contains(link) {
+                continue;
+            }
+            seen_pages.insert(link.clone());
+
+            match self.fetch_page(link).await {
+                Ok(html) => {
+                    total_requests += 1;
+                    detail_fetched += 1;
+
+                    // Collect images from detail page
+                    for img_url in extract_image_urls(&html, &base_url) {
+                        if seen_image_urls.insert(img_url.clone()) {
+                            all_image_urls.push(img_url);
+                        }
+                    }
+
+                    detail_html.push_str(&format!(
+                        "\n<!-- === DETAIL PAGE: {link} === -->\n"
+                    ));
+                    detail_html.push_str(&html);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to fetch detail page {link}: {e}");
+                }
+            }
+        }
+
+        tracing::info!(
+            "Phase 2: fetched {detail_fetched} detail page(s), {} total images from {url}",
+            all_image_urls.len()
+        );
+
+        // ── Phase 3: Download images ─────────────────────────────
+        let urls_to_fetch: Vec<_> = all_image_urls.into_iter().take(MAX_URL_IMAGES).collect();
         let mut images: Vec<(String, Vec<u8>)> = Vec::new();
 
         for img_url in &urls_to_fetch {
             match self.download_image(img_url).await {
                 Ok(Some(img)) => images.push(img),
-                Ok(None) => {} // Skipped (too large, wrong type, etc.)
+                Ok(None) => {}
                 Err(e) => {
                     tracing::warn!("Failed to download image {img_url}: {e}");
                 }
             }
         }
 
-        tracing::info!("Successfully downloaded {} images from page", images.len());
+        tracing::info!(
+            "Downloaded {} images. Total requests: {total_requests}",
+            images.len()
+        );
 
-        // Build content blocks: images first, then HTML text
+        // ── Phase 4: Build prompt and call AI ────────────────────
         let mut content: Vec<ContentBlock> = images
             .into_iter()
             .map(|(mime, bytes)| ContentBlock::Image {
@@ -426,20 +504,56 @@ impl MenuScanService {
             })
             .collect();
 
-        // Truncate HTML if too large (keep first 100KB which is plenty for menu content)
-        let html_truncated = if html.len() > 100_000 {
-            format!("{}... [truncated]", &html[..100_000])
+        // Combine listing + detail HTML, truncate if too large
+        let mut combined_html = listing_html;
+        combined_html.push_str("\n\n<!-- ======== DETAIL PAGES ======== -->\n\n");
+        combined_html.push_str(&detail_html);
+
+        let html_truncated = if combined_html.len() > 200_000 {
+            format!("{}... [truncated]", &combined_html[..200_000])
         } else {
-            html
+            combined_html
         };
 
         content.push(ContentBlock::Text {
             text: format!(
-                "Please extract the menu from this webpage. The page URL is: {url}\n\nHTML content:\n{html_truncated}"
+                "Please extract the menu from this restaurant website.\n\
+                 I fetched {listing_pages} listing page(s) and {detail_fetched} \
+                 detail page(s) from: {url}\n\n\
+                 The HTML includes both the listing/category pages and individual \
+                 product detail pages. Use the detail pages to get full descriptions \
+                 and image URLs for each item.\n\n\
+                 HTML content:\n{html_truncated}"
             ),
         });
 
         self.call_anthropic(URL_SYSTEM_PROMPT, content).await
+    }
+
+    /// Fetch a single page and return its HTML body.
+    async fn fetch_page(&self, url: &str) -> Result<String, ApiError> {
+        let response = self
+            .http_client
+            .get(url)
+            .header("User-Agent", "Mozilla/5.0 (compatible; HungryAyam/1.0)")
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch URL {url}: {e}");
+                ApiError::BadRequest(format!("Could not fetch the URL: {e}"))
+            })?;
+
+        if !response.status().is_success() {
+            return Err(ApiError::BadRequest(format!(
+                "URL returned status {}",
+                response.status()
+            )));
+        }
+
+        response.text().await.map_err(|e| {
+            tracing::error!("Failed to read page body from {url}: {e}");
+            ApiError::BadRequest("Could not read the page content.".into())
+        })
     }
 
     /// Download a single image, returning None if it should be skipped.
@@ -523,5 +637,148 @@ fn extract_image_urls(html: &str, base_url: &url::Url) -> Vec<String> {
         }
     }
 
+    // Also extract from srcset and data-src (lazy loading)
+    for cap in regex_lite::Regex::new(r#"(?:data-src|data-lazy-src)\s*=\s*["']([^"']+)["']"#)
+        .unwrap()
+        .captures_iter(html)
+    {
+        if let Some(src) = cap.get(1) {
+            let src_str = src.as_str();
+            if src_str.starts_with("data:") || src_str.ends_with(".svg") {
+                continue;
+            }
+            let absolute = match base_url.join(src_str) {
+                Ok(u) => u.to_string(),
+                Err(_) => continue,
+            };
+            if seen.insert(absolute.clone()) {
+                urls.push(absolute);
+            }
+        }
+    }
+
     urls
+}
+
+// ── Internal link extraction ─────────────────────────────────────
+
+/// Extract internal links from HTML that likely point to product or category pages.
+/// Filters out pagination, admin, cart, and other non-content links.
+fn extract_internal_links(html: &str, base_url: &url::Url) -> Vec<String> {
+    let mut links = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let base_host = base_url.host_str().unwrap_or("");
+
+    let link_re = regex_lite::Regex::new(
+        r#"<a[^>]+href\s*=\s*["']([^"'#]+)["']"#
+    ).unwrap();
+
+    // Patterns that indicate non-content pages
+    let skip_patterns = [
+        "/cart", "/checkout", "/account", "/login", "/register",
+        "/wp-admin", "/wp-login", "/wp-content", "/feed",
+        "/page/", "?add-to-cart", "?remove_item", "/tag/",
+        "/author/", "/comment", "/search", "/privacy", "/terms",
+        "/contact", "/about", "/faq", "javascript:", "mailto:",
+        ".css", ".js", ".xml", ".json", ".pdf",
+    ];
+
+    for cap in link_re.captures_iter(html) {
+        if let Some(href) = cap.get(1) {
+            let href_str = href.as_str().trim();
+
+            // Skip empty or fragment-only
+            if href_str.is_empty() {
+                continue;
+            }
+
+            // Resolve to absolute
+            let absolute = match base_url.join(href_str) {
+                Ok(u) => u,
+                Err(_) => continue,
+            };
+
+            // Must be same host
+            if absolute.host_str() != Some(base_host) {
+                continue;
+            }
+
+            let abs_str = absolute.to_string();
+
+            // Skip known non-content patterns
+            let lower = abs_str.to_lowercase();
+            if skip_patterns.iter().any(|p| lower.contains(p)) {
+                continue;
+            }
+
+            // Skip the base URL itself (we already have it)
+            let normalized = abs_str.trim_end_matches('/');
+            let base_normalized = base_url.as_str().trim_end_matches('/');
+            if normalized == base_normalized {
+                continue;
+            }
+
+            if seen.insert(abs_str.clone()) {
+                links.push(abs_str);
+            }
+        }
+    }
+
+    links
+}
+
+// ── Pagination extraction ────────────────────────────────────────
+
+/// Extract the "next page" URL from HTML pagination links.
+/// Handles common patterns: WooCommerce, WordPress, generic `rel="next"`.
+fn extract_next_page_url(html: &str, base_url: &url::Url) -> Option<String> {
+    // 1. Look for <link rel="next" href="..."> or <a rel="next" href="...">
+    let rel_next_re = regex_lite::Regex::new(
+        r#"<(?:link|a)[^>]+rel\s*=\s*["']next["'][^>]+href\s*=\s*["']([^"']+)["']"#
+    ).unwrap();
+    if let Some(cap) = rel_next_re.captures(html) {
+        if let Some(href) = cap.get(1) {
+            if let Ok(u) = base_url.join(href.as_str()) {
+                return Some(u.to_string());
+            }
+        }
+    }
+
+    // Also check href before rel (some sites put href first)
+    let rel_next_re2 = regex_lite::Regex::new(
+        r#"<(?:link|a)[^>]+href\s*=\s*["']([^"']+)["'][^>]+rel\s*=\s*["']next["']"#
+    ).unwrap();
+    if let Some(cap) = rel_next_re2.captures(html) {
+        if let Some(href) = cap.get(1) {
+            if let Ok(u) = base_url.join(href.as_str()) {
+                return Some(u.to_string());
+            }
+        }
+    }
+
+    // 2. Look for WooCommerce-style pagination: <a class="next page-numbers" href="...">
+    let woo_next_re = regex_lite::Regex::new(
+        r#"<a[^>]+class\s*=\s*["'][^"']*next[^"']*["'][^>]+href\s*=\s*["']([^"']+)["']"#
+    ).unwrap();
+    if let Some(cap) = woo_next_re.captures(html) {
+        if let Some(href) = cap.get(1) {
+            if let Ok(u) = base_url.join(href.as_str()) {
+                return Some(u.to_string());
+            }
+        }
+    }
+
+    // Also href before class
+    let woo_next_re2 = regex_lite::Regex::new(
+        r#"<a[^>]+href\s*=\s*["']([^"']+)["'][^>]+class\s*=\s*["'][^"']*next[^"']*["']"#
+    ).unwrap();
+    if let Some(cap) = woo_next_re2.captures(html) {
+        if let Some(href) = cap.get(1) {
+            if let Ok(u) = base_url.join(href.as_str()) {
+                return Some(u.to_string());
+            }
+        }
+    }
+
+    None
 }

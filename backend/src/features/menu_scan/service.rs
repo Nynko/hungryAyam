@@ -286,22 +286,21 @@ impl MenuScanService {
             })?;
 
         // Strip markdown fences if the model added them despite instructions
-        let json_text = text
-            .trim()
-            .strip_prefix("```json")
-            .or_else(|| text.trim().strip_prefix("```"))
-            .unwrap_or(text.trim())
-            .strip_suffix("```")
-            .unwrap_or(text.trim())
-            .trim();
+        let trimmed = text.trim();
+        let json_text = if let Some(start) = trimmed.find('{') {
+            let end = trimmed.rfind('}').unwrap_or(trimmed.len() - 1);
+            &trimmed[start..=end]
+        } else {
+            trimmed
+        };
 
         // Parse menu JSON
         let scan_result: MenuScanResponse = serde_json::from_str(json_text)
             .map_err(|e| {
                 tracing::error!("Failed to parse menu JSON from AI: {e}\nRaw text: {json_text}");
-                ApiError::Internal(
-                    "Could not parse menu from images. Please try with clearer photos.".into(),
-                )
+                ApiError::Internal(format!(
+                    "Could not parse menu from AI response: {e}"
+                ))
             })?;
 
         Ok(scan_result)

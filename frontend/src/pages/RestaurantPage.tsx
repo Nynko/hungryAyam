@@ -229,32 +229,21 @@ export default function RestaurantPage() {
               {/* ── Hero header ────────────────────────────────── */}
               <Card class="mb-5">
                 <Show when={r().image_url}>
-                  <div class="card-image">
-                    <figure
-                      style={{
-                        "background-color": "var(--bulma-scheme-main-bis)",
-                        height: "120px",
-                        overflow: "hidden",
-                        display: "flex",
-                        "align-items": "center",
-                        "justify-content": "center",
-                      }}
+                  <div class="card-image" style={{ display: "flex", "justify-content": "center", "background-color": "var(--bulma-scheme-main-bis)" }}>
+                    <Show
+                      when={isImageSrc(r().image_url!)}
+                      fallback={
+                        <span style={{ "font-size": "4rem", "line-height": "1", padding: "1.5rem" }}>
+                          {r().image_url}
+                        </span>
+                      }
                     >
-                      <Show
-                        when={isImageSrc(r().image_url!)}
-                        fallback={
-                          <span style={{ "font-size": "4rem", "line-height": "1" }}>
-                            {r().image_url}
-                          </span>
-                        }
-                      >
-                        <img
-                          src={r().image_url!}
-                          alt={r().name}
-                          style={{ "object-fit": "cover", width: "100%", height: "100%" }}
-                        />
-                      </Show>
-                    </figure>
+                      <img
+                        src={r().image_url!}
+                        alt={r().name}
+                        style={{ "max-height": "120px", "object-fit": "contain" }}
+                      />
+                    </Show>
                   </div>
                 </Show>
                 <div class="card-content">

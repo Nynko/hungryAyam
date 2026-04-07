@@ -20,6 +20,8 @@ pub struct Restaurant {
     pub id: Uuid,
     pub name: Name,
     pub image_url: Option<ImageSource>,
+    pub phone_number: Option<String>,
+    pub address: Option<String>,
     #[derived_domain_ignore]
     pub created_by: Uuid,
     #[derived_domain_ignore]

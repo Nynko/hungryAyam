@@ -45,6 +45,8 @@ export default function CreateRestaurantModal(props: CreateRestaurantModalProps)
     const request: CreateRestaurant = {
       name: trimmedName,
       image_url: imageUrl().trim() || null,
+      phone_number: null,
+      address: null,
     };
 
     setSubmitting(true);

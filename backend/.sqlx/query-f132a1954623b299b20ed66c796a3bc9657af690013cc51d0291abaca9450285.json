@@ -1,0 +1,81 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE restaurants\n            SET name = COALESCE($1, name),\n                image_url = COALESCE($2, image_url),\n                phone_number = COALESCE($3, phone_number),\n                address = COALESCE($4, address),\n                updated_at = NOW(),\n                updated_by = $6\n            WHERE id = $5\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                phone_number,\n                address,\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name: Name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "image_url?: ImageSource",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "phone_number",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "availability_rule_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "f132a1954623b299b20ed66c796a3bc9657af690013cc51d0291abaca9450285"
+}

@@ -260,9 +260,19 @@ export default function RestaurantPage() {
                           </span>
                         </Show>
                       </h1>
-                      <p class="has-text-grey is-size-7">
-                        Added {new Date(r().created_at).toLocaleDateString()}
-                      </p>
+                      <Show when={r().address || r().phone_number}>
+                        <p class="has-text-grey is-size-7">
+                          <Show when={r().address}>
+                            <span>📍 {r().address}</span>
+                          </Show>
+                          <Show when={r().address && r().phone_number}>
+                            <span class="mx-1">·</span>
+                          </Show>
+                          <Show when={r().phone_number}>
+                            <a href={`tel:${r().phone_number}`} class="has-text-grey">📞 {r().phone_number}</a>
+                          </Show>
+                        </p>
+                      </Show>
                     </div>
 
                     {/* Order / Session actions */}

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO restaurants (name, image_url, created_by, updated_by)\n            VALUES ($1, $2, $3, $4)\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
+  "query": "\n            INSERT INTO restaurants (name, image_url, phone_number, address, created_by, updated_by)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                phone_number,\n                address,\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
   "describe": {
     "columns": [
       {
@@ -20,32 +20,44 @@
       },
       {
         "ordinal": 3,
+        "name": "phone_number",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 4,
+        "ordinal": 6,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 5,
+        "ordinal": 7,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 8,
         "name": "updated_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 7,
+        "ordinal": 9,
         "name": "availability_rule_id",
         "type_info": "Uuid"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
+        "Text",
         "Text",
         "Text",
         "Uuid",
@@ -56,6 +68,8 @@
       false,
       false,
       true,
+      true,
+      true,
       false,
       false,
       false,
@@ -63,5 +77,5 @@
       true
     ]
   },
-  "hash": "bc6c97cf0ce7480b410d34a2c0cf2a1b9e32eea1521b64270998b4212db639a5"
+  "hash": "765965bd3c4fb5f540de459664255cc2bd56c8cddea7990c38e56360d30a8abc"
 }

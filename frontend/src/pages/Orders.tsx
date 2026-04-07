@@ -223,12 +223,27 @@ function ActiveSessionCard(props: {
               </span>
             )}
           </Show>
-          <A
-            href={`/restaurants/${props.restaurant.id}`}
-            class="has-text-weight-bold is-size-5"
-          >
-            {props.restaurant.name}
-          </A>
+          <div>
+            <A
+              href={`/restaurants/${props.restaurant.id}`}
+              class="has-text-weight-bold is-size-5"
+            >
+              {props.restaurant.name}
+            </A>
+            <Show when={props.restaurant.address || props.restaurant.phone_number}>
+              <p class="has-text-grey is-size-7">
+                <Show when={props.restaurant.address}>
+                  <span>📍 {props.restaurant.address}</span>
+                </Show>
+                <Show when={props.restaurant.address && props.restaurant.phone_number}>
+                  <span class="mx-1">·</span>
+                </Show>
+                <Show when={props.restaurant.phone_number}>
+                  <a href={`tel:${props.restaurant.phone_number}`} class="has-text-grey">📞 {props.restaurant.phone_number}</a>
+                </Show>
+              </p>
+            </Show>
+          </div>
         </div>
 
         {/* Session banner with admin controls */}

@@ -67,6 +67,8 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
   // ── Restaurant info form state ──────────────────────────────
   const [restaurantName, setRestaurantName] = createSignal("");
   const [restaurantImageUrl, setRestaurantImageUrl] = createSignal("");
+  const [restaurantPhoneNumber, setRestaurantPhoneNumber] = createSignal("");
+  const [restaurantAddress, setRestaurantAddress] = createSignal("");
   const [restaurantSaving, setRestaurantSaving] = createSignal(false);
   const [restaurantSuccess, setRestaurantSuccess] = createSignal<string | null>(null);
 
@@ -107,6 +109,8 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
     if (r) {
       setRestaurantName(r.name);
       setRestaurantImageUrl(r.image_url ?? "");
+      setRestaurantPhoneNumber(r.phone_number ?? "");
+      setRestaurantAddress(r.address ?? "");
     }
   });
 
@@ -144,6 +148,8 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       id: r.id,
       name: trimmedName,
       image_url: restaurantImageUrl().trim() || null,
+      phone_number: restaurantPhoneNumber().trim() || null,
+      address: restaurantAddress().trim() || null,
     };
 
     const result = await updateRestaurantApi(request);
@@ -330,6 +336,38 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
                   onChange={(url) => setRestaurantImageUrl(url ?? "")}
                   disabled={restaurantSaving()}
                 />
+              </div>
+
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">Phone Number</label>
+                  <div class="control">
+                    <input
+                      class="input"
+                      type="tel"
+                      placeholder="e.g. +33 1 23 45 67 89"
+                      value={restaurantPhoneNumber()}
+                      onInput={(e) => setRestaurantPhoneNumber(e.currentTarget.value)}
+                      disabled={restaurantSaving()}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">Address</label>
+                  <div class="control">
+                    <input
+                      class="input"
+                      type="text"
+                      placeholder="e.g. 12 Rue de la Paix, Paris"
+                      value={restaurantAddress()}
+                      onInput={(e) => setRestaurantAddress(e.currentTarget.value)}
+                      disabled={restaurantSaving()}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div class="column is-12">

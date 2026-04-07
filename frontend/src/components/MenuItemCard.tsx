@@ -1,6 +1,7 @@
-import { Show, For } from "solid-js";
+import { Show, For, createSignal } from "solid-js";
 import { isImageSrc } from "@/lib/imageUrl";
 import type { MenuSectionItem } from "@bindings/MenuSectionItem";
+import ImageLightbox from "@/components/ImageLightbox";
 
 interface MenuItemCardProps {
   sectionItem: MenuSectionItem;
@@ -15,6 +16,7 @@ function formatPrice(cents: number): string {
 
 export default function MenuItemCard(props: MenuItemCardProps) {
   const item = () => props.sectionItem.item;
+  const [lightboxOpen, setLightboxOpen] = createSignal(false);
   const displayPrice = () => {
     const override = props.sectionItem.price_override_cents;
     return override != null ? override : item().base_price_cents;
@@ -60,7 +62,15 @@ export default function MenuItemCard(props: MenuItemCardProps) {
                 <img
                   src={item().image_url!}
                   alt={item().name}
-                  style={{ "object-fit": "cover", width: "100%", height: "100%" }}
+                  style={{ "object-fit": "cover", width: "100%", height: "100%", cursor: "zoom-in" }}
+                  onClick={() => setLightboxOpen(true)}
+                />
+              </Show>
+              <Show when={lightboxOpen()}>
+                <ImageLightbox
+                  src={item().image_url!}
+                  alt={item().name}
+                  onClose={() => setLightboxOpen(false)}
                 />
               </Show>
             </div>

@@ -1,7 +1,8 @@
-import { Show, For, createMemo } from "solid-js";
+import { Show, For, createMemo, createSignal } from "solid-js";
 import { isImageSrc } from "@/lib/imageUrl";
 import type { MenuSectionItem } from "@bindings/MenuSectionItem";
 import { addToCart, getCart, formatPrice } from "@/stores/orderStore";
+import ImageLightbox from "@/components/ImageLightbox";
 
 interface OrderableMenuItemCardProps {
   sectionItem: MenuSectionItem;
@@ -22,6 +23,8 @@ export default function OrderableMenuItemCard(props: OrderableMenuItemCardProps)
     const cart = getCart(props.restaurantId);
     return cart.filter((ci) => ci.sectionItem.item.id === item().id).length;
   });
+
+  const [lightboxOpen, setLightboxOpen] = createSignal(false);
 
   const handleAdd = () => {
     if (!isAvailable()) return;
@@ -68,7 +71,15 @@ export default function OrderableMenuItemCard(props: OrderableMenuItemCardProps)
                 <img
                   src={item().image_url!}
                   alt={item().name}
-                  style={{ "object-fit": "cover", width: "100%", height: "100%" }}
+                  style={{ "object-fit": "cover", width: "100%", height: "100%", cursor: "zoom-in" }}
+                  onClick={() => setLightboxOpen(true)}
+                />
+              </Show>
+              <Show when={lightboxOpen()}>
+                <ImageLightbox
+                  src={item().image_url!}
+                  alt={item().name}
+                  onClose={() => setLightboxOpen(false)}
                 />
               </Show>
             </div>

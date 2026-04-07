@@ -441,7 +441,7 @@ function initFromScan(restaurantId: string, scan: MenuScanResponse): void {
         name: si.item.name,
         description: si.item.description,
         base_price_cents: si.item.base_price_cents,
-        image_url: null,
+        image_url: si.item.image_url ?? null,
         active: true,
         tags: si.item.tags.map((t) => ({ id: null, name: t.name })),
       },

@@ -17,6 +17,9 @@ pub struct ScannedItem {
     /// Price in cents (e.g. 1250 for 12.50).
     pub base_price_cents: i32,
     pub tags: Vec<ScannedTag>,
+    /// Image URL extracted from the webpage (only set for URL-based scans).
+    #[serde(default)]
+    pub image_url: Option<String>,
 }
 
 /// A section item — wraps a `ScannedItem` with a position.

@@ -51,6 +51,10 @@ sha2 = "0.10"
 reqwest = { version = "0.12", features = ["json"] }
 base64 = "0.22"
 
+# URL parsing & lightweight regex (for menu URL scanning)
+url = "2"
+regex-lite = "0.1"
+
 [dev-dependencies]
 tower = { version = "0.4", features = ["util"] }
 http-body-util = "0.1"

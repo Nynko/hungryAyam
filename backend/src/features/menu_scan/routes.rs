@@ -4,6 +4,7 @@ use axum::{
     routing::post,
     Router,
 };
+use serde::Deserialize;
 
 use crate::{
     auth::middleware::EditorUser,
@@ -24,7 +25,9 @@ const ALLOWED_CONTENT_TYPES: &[&str] = &[
 ];
 
 pub fn menu_scan_routes() -> Router<AppState> {
-    Router::new().route("/api/menu-scan", post(scan_menu))
+    Router::new()
+        .route("/api/menu-scan", post(scan_menu))
+        .route("/api/menu-scan-url", post(scan_menu_url))
 }
 
 async fn scan_menu(
@@ -80,6 +83,37 @@ async fn scan_menu(
     let result = state
         .menu_scan_service
         .scan_menu_images(images, user.id)
+        .await?;
+
+    Ok((StatusCode::OK, ApiJson(ApiResponse::success(result))))
+}
+
+#[derive(Deserialize)]
+struct ScanUrlRequest {
+    url: String,
+}
+
+async fn scan_menu_url(
+    EditorUser(user): EditorUser,
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<ScanUrlRequest>,
+) -> Result<(StatusCode, ApiJson<ApiResponse<MenuScanResponse>>), ApiError> {
+    let url = body.url.trim();
+
+    if url.is_empty() {
+        return Err(ApiError::BadRequest("URL is required.".into()));
+    }
+
+    // Basic URL validation
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err(ApiError::BadRequest(
+            "URL must start with http:// or https://".into(),
+        ));
+    }
+
+    let result = state
+        .menu_scan_service
+        .scan_menu_url(url, user.id)
         .await?;
 
     Ok((StatusCode::OK, ApiJson(ApiResponse::success(result))))

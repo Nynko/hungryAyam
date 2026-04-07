@@ -430,42 +430,51 @@ impl MenuScanService {
             detail_links.len()
         );
 
-        // ── Phase 2: Fetch detail pages (product/category pages) ─
+        // ── Phase 2: Fetch detail pages concurrently ────────────
+        let links_to_fetch: Vec<_> = detail_links
+            .into_iter()
+            .filter(|l| !seen_pages.contains(l))
+            .take(MAX_DETAIL_PAGES)
+            .collect();
+
+        let detail_futures: Vec<_> = links_to_fetch
+            .iter()
+            .map(|link| {
+                let client = self.http_client.clone();
+                let link = link.clone();
+                async move {
+                    let res = client
+                        .get(&link)
+                        .header("User-Agent", "Mozilla/5.0 (compatible; HungryAyam/1.0)")
+                        .send()
+                        .await;
+                    match res {
+                        Ok(r) if r.status().is_success() => {
+                            r.text().await.ok().map(|html| (link, html))
+                        }
+                        _ => None,
+                    }
+                }
+            })
+            .collect();
+
+        let detail_results = futures::future::join_all(detail_futures).await;
+
         let mut detail_html = String::new();
-        let detail_limit = detail_links.len().min(MAX_DETAIL_PAGES);
         let mut detail_fetched = 0usize;
 
-        for link in detail_links.iter().take(detail_limit) {
-            if total_requests >= MAX_TOTAL_REQUESTS {
-                break;
-            }
-            // Skip links that are the same as pages already fetched
-            if seen_pages.contains(link) {
-                continue;
-            }
-            seen_pages.insert(link.clone());
+        for result in detail_results.into_iter().flatten() {
+            let (link, html) = result;
+            detail_fetched += 1;
 
-            match self.fetch_page(link).await {
-                Ok(html) => {
-                    total_requests += 1;
-                    detail_fetched += 1;
-
-                    // Collect images from detail page
-                    for img_url in extract_image_urls(&html, &base_url) {
-                        if seen_image_urls.insert(img_url.clone()) {
-                            all_image_urls.push(img_url);
-                        }
-                    }
-
-                    detail_html.push_str(&format!(
-                        "\n<!-- === DETAIL PAGE: {link} === -->\n"
-                    ));
-                    detail_html.push_str(&html);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to fetch detail page {link}: {e}");
+            for img_url in extract_image_urls(&html, &base_url) {
+                if seen_image_urls.insert(img_url.clone()) {
+                    all_image_urls.push(img_url);
                 }
             }
+
+            detail_html.push_str(&format!("\n<!-- === DETAIL PAGE: {link} === -->\n"));
+            detail_html.push_str(&html);
         }
 
         tracing::info!(
@@ -473,22 +482,29 @@ impl MenuScanService {
             all_image_urls.len()
         );
 
-        // ── Phase 3: Download images ─────────────────────────────
+        // ── Phase 3: Download images concurrently ────────────────
         let urls_to_fetch: Vec<_> = all_image_urls.into_iter().take(MAX_URL_IMAGES).collect();
-        let mut images: Vec<(String, Vec<u8>)> = Vec::new();
 
-        for img_url in &urls_to_fetch {
-            match self.download_image(img_url).await {
+        let image_futures: Vec<_> = urls_to_fetch
+            .iter()
+            .map(|img_url| self.download_image(img_url))
+            .collect();
+
+        let image_results = futures::future::join_all(image_futures).await;
+
+        let mut images: Vec<(String, Vec<u8>)> = Vec::new();
+        for result in image_results {
+            match result {
                 Ok(Some(img)) => images.push(img),
                 Ok(None) => {}
                 Err(e) => {
-                    tracing::warn!("Failed to download image {img_url}: {e}");
+                    tracing::warn!("Failed to download image: {e}");
                 }
             }
         }
 
         tracing::info!(
-            "Downloaded {} images. Total requests: {total_requests}",
+            "Downloaded {} images from {url}",
             images.len()
         );
 

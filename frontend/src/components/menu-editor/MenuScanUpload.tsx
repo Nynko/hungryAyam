@@ -100,7 +100,14 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
       }
 
       const res = await fetch("/api/menu-scan", { method: "POST", body: form });
-      const json: ApiResponse<MenuScanResponse> = await res.json();
+
+      const text = await res.text();
+      let json: ApiResponse<MenuScanResponse>;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        throw new Error(`Server returned an unexpected response (${res.status}). Please try again.`);
+      }
 
       if (!res.ok || !json.success || json.data == null) {
         throw new Error(json.error ?? `Scan failed (${res.status})`);
@@ -131,7 +138,18 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: menuUrl }),
       });
-      const json: ApiResponse<MenuScanResponse> = await res.json();
+
+      if (res.status === 504) {
+        throw new Error("The scan timed out — the page may have too many sub-pages. Try a more specific URL (e.g. a single category page).");
+      }
+
+      const text = await res.text();
+      let json: ApiResponse<MenuScanResponse>;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        throw new Error(`Server returned an unexpected response (${res.status}). Please try again.`);
+      }
 
       if (!res.ok || !json.success || json.data == null) {
         throw new Error(json.error ?? `Scan failed (${res.status})`);

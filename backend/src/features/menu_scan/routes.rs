@@ -5,6 +5,7 @@ use axum::{
     Router,
 };
 use serde::Deserialize;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     auth::middleware::EditorUser,
@@ -98,23 +99,37 @@ async fn scan_menu_url(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<ScanUrlRequest>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<MenuScanResponse>>), ApiError> {
-    let url = body.url.trim();
+    let url = body.url.trim().to_string();
 
     if url.is_empty() {
         return Err(ApiError::BadRequest("URL is required.".into()));
     }
 
-    // Basic URL validation
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err(ApiError::BadRequest(
             "URL must start with http:// or https://".into(),
         ));
     }
 
-    let result = state
-        .menu_scan_service
-        .scan_menu_url(url, user.id)
-        .await?;
+    // Create a cancellation token that fires when the client disconnects
+    let cancel = CancellationToken::new();
+    let cancel_clone = cancel.clone();
+
+    // Spawn the scan task so we can race it against client disconnect
+    let service = state.menu_scan_service.clone();
+    let scan_handle = tokio::spawn(async move {
+        service.scan_menu_url(&url, user.id, cancel_clone).await
+    });
+
+    // Wait for either the scan to complete or the response to be dropped
+    // (which happens on client disconnect / nginx timeout).
+    // We use a drop guard to cancel when this handler returns early.
+    let _cancel_guard = cancel.drop_guard();
+
+    let result = scan_handle.await.map_err(|e| {
+        tracing::error!("Scan task panicked: {e}");
+        ApiError::Internal("Scan task failed unexpectedly.".into())
+    })??;
 
     Ok((StatusCode::OK, ApiJson(ApiResponse::success(result))))
 }

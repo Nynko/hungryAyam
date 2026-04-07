@@ -55,6 +55,7 @@ base64 = "0.22"
 url = "2"
 regex-lite = "0.1"
 futures = "0.3"
+tokio-util = { version = "0.7", features = ["rt"] }
 
 [dev-dependencies]
 tower = { version = "0.4", features = ["util"] }

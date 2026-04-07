@@ -6,6 +6,7 @@ use base64::Engine;
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::errors::api_errors::ApiError;
@@ -367,6 +368,7 @@ impl MenuScanService {
         &self,
         url: &str,
         user_id: Uuid,
+        cancel: CancellationToken,
     ) -> Result<MenuScanResponse, ApiError> {
         self.check_preconditions(user_id)?;
 
@@ -387,6 +389,9 @@ impl MenuScanService {
         let mut listing_pages = 0u32;
 
         loop {
+            if cancel.is_cancelled() {
+                return Err(ApiError::BadRequest("Request cancelled by client.".into()));
+            }
             if listing_pages >= MAX_PAGES || total_requests >= MAX_TOTAL_REQUESTS {
                 break;
             }
@@ -429,6 +434,10 @@ impl MenuScanService {
             "Phase 1: {listing_pages} listing page(s), {} internal links found from {url}",
             detail_links.len()
         );
+
+        if cancel.is_cancelled() {
+            return Err(ApiError::BadRequest("Request cancelled by client.".into()));
+        }
 
         // ── Phase 2: Fetch detail pages concurrently ────────────
         let links_to_fetch: Vec<_> = detail_links
@@ -482,6 +491,10 @@ impl MenuScanService {
             all_image_urls.len()
         );
 
+        if cancel.is_cancelled() {
+            return Err(ApiError::BadRequest("Request cancelled by client.".into()));
+        }
+
         // ── Phase 3: Download images concurrently ────────────────
         let urls_to_fetch: Vec<_> = all_image_urls.into_iter().take(MAX_URL_IMAGES).collect();
 
@@ -507,6 +520,11 @@ impl MenuScanService {
             "Downloaded {} images from {url}",
             images.len()
         );
+
+        if cancel.is_cancelled() {
+            tracing::info!("URL scan cancelled before calling AI for {url}");
+            return Err(ApiError::BadRequest("Request cancelled by client.".into()));
+        }
 
         // ── Phase 4: Build prompt and call AI ────────────────────
         let mut content: Vec<ContentBlock> = images

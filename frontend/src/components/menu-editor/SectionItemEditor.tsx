@@ -232,21 +232,19 @@ export default function SectionItemEditor(props: SectionItemEditorProps) {
             </Show>
           </span>
 
-          {/* Availability toggle (always visible) */}
-          <Show when={isAvailabilityOnly()}>
-            <button
-              class={`button is-small ${props.sectionItem.is_available ? "is-success is-light" : "is-warning is-light"}`}
-              title={props.sectionItem.is_available ? "Mark unavailable" : "Mark available"}
-              onClick={handleAvailabilityToggle}
-            >
-              {props.sectionItem.is_available ? "✅" : "⏸"}
-            </button>
-          </Show>
+          {/* Availability toggle */}
+          <button
+            class={`button is-small ${props.sectionItem.is_available ? "is-success is-light" : "is-warning is-light"}`}
+            title={props.sectionItem.is_available ? "Mark unavailable" : "Mark available"}
+            onClick={handleAvailabilityToggle}
+          >
+            {props.sectionItem.is_available ? "✅" : "⏸"}
+          </button>
 
           {/* Expand/collapse (hidden in availabilityOnly) */}
           <Show when={!isAvailabilityOnly()}>
             <button
-              class="button is-small is-light"
+              class="button is-small is-light ml-1"
               title={expanded() ? "Collapse" : "Expand"}
               onClick={() => setExpanded(!expanded())}
             >

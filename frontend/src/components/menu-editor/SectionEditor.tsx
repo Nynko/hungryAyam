@@ -453,26 +453,6 @@ export default function SectionEditor(props: SectionEditorProps) {
 
         {/* Right: controls */}
         <div class="is-flex is-align-items-center ml-3" style={{ "flex-shrink": "0" }}>
-          {/* Move up/down (hidden in availabilityOnly) */}
-          <Show when={!props.availabilityOnly && props.sortedIndex > 0}>
-            <button
-              class="button is-small is-light mr-1"
-              title="Move up"
-              onClick={() => props.onMoveUp?.()}
-            >
-              ↑
-            </button>
-          </Show>
-          <Show when={!props.availabilityOnly && props.sortedIndex < props.siblingCount - 1}>
-            <button
-              class="button is-small is-light mr-1"
-              title="Move down"
-              onClick={() => props.onMoveDown?.()}
-            >
-              ↓
-            </button>
-          </Show>
-
           {/* Toggle active (hidden in availabilityOnly) */}
           <Show when={!props.availabilityOnly}>
             <button

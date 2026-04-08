@@ -85,16 +85,16 @@ function SessionOrderList(props: { session: OrderSession }) {
   });
 
   /**
-   * Group offer orders by (offer_id + offer_title).
-   * Within each offer group, list item selections with their slot labels.
-   * Each unique combination of selections is kept as a separate entry
-   * (two people ordering the same offer may have picked different items).
+   * Group offer orders by offer, then aggregate items by slot → item name → quantity.
+   * Slot insertion order is preserved (reflects the order items appear in the data).
    */
   const aggregatedOfferGroups = createMemo(() => {
-    // offer_id → { title, entries: [{ items: {label, name}[], note }] }
+    // offer_id → { title, count, slots: Map<slotLabel, Map<itemName, qty>> }
     const groups = new Map<string, {
       title: string;
-      entries: { items: { label: string | null; name: string }[]; note: string | null }[];
+      count: number;
+      // ordered map: slot label → ordered map: item name → quantity
+      slots: Map<string, Map<string, number>>;
     }>();
 
     for (const order of orders().filter((o) => !!o.offer_id)) {
@@ -102,21 +102,30 @@ function SessionOrderList(props: { session: OrderSession }) {
       const title = order.offer_title ?? `Offer (${offerId.slice(0, 8)})`;
 
       if (!groups.has(offerId)) {
-        groups.set(offerId, { title, entries: [] });
+        groups.set(offerId, { title, count: 0, slots: new Map() });
       }
 
-      // Build a note from the items' notes (they all share the same note)
-      const note = order.items[0]?.notes ?? null;
+      const group = groups.get(offerId)!;
+      group.count += 1;
 
-      const items = order.items.map((item) => ({
-        label: item.slot_label ?? null,
-        name: item.item_name,
-      }));
-
-      groups.get(offerId)!.entries.push({ items, note });
+      for (const item of order.items) {
+        const slotLabel = item.slot_label ?? "—";
+        if (!group.slots.has(slotLabel)) {
+          group.slots.set(slotLabel, new Map());
+        }
+        const itemMap = group.slots.get(slotLabel)!;
+        itemMap.set(item.item_name, (itemMap.get(item.item_name) ?? 0) + 1);
+      }
     }
 
-    return Array.from(groups.values());
+    return Array.from(groups.values()).map((g) => ({
+      title: g.title,
+      count: g.count,
+      slots: Array.from(g.slots.entries()).map(([label, items]) => ({
+        label,
+        items: Array.from(items.entries()).map(([name, qty]) => ({ name, qty })),
+      })),
+    }));
   });
 
   return (
@@ -179,34 +188,21 @@ function SessionOrderList(props: { session: OrderSession }) {
               </Show>
               <For each={aggregatedOfferGroups()}>
                 {(group) => (
-                  <div class="mb-2">
-                    <p class="has-text-weight-bold is-size-7">
-                      🍽️ {group.title} ×{group.entries.length}
+                  <div class="mb-3">
+                    <p class="has-text-weight-bold is-size-7 mb-1">
+                      🍽️ {group.title} ×{group.count}
                     </p>
-                    <For each={group.entries}>
-                      {(entry, idx) => (
+                    <For each={group.slots}>
+                      {(slot) => (
                         <div class="ml-3 mb-1">
-                          <Show when={group.entries.length > 1}>
-                            <span class="is-size-7 has-text-grey">#{idx() + 1} </span>
-                          </Show>
-                          <For each={entry.items}>
-                            {(item, itemIdx) => (
-                              <>
-                                <Show when={itemIdx() > 0}>
-                                  <span class="has-text-grey mx-1">·</span>
-                                </Show>
-                                <Show when={item.label}>
-                                  <span class="is-size-7 has-text-grey-dark">{item.label}: </span>
-                                </Show>
-                                <span class="is-size-7">{item.name}</span>
-                              </>
+                          <span class="has-text-weight-semibold is-size-7">{slot.label}:</span>
+                          <For each={slot.items}>
+                            {(item) => (
+                              <div class="ml-4 is-size-7">
+                                ×{item.qty} {item.name}
+                              </div>
                             )}
                           </For>
-                          <Show when={entry.note}>
-                            <span class="has-text-grey is-italic is-size-7 ml-1">
-                              ({entry.note})
-                            </span>
-                          </Show>
                         </div>
                       )}
                     </For>

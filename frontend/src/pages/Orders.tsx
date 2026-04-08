@@ -61,10 +61,27 @@ function SessionOrderList(props: { session: OrderSession }) {
     orders().reduce((sum, o) => sum + o.total_price_cents, 0),
   );
 
-  /** Aggregate all items across every order in the session. */
+  /** Aggregate all items across every order in the session.
+   * Groups by (item_id + note) so items with different notes are listed
+   * separately — plain items first, then variants with notes. */
   const aggregatedCommand = createMemo(() => {
-    const allItems = orders().flatMap((o) => o.items);
-    return groupOrderItems(allItems);
+    const map = new Map<string, { itemName: string; quantity: number; note: string | null }>();
+    for (const item of orders().flatMap((o) => o.items)) {
+      const note = item.notes ?? null;
+      const key = `${item.item_id}::${note ?? ""}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        map.set(key, { itemName: item.item_name, quantity: 1, note });
+      }
+    }
+    // Plain items first, then items with notes
+    return Array.from(map.values()).sort((a, b) => {
+      if (!a.note && b.note) return -1;
+      if (a.note && !b.note) return 1;
+      return a.itemName.localeCompare(b.itemName);
+    });
   });
 
   return (
@@ -106,9 +123,9 @@ function SessionOrderList(props: { session: OrderSession }) {
                     <span class="has-text-weight-bold">{group.quantity}</span>
                     {" "}
                     <span>{group.itemName}</span>
-                    <Show when={group.notes.length > 0}>
+                    <Show when={group.note}>
                       <span class="has-text-grey is-italic is-size-7 ml-1">
-                        ({group.notes.join(", ")})
+                        ({group.note})
                       </span>
                     </Show>
                   </li>

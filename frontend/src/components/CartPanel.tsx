@@ -408,16 +408,8 @@ export default function CartPanel(props: CartPanelProps) {
                 <div class="box p-3 mb-2">
                   {/* Main row: name, quantity controls, line total */}
                   <div class="is-flex is-justify-content-space-between is-align-items-center">
-                    {/* Item name + image hint */}
-                    <div
-                      style={{
-                        flex: "1",
-                        "min-width": "0",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => toggleExpand(group.itemId)}
-                      title="Click to expand notes"
-                    >
+                    {/* Item name */}
+                    <div style={{ flex: "1", "min-width": "0" }}>
                       <div class="is-flex is-align-items-center">
                         <Show when={item().image_url}>
                           <div
@@ -451,14 +443,9 @@ export default function CartPanel(props: CartPanelProps) {
                             </Show>
                           </div>
                         </Show>
-                        <span class="has-text-weight-semibold is-size-6" style={{ "overflow": "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
+                        <span class="has-text-weight-semibold is-size-6" style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
                           {item().name}
                         </span>
-                        <Show when={notesCount(group) > 0}>
-                          <span class="tag is-light is-small ml-2" title={`${notesCount(group)} note(s)`}>
-                            📝{notesCount(group)}
-                          </span>
-                        </Show>
                       </div>
                     </div>
 
@@ -511,38 +498,88 @@ export default function CartPanel(props: CartPanelProps) {
                     </p>
                   </Show>
 
-                  {/* Expanded: per-entry notes */}
-                  <Show when={isExpanded()}>
-                    <div
-                      class="mt-3 pt-2"
-                      style={{ "border-top": "1px solid var(--bulma-border-weak)" }}
-                    >
-                      <p class="is-size-7 has-text-grey mb-2">
-                        Notes for each item (optional):
-                      </p>
-                      <For each={group.entries}>
-                        {(entry, idx) => (
-                          <div class="field mb-2">
-                            <div class="control">
-                              <input
-                                class="input is-small"
-                                type="text"
-                                placeholder={`Item ${idx() + 1} note (e.g. no onions)…`}
-                                value={entry.notes ?? ""}
-                                onInput={(e) =>
-                                  updateCartItemNotes(
-                                    props.restaurantId,
-                                    entry.key,
-                                    e.currentTarget.value || null,
-                                  )
-                                }
-                              />
-                            </div>
+                  {/* Notes affordance */}
+                  <div style={{ "padding-left": item().image_url ? "32px" : "0" }}>
+                    <Show
+                      when={isExpanded()}
+                      fallback={
+                        <Show
+                          when={notesCount(group) > 0}
+                          fallback={
+                            <button
+                              class="button is-ghost is-small px-0 has-text-grey"
+                              style={{ height: "auto", "font-size": "0.72rem", "text-decoration": "none" }}
+                              onClick={() => toggleExpand(group.itemId)}
+                            >
+                              ＋ Add a note
+                            </button>
+                          }
+                        >
+                          {/* Notes summary — click to edit */}
+                          <div
+                            class="is-flex is-align-items-center mt-1"
+                            style={{ gap: "0.3rem", cursor: "pointer" }}
+                            onClick={() => toggleExpand(group.itemId)}
+                            title="Click to edit notes"
+                          >
+                            <span class="is-size-7 has-text-grey is-italic" style={{ "line-height": "1.3" }}>
+                              <For each={group.entries}>
+                                {(entry, idx) => (
+                                  <Show when={entry.notes}>
+                                    <span>
+                                      <Show when={group.quantity > 1}>
+                                        <span class="has-text-grey-light">#{idx() + 1} </span>
+                                      </Show>
+                                      {entry.notes}
+                                      <Show when={idx() < group.entries.length - 1 && group.entries[idx() + 1]?.notes}>
+                                        <span class="has-text-grey-light"> · </span>
+                                      </Show>
+                                    </span>
+                                  </Show>
+                                )}
+                              </For>
+                            </span>
+                            <span class="is-size-7 has-text-grey-light" title="Edit note">✏️</span>
                           </div>
-                        )}
-                      </For>
-                    </div>
-                  </Show>
+                        </Show>
+                      }
+                    >
+                      {/* Expanded: per-entry note inputs */}
+                      <div
+                        class="mt-2 pt-2"
+                        style={{ "border-top": "1px solid var(--bulma-border-weak)" }}
+                      >
+                        <For each={group.entries}>
+                          {(entry, idx) => (
+                            <div class="field mb-2">
+                              <div class="control">
+                                <input
+                                  class="input is-small"
+                                  type="text"
+                                  placeholder={group.quantity > 1 ? `Item ${idx() + 1} — e.g. not spicy` : "e.g. not spicy, extra sauce…"}
+                                  value={entry.notes ?? ""}
+                                  onInput={(e) =>
+                                    updateCartItemNotes(
+                                      props.restaurantId,
+                                      entry.key,
+                                      e.currentTarget.value || null,
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </For>
+                        <button
+                          class="button is-ghost is-small px-0 has-text-grey"
+                          style={{ height: "auto", "font-size": "0.72rem" }}
+                          onClick={() => toggleExpand(group.itemId)}
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </Show>
+                  </div>
                 </div>
               );
             }}

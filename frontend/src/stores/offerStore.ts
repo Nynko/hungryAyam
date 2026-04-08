@@ -30,6 +30,8 @@ export interface OfferCartEntry {
   totalPriceCents: number;
   /** The offer base price (for display in breakdown). */
   basePriceCents: number;
+  /** Optional note for this offer entry (e.g. "Extra spicy"). */
+  notes: string | null;
 }
 
 /** Resolved items for a slot, with per-item supplement info. */
@@ -492,6 +494,7 @@ function addOfferToCart(
   selections: OfferSlotSelection[],
   totalPriceCents: number,
   basePriceCents: number,
+  notes: string | null = null,
 ): void {
   const entry: OfferCartEntry = {
     key: nextOfferCartKey++,
@@ -499,6 +502,7 @@ function addOfferToCart(
     selections,
     totalPriceCents,
     basePriceCents,
+    notes,
   };
 
   setOfferCartsByRestaurant((prev) => {

@@ -36,6 +36,7 @@ pub struct OrderRow {
     pub restaurant_id: Uuid,
     pub session_id: Uuid,
     pub offer_id: Option<Uuid>,
+    pub offer_title: Option<String>,
     pub total_price_cents: PriceCents,
     pub created_at: DateTime<Utc>,
 }
@@ -50,6 +51,7 @@ pub struct OrderItemRow {
     pub item_name: String,
     pub item_price_cents: PriceCents,
     pub slot_id: Option<Uuid>,
+    pub slot_label: Option<String>,
     pub notes: Option<String>,
 }
 

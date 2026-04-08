@@ -308,11 +308,13 @@ impl OrderRepository {
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
+                of.title as offer_title,
                 o.total_price_cents as "total_price_cents: PriceCents",
                 o.created_at
             FROM orders o
             JOIN order_sessions os ON os.id = o.session_id
             JOIN users u ON u.id = o.user_id
+            LEFT JOIN offers of ON of.id = o.offer_id
             WHERE os.restaurant_id = $1
               AND o.user_id = $2
               AND os.status = $3
@@ -449,11 +451,13 @@ impl OrderRepository {
                 os.restaurant_id,
                 i.session_id,
                 i.offer_id,
+                of.title as offer_title,
                 i.total_price_cents as "total_price_cents: PriceCents",
                 i.created_at
             FROM inserted i
             JOIN order_sessions os ON os.id = i.session_id
             JOIN users u ON u.id = i.user_id
+            LEFT JOIN offers of ON of.id = i.offer_id
             "#,
             user_id,
             session_id,
@@ -480,9 +484,11 @@ impl OrderRepository {
                     it.name as item_name,
                     it.base_price_cents as "item_price_cents: PriceCents",
                     ins.slot_id,
+                    ofs.label as slot_label,
                     ins.notes
                 FROM inserted ins
                 JOIN items it ON it.id = ins.item_id
+                LEFT JOIN offer_slots ofs ON ofs.id = ins.slot_id
                 "#,
                 order_row.id,
                 item.item_id,
@@ -512,11 +518,13 @@ impl OrderRepository {
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
+                of.title as offer_title,
                 o.total_price_cents as "total_price_cents: PriceCents",
                 o.created_at
             FROM orders o
             JOIN order_sessions os ON os.id = o.session_id
             JOIN users u ON u.id = o.user_id
+            LEFT JOIN offers of ON of.id = o.offer_id
             WHERE o.id = $1
             "#,
             id,
@@ -554,11 +562,13 @@ impl OrderRepository {
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
+                of.title as offer_title,
                 o.total_price_cents as "total_price_cents: PriceCents",
                 o.created_at
             FROM orders o
             JOIN order_sessions os ON os.id = o.session_id
             JOIN users u ON u.id = o.user_id
+            LEFT JOIN offers of ON of.id = o.offer_id
             WHERE o.session_id = $1 AND o.user_id = $2
             ORDER BY o.created_at ASC
             "#,
@@ -772,11 +782,13 @@ impl OrderRepository {
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
+                of.title as offer_title,
                 o.total_price_cents as "total_price_cents: PriceCents",
                 o.created_at
             FROM orders o
             JOIN order_sessions os ON os.id = o.session_id
             JOIN users u ON u.id = o.user_id
+            LEFT JOIN offers of ON of.id = o.offer_id
             WHERE o.session_id = $1
             ORDER BY o.created_at ASC
             "#,
@@ -800,9 +812,11 @@ impl OrderRepository {
                 it.name as item_name,
                 it.base_price_cents as "item_price_cents: PriceCents",
                 oi.slot_id,
+                ofs.label as slot_label,
                 oi.notes
             FROM order_items oi
             JOIN items it ON it.id = oi.item_id
+            LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id
             WHERE oi.order_id = $1
             "#,
             order_id,
@@ -834,9 +848,11 @@ impl OrderRepository {
                 it.name as item_name,
                 it.base_price_cents as "item_price_cents: PriceCents",
                 oi.slot_id,
+                ofs.label as slot_label,
                 oi.notes
             FROM order_items oi
             JOIN items it ON it.id = oi.item_id
+            LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id
             WHERE oi.order_id = ANY($1)
             ORDER BY oi.id ASC
             "#,
@@ -939,6 +955,7 @@ impl OrderRepository {
             restaurant_id: row.restaurant_id,
             session_id: Some(row.session_id),
             offer_id: row.offer_id,
+            offer_title: row.offer_title,
             total_price_cents: row.total_price_cents,
             created_at: row.created_at,
             items,
@@ -953,6 +970,7 @@ impl OrderRepository {
             item_name: row.item_name,
             item_price_cents: row.item_price_cents,
             slot_id: row.slot_id,
+            slot_label: row.slot_label,
             notes: row.notes,
         }
     }

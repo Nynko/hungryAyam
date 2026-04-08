@@ -88,6 +88,9 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
     return getSupplementForItem(slot, item);
   };
 
+  // ── Notes ──────────────────────────────────────────────────────
+  const [notes, setNotes] = createSignal("");
+
   // ── Validation state ───────────────────────────────────────────
   const [validating, setValidating] = createSignal(false);
   const [validationError, setValidationError] = createSignal<string | null>(
@@ -259,6 +262,7 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
         buildCartSelections(),
         result.total_price_cents,
         result.base_price_cents,
+        notes().trim() || null,
       );
 
       props.onAdded?.();
@@ -530,6 +534,22 @@ export default function OfferSlotPicker(props: OfferSlotPickerProps) {
             onClick={() => setValidationError(null)}
           />
           {validationError()}
+        </div>
+      </Show>
+
+      {/* Notes (shown on last step) */}
+      <Show when={isLastStep()}>
+        <div class="field mt-4">
+          <label class="label is-small">Notes (optional)</label>
+          <div class="control">
+            <textarea
+              class="textarea is-small"
+              rows="2"
+              placeholder="Any special requests for this order?"
+              value={notes()}
+              onInput={(e) => setNotes(e.currentTarget.value)}
+            />
+          </div>
         </div>
       </Show>
 

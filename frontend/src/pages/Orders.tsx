@@ -60,27 +60,62 @@ function SessionOrderList(props: { session: OrderSession }) {
     orders().reduce((sum, o) => sum + o.total_price_cents, 0),
   );
 
-  /** Aggregate all items across every order in the session.
-   * Groups by (item_id + note) so items with different notes are listed
-   * separately — plain items first, then variants with notes. */
-  const aggregatedCommand = createMemo(() => {
+  /** Aggregate regular (non-offer) items across all orders in the session.
+   * Groups by (item_id + note) — plain items first, then variants with notes. */
+  const aggregatedRegularItems = createMemo(() => {
     const map = new Map<string, { itemName: string; quantity: number; note: string | null }>();
-    for (const item of orders().flatMap((o) => o.items)) {
-      const note = item.notes ?? null;
-      const key = `${item.item_id}::${note ?? ""}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.quantity += 1;
-      } else {
-        map.set(key, { itemName: item.item_name, quantity: 1, note });
+    for (const order of orders().filter((o) => !o.offer_id)) {
+      for (const item of order.items) {
+        const note = item.notes ?? null;
+        const key = `${item.item_id}::${note ?? ""}`;
+        const existing = map.get(key);
+        if (existing) {
+          existing.quantity += 1;
+        } else {
+          map.set(key, { itemName: item.item_name, quantity: 1, note });
+        }
       }
     }
-    // Plain items first, then items with notes
     return Array.from(map.values()).sort((a, b) => {
       if (!a.note && b.note) return -1;
       if (a.note && !b.note) return 1;
       return a.itemName.localeCompare(b.itemName);
     });
+  });
+
+  /**
+   * Group offer orders by (offer_id + offer_title).
+   * Within each offer group, list item selections with their slot labels.
+   * Each unique combination of selections is kept as a separate entry
+   * (two people ordering the same offer may have picked different items).
+   */
+  const aggregatedOfferGroups = createMemo(() => {
+    // offer_id → { title, entries: [{ items: {label, name}[], note }] }
+    const groups = new Map<string, {
+      title: string;
+      entries: { items: { label: string | null; name: string }[]; note: string | null }[];
+    }>();
+
+    for (const order of orders().filter((o) => !!o.offer_id)) {
+      const offerId = order.offer_id!;
+      const title = order.offer_title ?? `Offer (${offerId.slice(0, 8)})`;
+
+      if (!groups.has(offerId)) {
+        groups.set(offerId, { title, entries: [] });
+      }
+
+      // Build a note from the items' notes (they all share the same note)
+      const note = order.items[0]?.notes ?? null;
+
+      const items = order.items.map((item) => ({
+        label: item.slot_label ?? null,
+        name: item.item_name,
+      }));
+
+      groups.get(offerId)!.entries.push({ items, note });
+    }
+
+    return Array.from(groups.values());
   });
 
   return (
@@ -104,7 +139,7 @@ function SessionOrderList(props: { session: OrderSession }) {
         </div>
 
         {/* ── Aggregated command for the restaurant ────────────── */}
-        <Show when={aggregatedCommand().length > 0}>
+        <Show when={aggregatedRegularItems().length > 0 || aggregatedOfferGroups().length > 0}>
           <div
             class="box mb-4 p-3"
             style={{
@@ -115,22 +150,69 @@ function SessionOrderList(props: { session: OrderSession }) {
             <p class="has-text-weight-bold is-size-7 mb-2">
               🧾 Full command to send
             </p>
-            <ul class="ml-4" style={{ "list-style": "disc" }}>
-              <For each={aggregatedCommand()}>
+
+            {/* Regular items */}
+            <Show when={aggregatedRegularItems().length > 0}>
+              <ul class="ml-4 mb-2" style={{ "list-style": "disc" }}>
+                <For each={aggregatedRegularItems()}>
+                  {(group) => (
+                    <li>
+                      <span class="has-text-weight-bold">{group.quantity}</span>
+                      {" "}
+                      <span>{group.itemName}</span>
+                      <Show when={group.note}>
+                        <span class="has-text-grey is-italic is-size-7 ml-1">
+                          ({group.note})
+                        </span>
+                      </Show>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+
+            {/* Offer groups */}
+            <Show when={aggregatedOfferGroups().length > 0}>
+              <Show when={aggregatedRegularItems().length > 0}>
+                <hr class="my-2" style={{ "border-color": "hsl(204, 86%, 80%)" }} />
+              </Show>
+              <For each={aggregatedOfferGroups()}>
                 {(group) => (
-                  <li>
-                    <span class="has-text-weight-bold">{group.quantity}</span>
-                    {" "}
-                    <span>{group.itemName}</span>
-                    <Show when={group.note}>
-                      <span class="has-text-grey is-italic is-size-7 ml-1">
-                        ({group.note})
-                      </span>
-                    </Show>
-                  </li>
+                  <div class="mb-2">
+                    <p class="has-text-weight-bold is-size-7">
+                      🍽️ {group.title} ×{group.entries.length}
+                    </p>
+                    <For each={group.entries}>
+                      {(entry, idx) => (
+                        <div class="ml-3 mb-1">
+                          <Show when={group.entries.length > 1}>
+                            <span class="is-size-7 has-text-grey">#{idx() + 1} </span>
+                          </Show>
+                          <For each={entry.items}>
+                            {(item, itemIdx) => (
+                              <>
+                                <Show when={itemIdx() > 0}>
+                                  <span class="has-text-grey mx-1">·</span>
+                                </Show>
+                                <Show when={item.label}>
+                                  <span class="is-size-7 has-text-grey-dark">{item.label}: </span>
+                                </Show>
+                                <span class="is-size-7">{item.name}</span>
+                              </>
+                            )}
+                          </For>
+                          <Show when={entry.note}>
+                            <span class="has-text-grey is-italic is-size-7 ml-1">
+                              ({entry.note})
+                            </span>
+                          </Show>
+                        </div>
+                      )}
+                    </For>
+                  </div>
                 )}
               </For>
-            </ul>
+            </Show>
           </div>
         </Show>
 

@@ -31,6 +31,9 @@ pub struct OrderItem {
     pub item_price_cents: PriceCents,
     /// Offer slot reference — links this item to an offer slot when ordering from an offer.
     pub slot_id: Option<Uuid>,
+    /// Display label of the offer slot (loaded via JOIN with offer_slots table).
+    #[create_ignore]
+    pub slot_label: Option<String>,
     pub notes: Option<String>,
 }
 
@@ -71,6 +74,9 @@ pub struct Order {
     /// Offer reference — when set, the order is priced using the offer's fixed price
     /// and all items must satisfy the offer's slot constraints.
     pub offer_id: Option<Uuid>,
+    /// Display title of the offer (loaded via JOIN with offers table).
+    #[create_ignore]
+    pub offer_title: Option<String>,
     /// Computed server-side from the order items' prices.
     #[create_ignore]
     pub total_price_cents: PriceCents,

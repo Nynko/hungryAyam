@@ -193,7 +193,7 @@ export default function CartPanel(props: CartPanelProps) {
           const createItems: CreateOrderItem[] = entry.selections.map((sel) => ({
             item_id: sel.item.id,
             slot_id: sel.slotId,
-            notes: null,
+            notes: entry.notes,
           }));
 
           const request: CreateOrder = {
@@ -469,6 +469,13 @@ export default function CartPanel(props: CartPanelProps) {
                     )}
                   </For>
                 </div>
+
+                {/* Notes */}
+                <Show when={entry.notes}>
+                  <p class="is-size-7 has-text-grey-dark mt-2 is-italic">
+                    📝 {entry.notes}
+                  </p>
+                </Show>
 
                 {/* Price breakdown */}
                 <Show when={entry.totalPriceCents > entry.basePriceCents}>

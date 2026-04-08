@@ -818,6 +818,7 @@ impl OrderRepository {
             JOIN items it ON it.id = oi.item_id
             LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id
             WHERE oi.order_id = $1
+            ORDER BY COALESCE(ofs.position, 0) ASC, oi.id ASC
             "#,
             order_id,
         )
@@ -854,7 +855,7 @@ impl OrderRepository {
             JOIN items it ON it.id = oi.item_id
             LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id
             WHERE oi.order_id = ANY($1)
-            ORDER BY oi.id ASC
+            ORDER BY COALESCE(ofs.position, 0) ASC, oi.id ASC
             "#,
             &order_ids,
         )

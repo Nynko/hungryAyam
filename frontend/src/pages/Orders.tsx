@@ -90,10 +90,10 @@ function SessionOrderList(props: { session: OrderSession }) {
    */
   const aggregatedOfferGroups = createMemo(() => {
     // offer_id → { title, count, slots: Map<slotLabel, Map<itemName, qty>> }
+    // Items come from DB ordered by ofs.position so Map insertion order = slot order.
     const groups = new Map<string, {
       title: string;
       count: number;
-      // ordered map: slot label → ordered map: item name → quantity
       slots: Map<string, Map<string, number>>;
     }>();
 

@@ -18,6 +18,7 @@ import { isAuthenticated } from "@/stores/authStore";
 import {
   fetchSessionsForRestaurant,
   fetchOpenSessions,
+  fetchSession,
   sessionStatusColor,
   formatPrice,
   groupOrderItems,
@@ -672,20 +673,27 @@ export default function Orders() {
   const [refreshKey, setRefreshKey] = createSignal(0);
 
   /**
-   * Fetch all non-terminal sessions for every restaurant in parallel.
-   * Non-terminal = Open, Closed, Requested, Confirmed.
+   * Fetch all non-terminal sessions for every restaurant in parallel,
+   * then load each session's full data (with orders) individually.
    */
   const loadActiveSessions = async (restaurantList: Restaurant[]) => {
     setActiveLoading(true);
 
-    const results = await Promise.all(
+    const pairs: { restaurant: Restaurant; session: OrderSession }[] = [];
+
+    await Promise.all(
       restaurantList.map(async (r) => {
         const sessions = await fetchOpenSessions(r.id);
-        return sessions.map((session) => ({ restaurant: r, session }));
+        const fullSessions = await Promise.all(
+          sessions.map((s) => fetchSession(s.id)),
+        );
+        for (const full of fullSessions) {
+          if (full) pairs.push({ restaurant: r, session: full });
+        }
       }),
     );
 
-    setActiveSessions(results.flat());
+    setActiveSessions(pairs);
     setActiveLoading(false);
     setActiveLoaded(true);
   };

@@ -17,6 +17,7 @@ pub struct OrderSessionRow {
     pub restaurant_id: Uuid,
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
+    pub pickup_time: Option<DateTime<Utc>>,
     pub allow_late: bool,
     pub status: OrderSessionStatus,
     pub created_at: DateTime<Utc>,

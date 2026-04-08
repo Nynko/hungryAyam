@@ -2,4 +2,4 @@
 import type { Order } from "./Order";
 import type { OrderSessionStatus } from "./OrderSessionStatus";
 
-export interface OrderSession { id: string, restaurant_id: string, start_date: string, end_date: string, allow_late: boolean, status: OrderSessionStatus, created_at: string, created_by: string, updated_at: string, updated_by: string, orders: Array<Order>, }
+export interface OrderSession { id: string, restaurant_id: string, start_date: string, end_date: string, pickup_time: string | null, allow_late: boolean, status: OrderSessionStatus, created_at: string, created_by: string, updated_at: string, updated_by: string, orders: Array<Order>, }

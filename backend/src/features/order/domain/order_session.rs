@@ -111,7 +111,10 @@ pub struct OrderSession {
     #[update_ignore]
     pub restaurant_id: Uuid,
     pub start_date: DateTime<Utc>,
+    /// When ordering closes — no new orders accepted after this time.
     pub end_date: DateTime<Utc>,
+    /// When the food is ready for pickup (optional, display only).
+    pub pickup_time: Option<DateTime<Utc>>,
     pub allow_late: bool,
     /// Status is managed through explicit operations (cancel, close, send),
     /// not through generic updates.

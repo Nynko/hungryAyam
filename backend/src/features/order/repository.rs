@@ -8,13 +8,13 @@ use crate::{
         domain::{
             order::{CreateOrderItem, Order, OrderItem},
             order_session::{
-                CreateOrderSession, OrderSession, OrderSessionStatus, UpdateOrderSession,
+                CreateOrderSession, OrderSession, OrderSessionStatus,
             },
             order_settings::{
                 CreateRestaurantOrderSettings, RestaurantOrderSettings,
             },
         },
-        dto::{OrderSummary, UpdateOrderSettingsRequest},
+        dto::{OrderSummary, UpdateOrderSessionRequest, UpdateOrderSettingsRequest},
     },
     types::price::PriceCents,
 };
@@ -44,13 +44,14 @@ impl OrderRepository {
         let row = sqlx::query_as!(
             OrderSessionRow,
             r#"
-            INSERT INTO order_sessions (restaurant_id, start_date, end_date, allow_late, status, created_by, updated_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO order_sessions (restaurant_id, start_date, end_date, pickup_time, allow_late, status, created_by, updated_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING
                 id,
                 restaurant_id,
                 start_date,
                 end_date,
+                pickup_time,
                 allow_late,
                 status as "status: OrderSessionStatus",
                 created_at,
@@ -61,6 +62,7 @@ impl OrderRepository {
             request.restaurant_id,
             request.start_date,
             request.end_date,
+            request.pickup_time,
             request.allow_late,
             status.as_i16(),
             user_id,
@@ -82,6 +84,7 @@ impl OrderRepository {
                 restaurant_id,
                 start_date,
                 end_date,
+                pickup_time,
                 allow_late,
                 status as "status: OrderSessionStatus",
                 created_at,
@@ -109,6 +112,7 @@ impl OrderRepository {
                 restaurant_id,
                 start_date,
                 end_date,
+                pickup_time,
                 allow_late,
                 status as "status: OrderSessionStatus",
                 created_at,
@@ -145,6 +149,7 @@ impl OrderRepository {
                 restaurant_id,
                 start_date,
                 end_date,
+                pickup_time,
                 allow_late,
                 status as "status: OrderSessionStatus",
                 created_at,
@@ -181,6 +186,7 @@ impl OrderRepository {
                 restaurant_id,
                 start_date,
                 end_date,
+                pickup_time,
                 allow_late,
                 status as "status: OrderSessionStatus",
                 created_at,
@@ -222,6 +228,7 @@ impl OrderRepository {
                 restaurant_id,
                 start_date,
                 end_date,
+                pickup_time,
                 allow_late,
                 status as "status: OrderSessionStatus",
                 created_at,
@@ -324,7 +331,7 @@ impl OrderRepository {
     /// Update mutable fields on an order session (start_date, end_date, allow_late).
     pub async fn update_session(
         &self,
-        request: UpdateOrderSession,
+        request: UpdateOrderSessionRequest,
         user_id: Uuid,
     ) -> Result<Option<OrderSession>> {
         let row = sqlx::query_as!(
@@ -333,15 +340,17 @@ impl OrderRepository {
             UPDATE order_sessions
             SET start_date  = COALESCE($1, start_date),
                 end_date    = COALESCE($2, end_date),
-                allow_late  = COALESCE($3, allow_late),
+                pickup_time = CASE WHEN $3::bool THEN $4 ELSE pickup_time END,
+                allow_late  = COALESCE($5, allow_late),
                 updated_at  = NOW(),
-                updated_by  = $5
-            WHERE id = $4
+                updated_by  = $7
+            WHERE id = $6
             RETURNING
                 id,
                 restaurant_id,
                 start_date,
                 end_date,
+                pickup_time,
                 allow_late,
                 status as "status: OrderSessionStatus",
                 created_at,
@@ -351,6 +360,8 @@ impl OrderRepository {
             "#,
             request.start_date,
             request.end_date,
+            request.update_pickup_time,
+            request.pickup_time,
             request.allow_late,
             request.id,
             user_id,
@@ -381,6 +392,7 @@ impl OrderRepository {
                 restaurant_id,
                 start_date,
                 end_date,
+                pickup_time,
                 allow_late,
                 status as "status: OrderSessionStatus",
                 created_at,
@@ -908,6 +920,7 @@ impl OrderRepository {
             restaurant_id: row.restaurant_id,
             start_date: row.start_date,
             end_date: row.end_date,
+            pickup_time: row.pickup_time,
             allow_late: row.allow_late,
             status: row.status,
             created_at: row.created_at,

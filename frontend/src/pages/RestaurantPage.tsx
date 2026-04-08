@@ -427,6 +427,7 @@ export default function RestaurantPage() {
                                 restaurant_id: r().id,
                                 start_date: now.toISOString(),
                                 end_date: new Date(endStr).toISOString(),
+                                pickup_time: null,
                                 allow_late: false,
                               });
                               if (newSession) {
@@ -451,11 +452,14 @@ export default function RestaurantPage() {
                                     {totalItems()} item{totalItems() !== 1 ? "s" : ""}
                                   </span>
                                   <Show when={orderSession()}>
-                                    {(s) => (
-                                      <span class="tag is-info is-light is-size-7 ml-2">
-                                        {new Date(s().end_date).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
-                                      </span>
-                                    )}
+                                    {(s) => {
+                                      const displayTime = s().pickup_time ?? s().end_date;
+                                      return (
+                                        <span class="tag is-info is-light is-size-7 ml-2">
+                                          {new Date(displayTime).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                                        </span>
+                                      );
+                                    }}
                                   </Show>
                                 </div>
                                 <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
@@ -497,26 +501,29 @@ export default function RestaurantPage() {
                                   <Show when={otherSessions().length > 0}>
                                     <div class="is-flex is-flex-direction-column mb-2" style={{ gap: "0.3rem" }}>
                                       <For each={otherSessions()}>
-                                        {(session) => (
-                                          <label
-                                            class="is-flex is-align-items-center"
-                                            style={{ gap: "0.4rem", cursor: "pointer" }}
-                                          >
-                                            <input
-                                              type="radio"
-                                              name={`move-session-${order.id}`}
-                                              value={session.id}
-                                              checked={moveSessionId() === session.id}
-                                              onChange={() => {
-                                                setMoveSessionId(session.id);
-                                                setShowNewMoveSlot(false);
-                                              }}
-                                            />
-                                            <span class="is-size-7">
-                                              {new Date(session.end_date).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
-                                            </span>
-                                          </label>
-                                        )}
+                                        {(session) => {
+                                          const displayTime = session.pickup_time ?? session.end_date;
+                                          return (
+                                            <label
+                                              class="is-flex is-align-items-center"
+                                              style={{ gap: "0.4rem", cursor: "pointer" }}
+                                            >
+                                              <input
+                                                type="radio"
+                                                name={`move-session-${order.id}`}
+                                                value={session.id}
+                                                checked={moveSessionId() === session.id}
+                                                onChange={() => {
+                                                  setMoveSessionId(session.id);
+                                                  setShowNewMoveSlot(false);
+                                                }}
+                                              />
+                                              <span class="is-size-7">
+                                                {new Date(displayTime).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                                              </span>
+                                            </label>
+                                          );
+                                        }}
                                       </For>
                                     </div>
                                   </Show>

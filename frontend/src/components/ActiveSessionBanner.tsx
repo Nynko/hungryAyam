@@ -162,7 +162,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
             >
               <span class="icon-text">
                 <span class="icon">⏱️</span>
-                <span>{countdownText()}</span>
+                <span>Orders close in {countdownText()}</span>
               </span>
             </Show>
           </div>
@@ -171,16 +171,24 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
 
       {/* Info row */}
       <div class="is-flex is-flex-wrap-wrap mt-2" style={{ gap: "1rem" }}>
+        <Show when={props.session.pickup_time}>
+          {(pt) => (
+            <span class="is-size-7">
+              <strong>Pickup:</strong>{" "}
+              {new Date(pt()).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+            </span>
+          )}
+        </Show>
         <span class="is-size-7">
-          <strong>Start:</strong>{" "}
-          {startDate().toLocaleString(undefined, {
+          <strong>Orders close:</strong>{" "}
+          {endDate().toLocaleString(undefined, {
             dateStyle: "short",
             timeStyle: "short",
           })}
         </span>
         <span class="is-size-7">
-          <strong>End:</strong>{" "}
-          {endDate().toLocaleString(undefined, {
+          <strong>Start:</strong>{" "}
+          {startDate().toLocaleString(undefined, {
             dateStyle: "short",
             timeStyle: "short",
           })}

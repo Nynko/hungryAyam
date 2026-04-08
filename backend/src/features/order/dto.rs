@@ -1,18 +1,36 @@
-use chrono::NaiveTime;
+use chrono::{DateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::features::order::domain::{
     order::CreateOrder,
-    order_session::{CreateOrderSession, OrderSession, UpdateOrderSession},
+    order_session::{CreateOrderSession, OrderSession},
     order_settings::{CreateRestaurantOrderSettings, SendingMethod},
 };
 
 // ==================== Order Session DTOs ====================
 
 pub type CreateOrderSessionRequest = CreateOrderSession;
-pub type UpdateOrderSessionRequest = UpdateOrderSession;
+
+/// Hand-written update DTO for order sessions.
+///
+/// `pickup_time` uses the same boolean-flag pattern as `menu_reset_time` in
+/// order settings, so the client can explicitly clear it (set to null) without
+/// ambiguity with "don't change" (field absent / null in the patch payload).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct UpdateOrderSessionRequest {
+    pub id: Uuid,
+    pub start_date: Option<DateTime<Utc>>,
+    pub end_date: Option<DateTime<Utc>>,
+    /// When true, `pickup_time` is written (even if null, which clears it).
+    /// When false, the existing value is left unchanged.
+    #[serde(default)]
+    pub update_pickup_time: bool,
+    pub pickup_time: Option<DateTime<Utc>>,
+    pub allow_late: Option<bool>,
+}
 
 /// Response returned after a session status transition (cancel, close, send).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

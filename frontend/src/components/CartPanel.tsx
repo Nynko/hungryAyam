@@ -36,6 +36,12 @@ import type { CreateOrder } from "@bindings/CreateOrder";
 import type { CreateOrderItem } from "@bindings/CreateOrderItem";
 import type { CreateOrderSession } from "@bindings/CreateOrderSession";
 
+/** Format a session's pickup time for display: uses pickup_time if set, else end_date. */
+function sessionLabel(session: OrderSession): string {
+  const dt = session.pickup_time ?? session.end_date;
+  return new Date(dt).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" });
+}
+
 /** Round a Date up to the nearest 5 minutes and format as datetime-local string. */
 function toDatetimeLocal(date: Date): string {
   const ms = 5 * 60 * 1000;
@@ -88,6 +94,7 @@ export default function CartPanel(props: CartPanelProps) {
     d.setHours(d.getHours() + 1, 0, 0, 0);
     return toDatetimeLocal(d);
   });
+  const [newSlotPickup, setNewSlotPickup] = createSignal("");
   const [creatingSession, setCreatingSession] = createSignal(false);
   const [newSlotError, setNewSlotError] = createSignal<string | null>(null);
 
@@ -260,10 +267,12 @@ export default function CartPanel(props: CartPanelProps) {
     }
 
     const now = new Date();
+    const pickupStr = newSlotPickup().trim();
     const request: CreateOrderSession = {
       restaurant_id: props.restaurantId,
       start_date: now.toISOString(),
       end_date: new Date(endStr).toISOString(),
+      pickup_time: pickupStr ? new Date(pickupStr).toISOString() : null,
       allow_late: false,
     };
 
@@ -716,8 +725,10 @@ export default function CartPanel(props: CartPanelProps) {
               const s = () => props.openSessions[0];
               return (
                 <div class="notification is-info is-light is-size-7 py-2 px-3">
-                  <strong>Pickup by:</strong>{" "}
-                  {new Date(s().end_date).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                  <strong>Pickup:</strong> {sessionLabel(s())}
+                  <Show when={s().pickup_time}>
+                    <span class="has-text-grey ml-1">(orders close {new Date(s().end_date).toLocaleString(undefined, { timeStyle: "short" })})</span>
+                  </Show>
                 </div>
               );
             }}
@@ -752,7 +763,10 @@ export default function CartPanel(props: CartPanelProps) {
                         }}
                       />
                       <span class="is-size-7">
-                        {new Date(session.end_date).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                        {sessionLabel(session)}
+                        <Show when={session.pickup_time}>
+                          <span class="has-text-grey ml-1">(orders close {new Date(session.end_date).toLocaleString(undefined, { timeStyle: "short" })})</span>
+                        </Show>
                       </span>
                     </label>
                   )}
@@ -776,39 +790,53 @@ export default function CartPanel(props: CartPanelProps) {
             }
           >
             <div class="box p-3" style={{ "border": "1px solid var(--bulma-border)" }}>
-              <p class="is-size-7 has-text-weight-semibold mb-2">New pickup time</p>
+              <p class="is-size-7 has-text-weight-semibold mb-2">New pickup time slot</p>
               <Show when={newSlotError()}>
                 <p class="help is-danger mb-1">{newSlotError()}</p>
               </Show>
+              <div class="field mb-1">
+                <label class="label is-size-7">Pickup time</label>
+                <div class="control">
+                  <input
+                    class="input is-small"
+                    type="datetime-local"
+                    value={newSlotPickup()}
+                    onInput={(e) => setNewSlotPickup(e.currentTarget.value)}
+                    disabled={creatingSession()}
+                    placeholder="When food is ready"
+                  />
+                </div>
+              </div>
               <div class="field has-addons mb-2">
                 <div class="control is-expanded">
+                  <label class="label is-size-7">Orders close at</label>
                   <input
                     class="input is-small"
                     type="datetime-local"
                     value={newSlotEnd()}
                     onInput={(e) => setNewSlotEnd(e.currentTarget.value)}
                     disabled={creatingSession()}
+                    placeholder="Ordering deadline"
                   />
                 </div>
-                <div class="control">
-                  <button
-                    class="button is-primary is-small"
-                    classList={{ "is-loading": creatingSession() }}
-                    disabled={creatingSession()}
-                    onClick={handleCreateNewSlot}
-                  >
-                    Set
-                  </button>
-                </div>
               </div>
-              <button
-                class="button is-ghost is-small px-0 has-text-grey"
-                style={{ height: "auto", "font-size": "0.72rem" }}
-                onClick={() => { setShowNewSlot(false); setNewSlotError(null); }}
-                disabled={creatingSession()}
-              >
-                Cancel
-              </button>
+              <div class="is-flex" style={{ gap: "0.5rem" }}>
+                <button
+                  class="button is-primary is-small"
+                  classList={{ "is-loading": creatingSession() }}
+                  disabled={creatingSession()}
+                  onClick={handleCreateNewSlot}
+                >
+                  Create slot
+                </button>
+                <button
+                  class="button is-light is-small"
+                  onClick={() => { setShowNewSlot(false); setNewSlotError(null); }}
+                  disabled={creatingSession()}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </Show>
         </div>

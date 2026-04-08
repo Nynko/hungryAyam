@@ -57,6 +57,7 @@ function timeStringToDate(timeStr: string, base: Date): Date {
 export default function CreateSessionModal(props: CreateSessionModalProps) {
   const [startDate, setStartDate] = createSignal("");
   const [endDate, setEndDate] = createSignal("");
+  const [pickupTime, setPickupTime] = createSignal("");
   const [allowLate, setAllowLate] = createSignal(false);
   const [validationError, setValidationError] = createSignal<string | null>(null);
   const [settingsLoaded, setSettingsLoaded] = createSignal(false);
@@ -92,6 +93,7 @@ export default function CreateSessionModal(props: CreateSessionModalProps) {
   const resetForm = () => {
     setStartDate("");
     setEndDate("");
+    setPickupTime("");
     setAllowLate(false);
     setValidationError(null);
     setSettingsLoaded(false);
@@ -145,10 +147,18 @@ export default function CreateSessionModal(props: CreateSessionModalProps) {
       return;
     }
 
+    const pickupStr = pickupTime().trim();
+    const pickup = pickupStr ? new Date(pickupStr) : null;
+    if (pickup && isNaN(pickup.getTime())) {
+      setValidationError("Invalid pickup time format.");
+      return;
+    }
+
     const request: CreateOrderSession = {
       restaurant_id: props.restaurantId,
       start_date: new Date(start).toISOString(),
       end_date: new Date(end).toISOString(),
+      pickup_time: pickup ? pickup.toISOString() : null,
       allow_late: allowLate(),
     };
 
@@ -246,6 +256,23 @@ export default function CreateSessionModal(props: CreateSessionModalProps) {
               </div>
               <p class="help">
                 When the session stops accepting orders.
+              </p>
+            </div>
+
+            {/* Pickup time */}
+            <div class="field">
+              <label class="label">Pickup Time <span class="has-text-grey has-text-weight-normal">(optional)</span></label>
+              <div class="control">
+                <input
+                  class="input"
+                  type="datetime-local"
+                  value={pickupTime()}
+                  onInput={(e) => setPickupTime(e.currentTarget.value)}
+                  disabled={sessionLoading()}
+                />
+              </div>
+              <p class="help">
+                When the food will be ready. Shown to users as their pickup time.
               </p>
             </div>
 

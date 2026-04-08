@@ -10,11 +10,11 @@ use crate::features::order::{
     domain::{
         order::{CreateOrder, Order},
         order_session::{
-            CreateOrderSession, OrderSession, OrderSessionStatus, UpdateOrderSession,
+            CreateOrderSession, OrderSession, OrderSessionStatus,
         },
         order_settings::RestaurantOrderSettings,
     },
-    dto::{OrderSummary, UpdateOrderSettingsRequest},
+    dto::{OrderSummary, UpdateOrderSessionRequest, UpdateOrderSettingsRequest},
     repository::OrderRepository,
 };
 
@@ -199,7 +199,7 @@ impl OrderService {
     /// Terminal states (Cancelled, Sent) are immutable.
     pub async fn update_session(
         &self,
-        request: UpdateOrderSession,
+        request: UpdateOrderSessionRequest,
         user_id: Uuid,
     ) -> Result<Option<OrderSession>> {
         // Fetch the session to check its current status
@@ -693,6 +693,7 @@ impl OrderService {
             restaurant_id,
             start_date: start_dt,
             end_date: end_dt,
+            pickup_time: None,
             allow_late: false,
         };
 

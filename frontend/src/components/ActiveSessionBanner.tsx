@@ -5,9 +5,11 @@ import {
   sessionStatusColor,
   cancelSession,
   closeSession,
-  sendSession,
+  requestSession,
+  confirmSession,
+  finishSession,
   reopenSession,
-  fetchActiveSession,
+  fetchOpenSessions,
 } from "@/stores/orderStore";
 import { isAuthenticated } from "@/stores/authStore";
 import { showConfirm } from "@/stores/confirmStore";
@@ -78,7 +80,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
   // ── Session actions ─────────────────────────────────────────────
 
   const doAction = async (
-    action: "cancel" | "close" | "send" | "reopen",
+    action: "cancel" | "close" | "request" | "confirm" | "finish" | "reopen",
     fn: (id: string) => Promise<OrderSession | null>,
     confirmOpts?: { title: string; message: string; danger?: boolean },
   ) => {
@@ -92,8 +94,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
     setActionLoading(null);
 
     if (result) {
-      // Refresh the parent's active session
-      await fetchActiveSession(props.restaurantId);
+      await fetchOpenSessions(props.restaurantId);
       props.onSessionChanged?.();
     }
   };
@@ -113,11 +114,23 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
       danger: true,
     });
 
-  const handleSend = () =>
-    doAction("send", sendSession, {
-      title: "Send Orders?",
+  const handleRequest = () =>
+    doAction("request", requestSession, {
+      title: "Send Order Request?",
       message:
-        "This marks the session as sent. No further changes can be made after sending.",
+        "This will send the order to the restaurant (SMS/WhatsApp). You can still confirm once they accept.",
+    });
+
+  const handleConfirm = () =>
+    doAction("confirm", confirmSession, {
+      title: "Confirm Order?",
+      message: "Mark this session as confirmed — the restaurant will fulfil the order.",
+    });
+
+  const handleFinish = () =>
+    doAction("finish", finishSession, {
+      title: "Mark as Finished?",
+      message: "Mark this session as finished — food has been picked up or delivered.",
     });
 
   const handleReopen = () => doAction("reopen", reopenSession);
@@ -128,8 +141,12 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
         return "🟢";
       case "Closed":
         return "🟡";
-      case "Sent":
+      case "Requested":
         return "📨";
+      case "Confirmed":
+        return "✅";
+      case "Finished":
+        return "🏁";
       case "Cancelled":
         return "❌";
       default:
@@ -235,13 +252,22 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
             {/* Closed session actions */}
             <Show when={props.session.status === "Closed"}>
               <button
-                class="button is-info is-small"
-                classList={{ "is-loading": actionLoading() === "send" }}
+                class="button is-primary is-small"
+                classList={{ "is-loading": actionLoading() === "confirm" }}
                 disabled={sessionLoading() || actionLoading() !== null}
-                onClick={handleSend}
+                onClick={handleConfirm}
+              >
+                <span class="icon is-small"><span>✅</span></span>
+                <span>Confirm</span>
+              </button>
+              <button
+                class="button is-info is-small is-outlined"
+                classList={{ "is-loading": actionLoading() === "request" }}
+                disabled={sessionLoading() || actionLoading() !== null}
+                onClick={handleRequest}
               >
                 <span class="icon is-small"><span>📨</span></span>
-                <span>Mark as Sent</span>
+                <span>Send Request</span>
               </button>
               <button
                 class="button is-success is-small is-outlined"
@@ -263,10 +289,54 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
               </button>
             </Show>
 
-            {/* Sent — terminal state, no actions */}
-            <Show when={props.session.status === "Sent"}>
+            {/* Requested session actions */}
+            <Show when={props.session.status === "Requested"}>
+              <button
+                class="button is-primary is-small"
+                classList={{ "is-loading": actionLoading() === "confirm" }}
+                disabled={sessionLoading() || actionLoading() !== null}
+                onClick={handleConfirm}
+              >
+                <span class="icon is-small"><span>✅</span></span>
+                <span>Confirm</span>
+              </button>
+              <button
+                class="button is-danger is-small is-outlined"
+                classList={{ "is-loading": actionLoading() === "cancel" }}
+                disabled={sessionLoading() || actionLoading() !== null}
+                onClick={handleCancel}
+              >
+                <span class="icon is-small"><span>✕</span></span>
+                <span>Cancel</span>
+              </button>
+            </Show>
+
+            {/* Confirmed session actions */}
+            <Show when={props.session.status === "Confirmed"}>
+              <button
+                class="button is-success is-small"
+                classList={{ "is-loading": actionLoading() === "finish" }}
+                disabled={sessionLoading() || actionLoading() !== null}
+                onClick={handleFinish}
+              >
+                <span class="icon is-small"><span>🏁</span></span>
+                <span>Mark as Finished</span>
+              </button>
+              <button
+                class="button is-danger is-small is-outlined"
+                classList={{ "is-loading": actionLoading() === "cancel" }}
+                disabled={sessionLoading() || actionLoading() !== null}
+                onClick={handleCancel}
+              >
+                <span class="icon is-small"><span>✕</span></span>
+                <span>Cancel</span>
+              </button>
+            </Show>
+
+            {/* Finished — terminal state */}
+            <Show when={props.session.status === "Finished"}>
               <span class="is-size-7 has-text-weight-medium">
-                Orders have been sent. This session is complete.
+                This session is finished.
               </span>
             </Show>
 

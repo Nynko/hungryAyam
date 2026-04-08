@@ -17,8 +17,7 @@ import ActiveSessionBanner from "@/components/ActiveSessionBanner";
 import { isAuthenticated } from "@/stores/authStore";
 import {
   fetchSessionsForRestaurant,
-  fetchActiveSession,
-  getActiveSession,
+  fetchOpenSessions,
   sessionStatusColor,
   formatPrice,
   groupOrderItems,
@@ -340,7 +339,9 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
       all: sessions().length,
       Open: 0,
       Closed: 0,
-      Sent: 0,
+      Requested: 0,
+      Confirmed: 0,
+      Finished: 0,
       Cancelled: 0,
     };
     for (const s of sessions()) {
@@ -436,22 +437,12 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                     each={
                       [
                         { key: "all" as StatusFilter, label: "All" },
-                        {
-                          key: "Open" as StatusFilter,
-                          label: "🟢 Open",
-                        },
-                        {
-                          key: "Closed" as StatusFilter,
-                          label: "🟡 Closed",
-                        },
-                        {
-                          key: "Sent" as StatusFilter,
-                          label: "📨 Sent",
-                        },
-                        {
-                          key: "Cancelled" as StatusFilter,
-                          label: "❌ Cancelled",
-                        },
+                        { key: "Open" as StatusFilter, label: "🟢 Open" },
+                        { key: "Closed" as StatusFilter, label: "🟡 Closed" },
+                        { key: "Requested" as StatusFilter, label: "📨 Requested" },
+                        { key: "Confirmed" as StatusFilter, label: "✅ Confirmed" },
+                        { key: "Finished" as StatusFilter, label: "🏁 Finished" },
+                        { key: "Cancelled" as StatusFilter, label: "❌ Cancelled" },
                       ] as const
                     }
                   >
@@ -506,12 +497,16 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                           "border-left": "4px solid",
                           "border-left-color":
                             session.status === "Open"
-                              ? "hsl(141, 71%, 48%)"
+                              ? "hsl(141, 71%, 48%)"   // green
                               : session.status === "Closed"
-                                ? "hsl(48, 100%, 67%)"
-                                : session.status === "Sent"
-                                  ? "hsl(204, 86%, 53%)"
-                                  : "hsl(348, 100%, 61%)",
+                                ? "hsl(48, 100%, 67%)" // yellow
+                                : session.status === "Requested"
+                                  ? "hsl(204, 86%, 53%)" // blue
+                                  : session.status === "Confirmed"
+                                    ? "hsl(171, 100%, 41%)" // teal/primary
+                                    : session.status === "Finished"
+                                      ? "hsl(0, 0%, 71%)"   // grey
+                                      : "hsl(348, 100%, 61%)", // red (Cancelled)
                         }}
                       >
                         {/* Session header row */}
@@ -595,25 +590,20 @@ export default function Orders() {
   const [refreshKey, setRefreshKey] = createSignal(0);
 
   /**
-   * Fetch the active session for every restaurant in parallel,
-   * collecting only those that have an Open session.
+   * Fetch all non-terminal sessions for every restaurant in parallel.
+   * Non-terminal = Open, Closed, Requested, Confirmed.
    */
   const loadActiveSessions = async (restaurantList: Restaurant[]) => {
     setActiveLoading(true);
 
     const results = await Promise.all(
       restaurantList.map(async (r) => {
-        const session = await fetchActiveSession(r.id);
-        return session ? { restaurant: r, session } : null;
+        const sessions = await fetchOpenSessions(r.id);
+        return sessions.map((session) => ({ restaurant: r, session }));
       }),
     );
 
-    setActiveSessions(
-      results.filter(
-        (r): r is { restaurant: Restaurant; session: OrderSession } =>
-          r !== null,
-      ),
-    );
+    setActiveSessions(results.flat());
     setActiveLoading(false);
     setActiveLoaded(true);
   };
@@ -695,7 +685,7 @@ export default function Orders() {
         <Show when={(restaurants() ?? []).length > 0}>
           <div class="mb-6">
             <h2 class="title is-4">
-              🟢 Active Sessions
+              📋 Active Sessions
             </h2>
 
             {/* Loading active sessions */}

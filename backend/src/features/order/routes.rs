@@ -35,7 +35,9 @@ pub fn order_routes() -> Router<AppState> {
         // Session lifecycle transitions
         .route("/api/order-sessions/:id/cancel", post(cancel_session))
         .route("/api/order-sessions/:id/close", post(close_session))
-        .route("/api/order-sessions/:id/send", post(send_session))
+        .route("/api/order-sessions/:id/request", post(request_session))
+        .route("/api/order-sessions/:id/confirm", post(confirm_session))
+        .route("/api/order-sessions/:id/finish", post(finish_session))
         .route("/api/order-sessions/:id/reopen", post(reopen_session))
         // Session listing
         .route(
@@ -170,15 +172,47 @@ pub async fn close_session(
     })))
 }
 
-/// Mark a session as sent — orders dispatched to restaurant
-pub async fn send_session(
+/// Send an order request to the restaurant — transitions Closed → Requested
+pub async fn request_session(
     AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
     let session = app_state
         .order_service
-        .send_session(id, user.id)
+        .request_session(id, user.id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
+        session,
+    })))
+}
+
+/// Confirm the restaurant will fulfil the order — transitions Closed/Requested → Confirmed
+pub async fn confirm_session(
+    AuthUser(user): AuthUser,
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let session = app_state
+        .order_service
+        .confirm_session(id, user.id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
+        session,
+    })))
+}
+
+/// Mark a session as finished — transitions Confirmed → Finished
+pub async fn finish_session(
+    AuthUser(user): AuthUser,
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let session = app_state
+        .order_service
+        .finish_session(id, user.id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {

@@ -215,7 +215,8 @@ impl OrderRepository {
         }
     }
 
-    /// List all open (Open status) sessions for a restaurant, ordered by end_date ascending.
+    /// List all active (non-terminal) sessions for a restaurant, ordered by end_date ascending.
+    /// Active = Open, Closed, Requested, Confirmed (excludes Cancelled and Finished).
     pub async fn list_open_sessions_for_restaurant(
         &self,
         restaurant_id: Uuid,
@@ -237,11 +238,10 @@ impl OrderRepository {
                 updated_by
             FROM order_sessions
             WHERE restaurant_id = $1
-              AND status = $2
+              AND status = ANY(ARRAY[0, 1, 3, 4]::smallint[])
             ORDER BY end_date ASC
             "#,
             restaurant_id,
-            OrderSessionStatus::Open.as_i16(),
         )
         .fetch_all(&self.pool)
         .await?;

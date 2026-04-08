@@ -246,10 +246,14 @@ impl OrderService {
             .await?
             .ok_or_else(|| anyhow!("Session not found"))?;
 
-        if session.status.is_terminal() {
+        if session.status == OrderSessionStatus::Finished {
             return Err(anyhow!(
-                "Cannot cancel a session in '{}' status",
-                session.status
+                "Cannot cancel a Finished session"
+            ));
+        }
+        if session.status == OrderSessionStatus::Cancelled {
+            return Err(anyhow!(
+                "Session is already cancelled"
             ));
         }
 
@@ -290,11 +294,11 @@ impl OrderService {
         Ok(result)
     }
 
-    /// Mark a session as sent (orders have been dispatched to the restaurant).
+    /// Send an order request to the restaurant (SMS / WhatsApp / email).
     ///
-    /// Transitions from Closed → Sent. A session must be closed before it
-    /// can be marked as sent (to prevent new orders sneaking in).
-    pub async fn send_session(
+    /// Transitions from Closed → Requested.
+    /// The session must be closed before requesting to prevent new orders sneaking in.
+    pub async fn request_session(
         &self,
         session_id: Uuid,
         user_id: Uuid,
@@ -307,14 +311,68 @@ impl OrderService {
 
         if session.status != OrderSessionStatus::Closed {
             return Err(anyhow!(
-                "Can only send a session that is Closed. Current status: '{}'. \
-                 Close the session first.",
+                "Can only request a session that is Closed. Current status: '{}'.",
                 session.status
             ));
         }
 
         self.repository
-            .set_session_status(session_id, OrderSessionStatus::Sent, user_id)
+            .set_session_status(session_id, OrderSessionStatus::Requested, user_id)
+            .await
+    }
+
+    /// Confirm that the restaurant will fulfil the order.
+    ///
+    /// Transitions from Closed or Requested → Confirmed.
+    /// Manual flow: Closed → Confirmed (skipping the SMS step).
+    /// Automatic flow: Requested → Confirmed (restaurant acknowledged).
+    pub async fn confirm_session(
+        &self,
+        session_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<OrderSession>> {
+        let session = self
+            .repository
+            .get_session_by_id(session_id)
+            .await?
+            .ok_or_else(|| anyhow!("Session not found"))?;
+
+        if !matches!(session.status, OrderSessionStatus::Closed | OrderSessionStatus::Requested) {
+            return Err(anyhow!(
+                "Can only confirm a session that is Closed or Requested. Current status: '{}'.",
+                session.status
+            ));
+        }
+
+        self.repository
+            .set_session_status(session_id, OrderSessionStatus::Confirmed, user_id)
+            .await
+    }
+
+    /// Mark a session as finished (food picked up / delivered).
+    ///
+    /// Transitions from Confirmed → Finished.
+    /// This can also be triggered automatically by the scheduler after pickup_time.
+    pub async fn finish_session(
+        &self,
+        session_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<OrderSession>> {
+        let session = self
+            .repository
+            .get_session_by_id(session_id)
+            .await?
+            .ok_or_else(|| anyhow!("Session not found"))?;
+
+        if session.status != OrderSessionStatus::Confirmed {
+            return Err(anyhow!(
+                "Can only finish a session that is Confirmed. Current status: '{}'.",
+                session.status
+            ));
+        }
+
+        self.repository
+            .set_session_status(session_id, OrderSessionStatus::Finished, user_id)
             .await
     }
 
@@ -499,7 +557,7 @@ impl OrderService {
     /// Delete an order.
     ///
     /// Orders can only be deleted while the parent session is still Open.
-    /// Once the session is closed/sent, orders become immutable.
+    /// Once closed, requested, confirmed, or finished, orders are immutable.
     pub async fn delete_order(
         &self,
         order_id: Uuid,
@@ -620,11 +678,14 @@ impl OrderService {
             return Ok(session);
         }
 
-        // Case 2: Look for open sessions
-        let open_sessions = self
+        // Case 2: Look for Open sessions (can accept orders)
+        let open_sessions: Vec<_> = self
             .repository
             .list_open_sessions_for_restaurant(restaurant_id)
-            .await?;
+            .await?
+            .into_iter()
+            .filter(|s| s.status == OrderSessionStatus::Open)
+            .collect();
 
         match open_sessions.len() {
             1 => return Ok(open_sessions.into_iter().next().unwrap()),

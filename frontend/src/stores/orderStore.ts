@@ -378,11 +378,11 @@ async function updateSession(
 }
 
 /**
- * Transition a session's status (cancel, close, send, reopen).
+ * Transition a session's status (cancel, close, request, confirm, finish, reopen).
  */
 async function transitionSession(
   sessionId: string,
-  action: "cancel" | "close" | "send" | "reopen",
+  action: "cancel" | "close" | "request" | "confirm" | "finish" | "reopen",
 ): Promise<OrderSession | null> {
   try {
     setSessionLoading(true);
@@ -423,8 +423,16 @@ async function closeSession(sessionId: string): Promise<OrderSession | null> {
   return transitionSession(sessionId, "close");
 }
 
-async function sendSession(sessionId: string): Promise<OrderSession | null> {
-  return transitionSession(sessionId, "send");
+async function requestSession(sessionId: string): Promise<OrderSession | null> {
+  return transitionSession(sessionId, "request");
+}
+
+async function confirmSession(sessionId: string): Promise<OrderSession | null> {
+  return transitionSession(sessionId, "confirm");
+}
+
+async function finishSession(sessionId: string): Promise<OrderSession | null> {
+  return transitionSession(sessionId, "finish");
 }
 
 async function reopenSession(sessionId: string): Promise<OrderSession | null> {
@@ -821,8 +829,12 @@ function sessionStatusColor(status: OrderSessionStatus): string {
       return "is-success";
     case "Closed":
       return "is-warning";
-    case "Sent":
+    case "Requested":
       return "is-info";
+    case "Confirmed":
+      return "is-primary";
+    case "Finished":
+      return "is-light";
     case "Cancelled":
       return "is-danger";
     default:
@@ -862,7 +874,9 @@ export {
   updateSession,
   cancelSession,
   closeSession,
-  sendSession,
+  requestSession,
+  confirmSession,
+  finishSession,
   reopenSession,
 
   // ── Order API ───────────────────────────────────────────────

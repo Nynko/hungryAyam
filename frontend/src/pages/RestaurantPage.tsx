@@ -188,14 +188,19 @@ export default function RestaurantPage() {
 
   const [showInactive, setShowInactive] = createSignal(false);
 
+  // Sessions that can still accept new orders
+  const orderableSessions = createMemo(() =>
+    openSessions().filter((s) => s.status === "Open"),
+  );
+
   // Can place orders if restaurant is available and at least one open session exists
   // (or none — backend will auto-create if configured to do so)
   const canOrder = createMemo(() => {
     if (!restaurantAvailability().available) return false;
-    const sessions = openSessions();
-    // If there are sessions, all must be Open (they are by definition from the open endpoint)
-    // If there are no sessions, backend may auto-create on order
-    return sessions.length === 0 || sessions.some((s) => s.status === "Open");
+    // If there are non-terminal sessions but none are Open, ordering is blocked
+    const nonTerminal = openSessions();
+    if (nonTerminal.length > 0 && orderableSessions().length === 0) return false;
+    return true;
   });
 
   return (
@@ -768,7 +773,7 @@ export default function RestaurantPage() {
                     <div style={{ position: "sticky", top: "1rem" }}>
                       <CartPanel
                         restaurantId={r().id}
-                        openSessions={openSessions()}
+                        openSessions={orderableSessions()}
                         onOrderPlaced={() => {
                           refreshSession();
                           refreshMyOrders();

@@ -67,9 +67,10 @@ pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>) {
 
         loop {
             // 1. Run any tasks that are currently due
-            let (reset_result, close_result) = tokio::join!(
+            let (reset_result, close_result, finish_result) = tokio::join!(
                 run_menu_auto_reset(&pool, system_user),
                 run_session_auto_close(&pool, system_user),
+                run_session_auto_finish(&pool, system_user),
             );
 
             if let Err(e) = reset_result {
@@ -77,6 +78,9 @@ pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>) {
             }
             if let Err(e) = close_result {
                 error!("Scheduler: session auto-close failed: {e:#}");
+            }
+            if let Err(e) = finish_result {
+                error!("Scheduler: session auto-finish failed: {e:#}");
             }
 
             // 2. Compute how long to sleep until the next event
@@ -209,6 +213,26 @@ async fn compute_next_wake(pool: &PgPool) -> anyhow::Result<std::time::Duration>
     if let Some(end_dt) = earliest_session_end {
         if end_dt < earliest {
             earliest = end_dt;
+        }
+    }
+
+    // ── Session auto-finish candidates ────────────────────────────────
+    // Earliest pickup_time of any Confirmed session (auto-finish trigger).
+    let earliest_finish = sqlx::query_scalar!(
+        r#"
+        SELECT MIN(pickup_time) as "min_pickup: chrono::DateTime<Utc>"
+        FROM order_sessions
+        WHERE status = $1
+          AND pickup_time IS NOT NULL
+        "#,
+        OrderSessionStatus::Confirmed.as_i16(),
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if let Some(pickup_dt) = earliest_finish {
+        if pickup_dt < earliest {
+            earliest = pickup_dt;
         }
     }
 
@@ -433,6 +457,37 @@ async fn close_session(
         info!(
             "Scheduler: auto-closed session {} for restaurant {}",
             candidate.session_id, candidate.restaurant_id
+        );
+    }
+
+    Ok(())
+}
+
+// ─── Session Auto-Finish ──────────────────────────────────────────────────
+
+/// Auto-finish Confirmed sessions whose pickup_time has passed.
+async fn run_session_auto_finish(pool: &PgPool, system_user: Uuid) -> anyhow::Result<()> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE order_sessions
+        SET status     = $1,
+            updated_at = NOW(),
+            updated_by = $2
+        WHERE status = $3
+          AND pickup_time IS NOT NULL
+          AND pickup_time <= NOW()
+        "#,
+        OrderSessionStatus::Finished.as_i16(),
+        system_user,
+        OrderSessionStatus::Confirmed.as_i16(),
+    )
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() > 0 {
+        info!(
+            "Scheduler: auto-finished {} session(s) after pickup_time",
+            result.rows_affected()
         );
     }
 

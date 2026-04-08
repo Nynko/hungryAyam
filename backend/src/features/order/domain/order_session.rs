@@ -9,26 +9,40 @@ use super::order::Order;
 // ==================== OrderSessionStatus Enum ====================
 
 /// Status of an order session, stored as smallint in the database.
+///
+/// Lifecycle:
+///   Open → Closed → Confirmed → Finished          (manual, no SMS)
+///   Open → Closed → Requested → Confirmed → Finished  (automatic / SMS flow)
+///
+/// Cancellation is allowed from any non-terminal state.
+/// Terminal states: Cancelled, Finished.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum OrderSessionStatus {
-    /// Session is open and accepting orders
+    /// Session is open and accepting orders.
     Open,
-    /// Session is closed (time expired or manually closed), no more orders accepted
+    /// Ordering closed — no more orders accepted.
     Closed,
-    /// Session was cancelled by an admin, all orders voided
+    /// Session was cancelled; all orders voided.
     Cancelled,
-    /// Orders from this session have been sent to the restaurant
-    Sent,
+    /// Order request sent to the restaurant (SMS / WhatsApp / email).
+    /// Integer value 3 is preserved from the old `Sent` variant.
+    Requested,
+    /// Restaurant has confirmed they will fulfil the order.
+    Confirmed,
+    /// Food has been picked up / delivered — session is fully done.
+    Finished,
 }
 
 impl OrderSessionStatus {
     pub fn as_i16(&self) -> i16 {
         match self {
-            Self::Open => 0,
-            Self::Closed => 1,
+            Self::Open      => 0,
+            Self::Closed    => 1,
             Self::Cancelled => 2,
-            Self::Sent => 3,
+            Self::Requested => 3, // same integer as old `Sent`
+            Self::Confirmed => 4,
+            Self::Finished  => 5,
         }
     }
 
@@ -37,29 +51,33 @@ impl OrderSessionStatus {
             0 => Ok(Self::Open),
             1 => Ok(Self::Closed),
             2 => Ok(Self::Cancelled),
-            3 => Ok(Self::Sent),
+            3 => Ok(Self::Requested),
+            4 => Ok(Self::Confirmed),
+            5 => Ok(Self::Finished),
             _ => anyhow::bail!("Invalid OrderSessionStatus value: {}", value),
         }
     }
 
-    /// Whether the session can still accept new orders
+    /// Whether the session can still accept new orders.
     pub fn is_accepting_orders(&self) -> bool {
         matches!(self, Self::Open)
     }
 
-    /// Whether the session is in a terminal state (no further transitions)
+    /// Whether the session is in a terminal state (no further transitions).
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Cancelled | Self::Sent)
+        matches!(self, Self::Cancelled | Self::Finished)
     }
 }
 
 impl std::fmt::Display for OrderSessionStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Open => write!(f, "Open"),
-            Self::Closed => write!(f, "Closed"),
+            Self::Open      => write!(f, "Open"),
+            Self::Closed    => write!(f, "Closed"),
             Self::Cancelled => write!(f, "Cancelled"),
-            Self::Sent => write!(f, "Sent"),
+            Self::Requested => write!(f, "Requested"),
+            Self::Confirmed => write!(f, "Confirmed"),
+            Self::Finished  => write!(f, "Finished"),
         }
     }
 }

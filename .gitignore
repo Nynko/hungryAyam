@@ -32,3 +32,13 @@ gitignore
 # System Files
 .DS_Store
 Thumbs.db
+
+# Uploaded files (user content, not for version control)
+backend/uploads/
+
+# Frontend public assets (images etc.)
+frontend/public/*.png
+frontend/public/*.jpg
+frontend/public/*.jpeg
+frontend/public/*.webp
+frontend/public/*.gif

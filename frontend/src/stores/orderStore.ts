@@ -9,6 +9,7 @@ import type { CreateOrderSession } from "@bindings/CreateOrderSession";
 import type { UpdateOrderSession } from "@bindings/UpdateOrderSession";
 import type { CreateOrder } from "@bindings/CreateOrder";
 import type { CreateOrderItem } from "@bindings/CreateOrderItem";
+import type { MoveOrderToSessionRequest } from "@bindings/MoveOrderToSessionRequest";
 import type { RestaurantOrderSettings } from "@bindings/RestaurantOrderSettings";
 import type { UpdateOrderSettingsRequest } from "@bindings/UpdateOrderSettingsRequest";
 import type { OrderSessionStatusResponse } from "@bindings/OrderSessionStatusResponse";
@@ -37,9 +38,9 @@ const [cartsByRestaurant, setCartsByRestaurant] = createStore<
   Record<string, CartItem[]>
 >({});
 
-/** Cached active session per restaurant */
-const [activeSessionByRestaurant, setActiveSessionByRestaurant] = createSignal<
-  Record<string, OrderSession | null>
+/** Cached open sessions per restaurant (all Open status sessions) */
+const [openSessionsByRestaurant, setOpenSessionsByRestaurant] = createSignal<
+  Record<string, OrderSession[]>
 >({});
 
 /** Loading states */
@@ -193,42 +194,53 @@ function summarizeOrderItems(items: OrderItem[]): string {
 // ══════════════════════════════════════════════════════════════════
 
 /**
- * Fetch the currently active (Open) session for a restaurant.
- * Caches the result in `activeSessionByRestaurant`.
+ * Fetch all open (Open status) sessions for a restaurant.
+ * Caches the result in `openSessionsByRestaurant`.
  */
-async function fetchActiveSession(
+async function fetchOpenSessions(
   restaurantId: string,
-): Promise<OrderSession | null> {
+): Promise<OrderSession[]> {
   try {
     setSessionLoading(true);
     setOrderError(null);
 
     const res = await fetch(
-      `/api/restaurants/${restaurantId}/order-sessions/active`,
+      `/api/restaurants/${restaurantId}/order-sessions/open`,
     );
     if (!res.ok) {
-      throw new Error(`Failed to fetch active session (${res.status})`);
+      throw new Error(`Failed to fetch open sessions (${res.status})`);
     }
 
-    const json: ApiResponse<OrderSession | null> = await res.json();
-    if (!json.success) {
+    const json: ApiResponse<OrderSession[]> = await res.json();
+    if (!json.success || json.data == null) {
       throw new Error(json.error ?? "Unexpected response");
     }
 
-    const session = json.data ?? null;
-    setActiveSessionByRestaurant((prev) => ({
+    const sessions = json.data;
+    setOpenSessionsByRestaurant((prev) => ({
       ...prev,
-      [restaurantId]: session,
+      [restaurantId]: sessions,
     }));
-    return session;
+    return sessions;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     setOrderError(msg);
-    console.error("[orderStore] fetchActiveSession failed:", msg);
-    return null;
+    console.error("[orderStore] fetchOpenSessions failed:", msg);
+    return [];
   } finally {
     setSessionLoading(false);
   }
+}
+
+/**
+ * Fetch the currently active (Open) session for a restaurant.
+ * @deprecated Use fetchOpenSessions instead. Kept for backward compatibility.
+ */
+async function fetchActiveSession(
+  restaurantId: string,
+): Promise<OrderSession | null> {
+  const sessions = await fetchOpenSessions(restaurantId);
+  return sessions[0] ?? null;
 }
 
 /**
@@ -315,11 +327,8 @@ async function createSession(
       throw new Error(json.error ?? `Create session failed (${res.status})`);
     }
 
-    // Update the active session cache
-    setActiveSessionByRestaurant((prev) => ({
-      ...prev,
-      [request.restaurant_id]: json.data!,
-    }));
+    // Refresh open sessions cache
+    await fetchOpenSessions(request.restaurant_id);
 
     return json.data;
   } catch (e) {
@@ -353,14 +362,9 @@ async function updateSession(
       throw new Error(json.error ?? `Update session failed (${res.status})`);
     }
 
-    // Update the active session cache if this is the active session
     const session = json.data;
-    if (session.status === "Open") {
-      setActiveSessionByRestaurant((prev) => ({
-        ...prev,
-        [session.restaurant_id]: session,
-      }));
-    }
+    // Refresh open sessions cache to reflect changes
+    await fetchOpenSessions(session.restaurant_id);
 
     return session;
   } catch (e) {
@@ -397,22 +401,8 @@ async function transitionSession(
 
     const session = json.data.session;
 
-    // Update active session cache
-    if (session.status === "Open") {
-      setActiveSessionByRestaurant((prev) => ({
-        ...prev,
-        [session.restaurant_id]: session,
-      }));
-    } else {
-      // If session is no longer open, clear it from active cache
-      setActiveSessionByRestaurant((prev) => {
-        const current = prev[session.restaurant_id];
-        if (current && current.id === session.id) {
-          return { ...prev, [session.restaurant_id]: null };
-        }
-        return prev;
-      });
-    }
+    // Refresh open sessions cache to reflect the status change
+    await fetchOpenSessions(session.restaurant_id);
 
     return session;
   } catch (e) {
@@ -492,8 +482,8 @@ async function placeOrder(
     // Clear the cart on success
     clearCart(restaurantId);
 
-    // Refresh the active session (order may have auto-created one)
-    await fetchActiveSession(restaurantId);
+    // Refresh open sessions (order may have auto-created one)
+    await fetchOpenSessions(restaurantId);
 
     return json.data;
   } catch (e) {
@@ -629,6 +619,73 @@ async function fetchOrderSummaries(
 }
 
 /**
+ * Move an order to a different session.
+ */
+async function moveOrderToSession(
+  orderId: string,
+  newSessionId: string,
+): Promise<Order | null> {
+  try {
+    setOrderLoading(true);
+    setOrderError(null);
+
+    const request: MoveOrderToSessionRequest = { new_session_id: newSessionId };
+    const res = await fetch(`/api/orders/${orderId}/move-to-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    const json: ApiResponse<Order> = await res.json();
+    if (!res.ok || !json.success || json.data == null) {
+      throw new Error(json.error ?? `Move order failed (${res.status})`);
+    }
+
+    return json.data;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setOrderError(msg);
+    console.error("[orderStore] moveOrderToSession failed:", msg);
+    return null;
+  } finally {
+    setOrderLoading(false);
+  }
+}
+
+/**
+ * Fetch all orders placed by the current user across all open sessions for a restaurant.
+ */
+async function fetchMyOrdersInOpenSessions(
+  restaurantId: string,
+): Promise<Order[]> {
+  try {
+    setOrderLoading(true);
+    setOrderError(null);
+
+    const res = await fetch(
+      `/api/restaurants/${restaurantId}/orders/mine`,
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to fetch your orders (${res.status})`);
+    }
+
+    const json: ApiResponse<Order[]> = await res.json();
+    if (!json.success || json.data == null) {
+      throw new Error(json.error ?? "Unexpected response");
+    }
+
+    return json.data;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    setOrderError(msg);
+    console.error("[orderStore] fetchMyOrdersInOpenSessions failed:", msg);
+    return [];
+  } finally {
+    setOrderLoading(false);
+  }
+}
+
+/**
  * Fetch orders placed by the current user in a session.
  */
 async function fetchMyOrdersInSession(
@@ -741,10 +798,18 @@ function clearOrderError(): void {
 }
 
 /**
- * Get the cached active session for a restaurant (without fetching).
+ * Get all cached open sessions for a restaurant (without fetching).
+ */
+function getOpenSessions(restaurantId: string): OrderSession[] {
+  return openSessionsByRestaurant()[restaurantId] ?? [];
+}
+
+/**
+ * Get the first cached open session for a restaurant (without fetching).
+ * Used for backward compatibility with components expecting a single session.
  */
 function getActiveSession(restaurantId: string): OrderSession | null {
-  return activeSessionByRestaurant()[restaurantId] ?? null;
+  return getOpenSessions(restaurantId)[0] ?? null;
 }
 
 /**
@@ -778,7 +843,8 @@ export {
   formatPrice,
 
   // ── Session state ───────────────────────────────────────────
-  activeSessionByRestaurant,
+  openSessionsByRestaurant,
+  getOpenSessions,
   getActiveSession,
   sessionLoading,
 
@@ -788,6 +854,7 @@ export {
   clearOrderError,
 
   // ── Session API ─────────────────────────────────────────────
+  fetchOpenSessions,
   fetchActiveSession,
   fetchSessionsForRestaurant,
   fetchSession,
@@ -802,9 +869,11 @@ export {
   placeOrder,
   fetchOrder,
   deleteOrder,
+  moveOrderToSession,
   fetchOrdersForSession,
   fetchOrderSummaries,
   fetchMyOrdersInSession,
+  fetchMyOrdersInOpenSessions,
 
   // ── Settings API ────────────────────────────────────────────
   fetchOrderSettings,

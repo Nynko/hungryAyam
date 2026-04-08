@@ -1,6 +1,7 @@
-import { Show, For, createSignal, createMemo } from "solid-js";
+import { Show, For, createSignal, createMemo, createEffect } from "solid-js";
 import { isImageSrc } from "@/lib/imageUrl";
 import type { MenuSectionItem } from "@bindings/MenuSectionItem";
+import type { OrderSession } from "@bindings/OrderSession";
 import {
   getCart,
   getCartTotal,
@@ -14,7 +15,8 @@ import {
   orderLoading,
   orderError,
   clearOrderError,
-  getActiveSession,
+  createSession,
+  sessionLoading,
   type CartItem,
 } from "@/stores/orderStore";
 import {
@@ -32,9 +34,24 @@ import type { ApiResponse } from "@bindings/ApiResponse";
 import type { Order } from "@bindings/Order";
 import type { CreateOrder } from "@bindings/CreateOrder";
 import type { CreateOrderItem } from "@bindings/CreateOrderItem";
+import type { CreateOrderSession } from "@bindings/CreateOrderSession";
+
+/** Round a Date up to the nearest 5 minutes and format as datetime-local string. */
+function toDatetimeLocal(date: Date): string {
+  const ms = 5 * 60 * 1000;
+  const rounded = new Date(Math.ceil(date.getTime() / ms) * ms);
+  const y = rounded.getFullYear();
+  const M = String(rounded.getMonth() + 1).padStart(2, "0");
+  const d = String(rounded.getDate()).padStart(2, "0");
+  const h = String(rounded.getHours()).padStart(2, "0");
+  const m = String(rounded.getMinutes()).padStart(2, "0");
+  return `${y}-${M}-${d}T${h}:${m}`;
+}
 
 interface CartPanelProps {
   restaurantId: string;
+  /** All currently open sessions for this restaurant. */
+  openSessions: OrderSession[];
   /** Called after an order is successfully placed. */
   onOrderPlaced?: () => void;
 }
@@ -61,10 +78,33 @@ export default function CartPanel(props: CartPanelProps) {
   const [placingOfferOrder, setPlacingOfferOrder] = createSignal(false);
   const [offerOrderError, setOfferOrderError] = createSignal<string | null>(null);
 
+  // ── Session selection ────────────────────────────────────────
+  // null = use backend default (auto-create); string = specific session id
+  const [selectedSessionId, setSelectedSessionId] = createSignal<string | null>(null);
+  // For "new slot" creation
+  const [showNewSlot, setShowNewSlot] = createSignal(false);
+  const [newSlotEnd, setNewSlotEnd] = createSignal(() => {
+    const d = new Date();
+    d.setHours(d.getHours() + 1, 0, 0, 0);
+    return toDatetimeLocal(d);
+  });
+  const [creatingSession, setCreatingSession] = createSignal(false);
+  const [newSlotError, setNewSlotError] = createSignal<string | null>(null);
+
+  // Auto-select the only session when there's exactly one
+  createEffect(() => {
+    const sessions = props.openSessions;
+    if (sessions.length === 1) {
+      setSelectedSessionId(sessions[0].id);
+    } else if (sessions.length === 0) {
+      setSelectedSessionId(null);
+    }
+    // If 2+ sessions and no selection, keep null (user must choose)
+  });
+
   const cart = () => getCart(props.restaurantId);
   const total = () => getCartTotal(props.restaurantId);
   const count = () => getCartCount(props.restaurantId);
-  const activeSession = () => getActiveSession(props.restaurantId);
 
   // ── Offer cart ──────────────────────────────────────────────────
   const offerCart = () => getOfferCart(props.restaurantId);
@@ -119,8 +159,13 @@ export default function CartPanel(props: CartPanelProps) {
     setOfferOrderError(null);
     setSuccessMessage(null);
 
-    const session = activeSession();
-    const sessionId = session?.id ?? null;
+    // If multiple sessions exist but none is selected, prompt user to choose
+    if (props.openSessions.length > 1 && !selectedSessionId()) {
+      setOfferOrderError("Please select a pickup time before placing your order.");
+      return;
+    }
+
+    const sessionId = selectedSessionId();
     let totalPlaced = 0;
     let lastTotalCents = 0;
 
@@ -196,6 +241,43 @@ export default function CartPanel(props: CartPanelProps) {
     clearOrderError();
     setOfferOrderError(null);
     setExpandedGroupId(null);
+    setShowNewSlot(false);
+    setNewSlotError(null);
+  };
+
+  /** Create a new pickup session and select it. */
+  const handleCreateNewSlot = async () => {
+    setNewSlotError(null);
+    const endStr = newSlotEnd();
+    if (!endStr) {
+      setNewSlotError("Please enter a pickup time.");
+      return;
+    }
+    const endMs = new Date(endStr).getTime();
+    if (isNaN(endMs) || endMs <= Date.now()) {
+      setNewSlotError("Pickup time must be in the future.");
+      return;
+    }
+
+    const now = new Date();
+    const request: CreateOrderSession = {
+      restaurant_id: props.restaurantId,
+      start_date: now.toISOString(),
+      end_date: new Date(endStr).toISOString(),
+      allow_late: false,
+    };
+
+    setCreatingSession(true);
+    try {
+      const session = await createSession(request);
+      if (session) {
+        setSelectedSessionId(session.id);
+        setShowNewSlot(false);
+        props.onOrderPlaced?.(); // triggers session refresh in parent
+      }
+    } finally {
+      setCreatingSession(false);
+    }
   };
 
   /** Add one more of the same item. */
@@ -619,15 +701,117 @@ export default function CartPanel(props: CartPanelProps) {
           </div>
         </Show>
 
-        {/* Active session info */}
-        <Show when={activeSession()}>
-          {(session) => (
-            <div class="notification is-info is-light is-size-7 py-2 px-3 mb-3">
-              <strong>Session:</strong> {session().status} — ends{" "}
-              {new Date(session().end_date).toLocaleString()}
+        {/* ── Pickup / Session picker ──────────────────────── */}
+        <div class="mb-3">
+          {/* No session at all */}
+          <Show when={props.openSessions.length === 0}>
+            <div class="notification is-info is-light is-size-7 py-2 px-3">
+              No pickup session open yet — one will be created automatically.
             </div>
-          )}
-        </Show>
+          </Show>
+
+          {/* Exactly one session — show it, no choice needed */}
+          <Show when={props.openSessions.length === 1}>
+            {(_) => {
+              const s = () => props.openSessions[0];
+              return (
+                <div class="notification is-info is-light is-size-7 py-2 px-3">
+                  <strong>Pickup by:</strong>{" "}
+                  {new Date(s().end_date).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                </div>
+              );
+            }}
+          </Show>
+
+          {/* Multiple sessions — user must choose */}
+          <Show when={props.openSessions.length > 1}>
+            <div class="mb-2">
+              <p class="is-size-7 has-text-weight-semibold mb-1">Pickup time</p>
+              <div class="is-flex is-flex-direction-column" style={{ gap: "0.35rem" }}>
+                <For each={props.openSessions}>
+                  {(session) => (
+                    <label
+                      class="box p-2 is-flex is-align-items-center"
+                      style={{
+                        cursor: "pointer",
+                        gap: "0.5rem",
+                        border: selectedSessionId() === session.id
+                          ? "2px solid var(--bulma-primary)"
+                          : "2px solid var(--bulma-border)",
+                        "border-radius": "6px",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="pickup-session"
+                        value={session.id}
+                        checked={selectedSessionId() === session.id}
+                        onChange={() => {
+                          setSelectedSessionId(session.id);
+                          setShowNewSlot(false);
+                        }}
+                      />
+                      <span class="is-size-7">
+                        {new Date(session.end_date).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                      </span>
+                    </label>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+
+          {/* "Add a time slot" option — always available */}
+          <Show
+            when={showNewSlot()}
+            fallback={
+              <button
+                class="button is-ghost is-small px-0 has-text-grey"
+                style={{ height: "auto", "font-size": "0.75rem", "text-decoration": "none" }}
+                onClick={() => setShowNewSlot(true)}
+                disabled={isLoading() || creatingSession()}
+              >
+                + Different pickup time
+              </button>
+            }
+          >
+            <div class="box p-3" style={{ "border": "1px solid var(--bulma-border)" }}>
+              <p class="is-size-7 has-text-weight-semibold mb-2">New pickup time</p>
+              <Show when={newSlotError()}>
+                <p class="help is-danger mb-1">{newSlotError()}</p>
+              </Show>
+              <div class="field has-addons mb-2">
+                <div class="control is-expanded">
+                  <input
+                    class="input is-small"
+                    type="datetime-local"
+                    value={newSlotEnd()}
+                    onInput={(e) => setNewSlotEnd(e.currentTarget.value)}
+                    disabled={creatingSession()}
+                  />
+                </div>
+                <div class="control">
+                  <button
+                    class="button is-primary is-small"
+                    classList={{ "is-loading": creatingSession() }}
+                    disabled={creatingSession()}
+                    onClick={handleCreateNewSlot}
+                  >
+                    Set
+                  </button>
+                </div>
+              </div>
+              <button
+                class="button is-ghost is-small px-0 has-text-grey"
+                style={{ height: "auto", "font-size": "0.72rem" }}
+                onClick={() => { setShowNewSlot(false); setNewSlotError(null); }}
+                disabled={creatingSession()}
+              >
+                Cancel
+              </button>
+            </div>
+          </Show>
+        </div>
 
         {/* Place order — requires auth */}
         <Show

@@ -209,6 +209,118 @@ impl OrderRepository {
         }
     }
 
+    /// List all open (Open status) sessions for a restaurant, ordered by end_date ascending.
+    pub async fn list_open_sessions_for_restaurant(
+        &self,
+        restaurant_id: Uuid,
+    ) -> Result<Vec<OrderSession>> {
+        let rows = sqlx::query_as!(
+            OrderSessionRow,
+            r#"
+            SELECT
+                id,
+                restaurant_id,
+                start_date,
+                end_date,
+                allow_late,
+                status as "status: OrderSessionStatus",
+                created_at,
+                created_by,
+                updated_at,
+                updated_by
+            FROM order_sessions
+            WHERE restaurant_id = $1
+              AND status = $2
+            ORDER BY end_date ASC
+            "#,
+            restaurant_id,
+            OrderSessionStatus::Open.as_i16(),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut sessions = Vec::with_capacity(rows.len());
+        for r in rows {
+            sessions.push(self.session_row_to_domain(r, vec![]));
+        }
+        Ok(sessions)
+    }
+
+    /// Count the number of orders in a session.
+    pub async fn count_orders_in_session(&self, session_id: Uuid) -> Result<i64> {
+        let count: i64 = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!" FROM orders WHERE session_id = $1"#,
+            session_id,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
+
+    /// Move an order to a different session (updates session_id on the order).
+    pub async fn move_order_to_session(
+        &self,
+        order_id: Uuid,
+        new_session_id: Uuid,
+    ) -> Result<bool> {
+        let result = sqlx::query!(
+            "UPDATE orders SET session_id = $1 WHERE id = $2",
+            new_session_id,
+            order_id,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Delete a session unconditionally (used for auto-cleanup of empty sessions).
+    /// Unlike `delete_session`, this does not check the status.
+    pub async fn delete_session_unconditionally(&self, session_id: Uuid) -> Result<bool> {
+        let result = sqlx::query!(
+            "DELETE FROM order_sessions WHERE id = $1",
+            session_id,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// List all orders placed by a specific user across all open sessions for a restaurant.
+    pub async fn list_orders_by_user_in_open_sessions(
+        &self,
+        restaurant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<Order>> {
+        let order_rows = sqlx::query_as!(
+            OrderRow,
+            r#"
+            SELECT
+                o.id,
+                o.user_id,
+                u.name as user_name,
+                os.restaurant_id,
+                o.session_id,
+                o.offer_id,
+                o.total_price_cents as "total_price_cents: PriceCents",
+                o.created_at
+            FROM orders o
+            JOIN order_sessions os ON os.id = o.session_id
+            JOIN users u ON u.id = o.user_id
+            WHERE os.restaurant_id = $1
+              AND o.user_id = $2
+              AND os.status = $3
+            ORDER BY os.end_date ASC, o.created_at ASC
+            "#,
+            restaurant_id,
+            user_id,
+            OrderSessionStatus::Open.as_i16(),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        self.order_rows_with_items(order_rows).await
+    }
+
     /// Update mutable fields on an order session (start_date, end_date, allow_late).
     pub async fn update_session(
         &self,

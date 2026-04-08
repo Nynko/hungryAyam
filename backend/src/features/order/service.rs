@@ -37,27 +37,13 @@ impl OrderService {
 
     /// Create a new order session for a restaurant.
     ///
-    /// The session starts in `Open` status. The service validates that the
-    /// restaurant does not already have an active session before creating a new
-    /// one (only one open session per restaurant at a time).
+    /// The session starts in `Open` status. Multiple open sessions are allowed
+    /// so that users can order for different pickup times concurrently.
     pub async fn create_session(
         &self,
         request: CreateOrderSession,
         user_id: Uuid,
     ) -> Result<OrderSession> {
-        // Validate: no existing active session for this restaurant
-        if let Some(existing) = self
-            .repository
-            .get_active_session_for_restaurant(request.restaurant_id)
-            .await?
-        {
-            return Err(anyhow!(
-                "Restaurant already has an active order session (id: {}). \
-                 Close or cancel it before creating a new one.",
-                existing.id
-            ));
-        }
-
         // Validate: end_date must be after start_date
         if request.end_date <= request.start_date {
             return Err(anyhow!(
@@ -99,6 +85,111 @@ impl OrderService {
     ) -> Result<Option<OrderSession>> {
         self.repository
             .get_active_session_for_restaurant(restaurant_id)
+            .await
+    }
+
+    /// List all open sessions for a restaurant, ordered by pickup time (end_date asc).
+    pub async fn list_open_sessions(
+        &self,
+        restaurant_id: Uuid,
+    ) -> Result<Vec<OrderSession>> {
+        self.repository
+            .list_open_sessions_for_restaurant(restaurant_id)
+            .await
+    }
+
+    /// Move an order to a different session.
+    ///
+    /// Validates that the user owns the order (or is an editor), that the
+    /// current session is Open, and that the target session is Open and belongs
+    /// to the same restaurant. After moving, auto-deletes the old session if it
+    /// has no remaining orders.
+    pub async fn move_order_to_session(
+        &self,
+        order_id: Uuid,
+        new_session_id: Uuid,
+        user_id: Uuid,
+        user_role: Option<UserRole>,
+    ) -> Result<Order> {
+        let order = self
+            .repository
+            .get_order_by_id(order_id)
+            .await?
+            .ok_or_else(|| anyhow!("Order not found"))?;
+
+        let is_owner = order.user_id == user_id;
+        let is_editor_or_above = user_role.as_ref().map_or(false, |r| r.is_editor_or_above());
+        if !is_owner && !is_editor_or_above {
+            return Err(anyhow!("You can only move your own orders"));
+        }
+
+        let old_session_id = order
+            .session_id
+            .ok_or_else(|| anyhow!("Order has no session_id"))?;
+
+        if old_session_id == new_session_id {
+            return Ok(order);
+        }
+
+        let old_session = self
+            .repository
+            .get_session_by_id(old_session_id)
+            .await?
+            .ok_or_else(|| anyhow!("Current session not found"))?;
+
+        if !old_session.status.is_accepting_orders() {
+            return Err(anyhow!(
+                "Cannot move an order from a session in '{}' status",
+                old_session.status
+            ));
+        }
+
+        let new_session = self
+            .repository
+            .get_session_by_id(new_session_id)
+            .await?
+            .ok_or_else(|| anyhow!("Target session not found"))?;
+
+        if new_session.restaurant_id != old_session.restaurant_id {
+            return Err(anyhow!("Target session belongs to a different restaurant"));
+        }
+
+        if !new_session.status.is_accepting_orders() {
+            return Err(anyhow!(
+                "Target session '{}' is not accepting orders (status: '{}')",
+                new_session_id,
+                new_session.status
+            ));
+        }
+
+        self.repository
+            .move_order_to_session(order_id, new_session_id)
+            .await?;
+
+        // Auto-delete old session if it is now empty
+        let remaining = self.repository.count_orders_in_session(old_session_id).await?;
+        if remaining == 0 {
+            let _ = self.repository.delete_session_unconditionally(old_session_id).await;
+            self.scheduler_notify.notify_one();
+        }
+
+        let updated_order = self
+            .repository
+            .get_order_by_id(order_id)
+            .await?
+            .ok_or_else(|| anyhow!("Order not found after move"))?;
+
+        Ok(updated_order)
+    }
+
+    /// List all orders placed by a specific user across all open sessions for a restaurant.
+    pub async fn list_orders_by_user_in_open_sessions(
+        &self,
+        restaurant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<Order>> {
+        self.repository
+            .list_orders_by_user_in_open_sessions(restaurant_id, user_id)
             .await
     }
 
@@ -446,7 +537,18 @@ impl OrderService {
             ));
         }
 
-        self.repository.delete_order(order_id).await
+        let deleted = self.repository.delete_order(order_id).await?;
+
+        // Auto-delete the session if it is now empty
+        if deleted {
+            let remaining = self.repository.count_orders_in_session(session_id).await?;
+            if remaining == 0 {
+                let _ = self.repository.delete_session_unconditionally(session_id).await;
+                self.scheduler_notify.notify_one();
+            }
+        }
+
+        Ok(deleted)
     }
 
     // ==================== ORDER SETTINGS OPERATIONS ====================
@@ -518,13 +620,20 @@ impl OrderService {
             return Ok(session);
         }
 
-        // Case 2: Look for an active session
-        if let Some(session) = self
+        // Case 2: Look for open sessions
+        let open_sessions = self
             .repository
-            .get_active_session_for_restaurant(restaurant_id)
-            .await?
-        {
-            return Ok(session);
+            .list_open_sessions_for_restaurant(restaurant_id)
+            .await?;
+
+        match open_sessions.len() {
+            1 => return Ok(open_sessions.into_iter().next().unwrap()),
+            n if n > 1 => {
+                return Err(anyhow!(
+                    "Multiple pickup sessions are available. Please select which session to order in."
+                ));
+            }
+            _ => {} // zero sessions — fall through to auto-create
         }
 
         // Case 3: Auto-create if enabled

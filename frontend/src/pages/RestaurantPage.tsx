@@ -18,10 +18,13 @@ import RestaurantSettingsPanel from "@/components/RestaurantSettingsPanel";
 import AuthPanel from "@/components/AuthPanel";
 import { isAuthenticated, isEditor, isAdmin } from "@/stores/authStore";
 import {
-  fetchActiveSession,
+  fetchOpenSessions,
+  getOpenSessions,
   getActiveSession,
-  fetchMyOrdersInSession,
+  fetchMyOrdersInOpenSessions,
   deleteOrder,
+  moveOrderToSession,
+  createSession,
   sessionLoading,
   orderLoading,
   getCartCount,
@@ -66,7 +69,7 @@ export default function RestaurantPage() {
   const [restaurant] = createResource(() => params.id, fetchRestaurant);
   const [menus] = createResource(() => params.id, fetchMenus);
 
-  // ── Active session ──────────────────────────────────────────────
+  // ── Open sessions ───────────────────────────────────────────────
   const [sessionVersion, setSessionVersion] = createSignal(0);
 
   // ── Active offers (for menu filtering) ──────────────────────────
@@ -96,7 +99,7 @@ export default function RestaurantPage() {
   });
 
   onMount(async () => {
-    await fetchActiveSession(params.id);
+    await fetchOpenSessions(params.id);
     setSessionVersion((v) => v + 1);
     refreshMyOrders();
 
@@ -105,14 +108,17 @@ export default function RestaurantPage() {
     setActiveOffers(offers);
   });
 
-  const activeSession = createMemo(() => {
+  const openSessions = createMemo(() => {
     // Re-read whenever sessionVersion changes (after transitions)
     sessionVersion();
-    return getActiveSession(params.id);
+    return getOpenSessions(params.id);
   });
 
+  // For backward compat with ActiveSessionBanner (shows the first open session)
+  const activeSession = createMemo(() => openSessions()[0] ?? null);
+
   const refreshSession = async () => {
-    await fetchActiveSession(params.id);
+    await fetchOpenSessions(params.id);
     setSessionVersion((v) => v + 1);
     // Also refresh my orders when session changes
     refreshMyOrders();
@@ -124,14 +130,13 @@ export default function RestaurantPage() {
   const [myOrdersVersion, setMyOrdersVersion] = createSignal(0);
 
   const refreshMyOrders = async () => {
-    const session = getActiveSession(params.id);
-    if (!session || !isAuthenticated()) {
+    if (!isAuthenticated()) {
       setMyOrders([]);
       return;
     }
     setMyOrdersLoading(true);
     try {
-      const orders = await fetchMyOrdersInSession(session.id);
+      const orders = await fetchMyOrdersInOpenSessions(params.id);
       setMyOrders(orders);
     } finally {
       setMyOrdersLoading(false);
@@ -183,13 +188,14 @@ export default function RestaurantPage() {
 
   const [showInactive, setShowInactive] = createSignal(false);
 
-  // Can place orders if session is Open (or allow_late + Open) AND restaurant is available
+  // Can place orders if restaurant is available and at least one open session exists
+  // (or none — backend will auto-create if configured to do so)
   const canOrder = createMemo(() => {
-    // Restaurant must be available
     if (!restaurantAvailability().available) return false;
-    const session = activeSession();
-    if (!session) return true; // Backend will auto-create session
-    return session.status === "Open";
+    const sessions = openSessions();
+    // If there are sessions, all must be Open (they are by definition from the open endpoint)
+    // If there are no sessions, backend may auto-create on order
+    return sessions.length === 0 || sessions.some((s) => s.status === "Open");
   });
 
   return (
@@ -331,19 +337,19 @@ export default function RestaurantPage() {
                 </div>
               </Show>
 
-              {/* ── Active session banner ──────────────────────── */}
-              <Show when={activeSession()}>
+              {/* ── Session banners (one per open session) ─────── */}
+              <For each={openSessions()}>
                 {(session) => (
                   <ActiveSessionBanner
-                    session={session()}
+                    session={session}
                     restaurantId={r().id}
                     onSessionChanged={refreshSession}
                   />
                 )}
-              </Show>
+              </For>
 
               {/* ── My Orders ──────────────────────────────────── */}
-              <Show when={isAuthenticated() && activeSession() && (myOrders().length > 0 || myOrdersLoading())}>
+              <Show when={isAuthenticated() && (myOrders().length > 0 || myOrdersLoading())}>
                 <Card class="mb-4">
                   <div class="card-content">
                     <h3 class="title is-5 mb-3">🧾 My Orders</h3>
@@ -360,7 +366,24 @@ export default function RestaurantPage() {
                         {(order) => {
                           const totalItems = () => order.items.length;
                           const [deleting, setDeleting] = createSignal(false);
-                          const sessionIsOpen = () => activeSession()?.status === "Open";
+                          const [showMove, setShowMove] = createSignal(false);
+                          const [moveSessionId, setMoveSessionId] = createSignal<string | null>(null);
+                          const [moving, setMoving] = createSignal(false);
+                          const [showNewMoveSlot, setShowNewMoveSlot] = createSignal(false);
+                          const [newMoveSlotEnd, setNewMoveSlotEnd] = createSignal(() => {
+                            const d = new Date();
+                            d.setHours(d.getHours() + 1, 0, 0, 0);
+                            return d.toISOString().slice(0, 16);
+                          });
+
+                          // The session this order currently belongs to
+                          const orderSession = () =>
+                            openSessions().find((s) => s.id === order.session_id) ?? null;
+                          const sessionIsOpen = () => orderSession()?.status === "Open";
+
+                          // Other sessions the user could move to
+                          const otherSessions = () =>
+                            openSessions().filter((s) => s.id !== order.session_id);
 
                           const handleDelete = async () => {
                             const confirmed = await showConfirm({
@@ -381,21 +404,78 @@ export default function RestaurantPage() {
                             }
                           };
 
+                          const handleMove = async () => {
+                            const targetId = moveSessionId();
+                            if (!targetId) return;
+                            setMoving(true);
+                            const moved = await moveOrderToSession(order.id, targetId);
+                            setMoving(false);
+                            if (moved) {
+                              setShowMove(false);
+                              await refreshMyOrders();
+                              await refreshSession();
+                            }
+                          };
+
+                          const handleMoveToNewSlot = async () => {
+                            const endStr = newMoveSlotEnd();
+                            if (!endStr || new Date(endStr).getTime() <= Date.now()) return;
+                            setMoving(true);
+                            try {
+                              const now = new Date();
+                              const newSession = await createSession({
+                                restaurant_id: r().id,
+                                start_date: now.toISOString(),
+                                end_date: new Date(endStr).toISOString(),
+                                allow_late: false,
+                              });
+                              if (newSession) {
+                                await refreshSession();
+                                const moved = await moveOrderToSession(order.id, newSession.id);
+                                if (moved) {
+                                  setShowMove(false);
+                                  await refreshMyOrders();
+                                  await refreshSession();
+                                }
+                              }
+                            } finally {
+                              setMoving(false);
+                            }
+                          };
+
                           return (
                             <div class="box p-3 mb-2">
                               <div class="is-flex is-justify-content-space-between is-align-items-center mb-2">
-                                <span class="has-text-weight-semibold">
-                                  {totalItems()} item{totalItems() !== 1 ? "s" : ""}
-                                </span>
+                                <div>
+                                  <span class="has-text-weight-semibold">
+                                    {totalItems()} item{totalItems() !== 1 ? "s" : ""}
+                                  </span>
+                                  <Show when={orderSession()}>
+                                    {(s) => (
+                                      <span class="tag is-info is-light is-size-7 ml-2">
+                                        {new Date(s().end_date).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                                      </span>
+                                    )}
+                                  </Show>
+                                </div>
                                 <div class="is-flex is-align-items-center" style={{ gap: "0.5rem" }}>
                                   <span class="has-text-weight-bold">
                                     €{formatPrice(order.total_price_cents)}
                                   </span>
                                   <Show when={sessionIsOpen()}>
                                     <button
+                                      class="button is-small is-info is-outlined"
+                                      classList={{ "is-loading": moving() }}
+                                      disabled={deleting() || moving() || orderLoading()}
+                                      onClick={() => setShowMove(!showMove())}
+                                      title="Change pickup time"
+                                    >
+                                      <span class="icon is-small"><span>🕐</span></span>
+                                    </button>
+                                    <button
                                       class="button is-small is-danger is-outlined"
                                       classList={{ "is-loading": deleting() }}
-                                      disabled={deleting() || orderLoading()}
+                                      disabled={deleting() || moving() || orderLoading()}
                                       onClick={handleDelete}
                                       title="Delete this order"
                                     >
@@ -404,6 +484,101 @@ export default function RestaurantPage() {
                                   </Show>
                                 </div>
                               </div>
+
+                              {/* Move to session UI */}
+                              <Show when={showMove()}>
+                                <div
+                                  class="p-2 mb-2"
+                                  style={{ background: "var(--bulma-scheme-main-bis)", "border-radius": "6px" }}
+                                >
+                                  <p class="is-size-7 has-text-weight-semibold mb-2">Move to a different pickup time</p>
+
+                                  {/* Existing other sessions */}
+                                  <Show when={otherSessions().length > 0}>
+                                    <div class="is-flex is-flex-direction-column mb-2" style={{ gap: "0.3rem" }}>
+                                      <For each={otherSessions()}>
+                                        {(session) => (
+                                          <label
+                                            class="is-flex is-align-items-center"
+                                            style={{ gap: "0.4rem", cursor: "pointer" }}
+                                          >
+                                            <input
+                                              type="radio"
+                                              name={`move-session-${order.id}`}
+                                              value={session.id}
+                                              checked={moveSessionId() === session.id}
+                                              onChange={() => {
+                                                setMoveSessionId(session.id);
+                                                setShowNewMoveSlot(false);
+                                              }}
+                                            />
+                                            <span class="is-size-7">
+                                              {new Date(session.end_date).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                                            </span>
+                                          </label>
+                                        )}
+                                      </For>
+                                    </div>
+                                  </Show>
+
+                                  {/* New slot option */}
+                                  <Show
+                                    when={showNewMoveSlot()}
+                                    fallback={
+                                      <button
+                                        class="button is-ghost is-small px-0 has-text-grey mb-2"
+                                        style={{ height: "auto", "font-size": "0.72rem" }}
+                                        onClick={() => { setShowNewMoveSlot(true); setMoveSessionId(null); }}
+                                      >
+                                        + New pickup time
+                                      </button>
+                                    }
+                                  >
+                                    <div class="field has-addons mb-2">
+                                      <div class="control is-expanded">
+                                        <input
+                                          class="input is-small"
+                                          type="datetime-local"
+                                          value={newMoveSlotEnd()}
+                                          onInput={(e) => setNewMoveSlotEnd(e.currentTarget.value)}
+                                          disabled={moving()}
+                                        />
+                                      </div>
+                                      <div class="control">
+                                        <button
+                                          class="button is-primary is-small"
+                                          classList={{ "is-loading": moving() }}
+                                          disabled={moving()}
+                                          onClick={handleMoveToNewSlot}
+                                        >
+                                          Move
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </Show>
+
+                                  <div class="is-flex" style={{ gap: "0.5rem" }}>
+                                    <Show when={moveSessionId()}>
+                                      <button
+                                        class="button is-primary is-small"
+                                        classList={{ "is-loading": moving() }}
+                                        disabled={moving() || !moveSessionId()}
+                                        onClick={handleMove}
+                                      >
+                                        Move
+                                      </button>
+                                    </Show>
+                                    <button
+                                      class="button is-light is-small"
+                                      disabled={moving()}
+                                      onClick={() => { setShowMove(false); setMoveSessionId(null); setShowNewMoveSlot(false); }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              </Show>
+
                               <div>
                                 <For each={groupOrderItems(order.items)}>
                                   {(group) => (
@@ -586,6 +761,7 @@ export default function RestaurantPage() {
                     <div style={{ position: "sticky", top: "1rem" }}>
                       <CartPanel
                         restaurantId={r().id}
+                        openSessions={openSessions()}
                         onOrderPlaced={() => {
                           refreshSession();
                           refreshMyOrders();

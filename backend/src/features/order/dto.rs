@@ -25,6 +25,13 @@ pub struct OrderSessionStatusResponse {
 
 pub type CreateOrderRequest = CreateOrder;
 
+/// Request body to move an order to a different session.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct MoveOrderToSessionRequest {
+    pub new_session_id: Uuid,
+}
+
 /// Summary of an order for list views (without full item details).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]

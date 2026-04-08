@@ -16,8 +16,9 @@ use crate::{
             order_settings::RestaurantOrderSettings,
         },
         dto::{
-            CreateOrderRequest, CreateOrderSessionRequest, OrderSessionStatusResponse,
-            OrderSummary, UpdateOrderSessionRequest, UpdateOrderSettingsRequest,
+            CreateOrderRequest, CreateOrderSessionRequest, MoveOrderToSessionRequest,
+            OrderSessionStatusResponse, OrderSummary, UpdateOrderSessionRequest,
+            UpdateOrderSettingsRequest,
         },
     },
     state::AppState,
@@ -45,10 +46,15 @@ pub fn order_routes() -> Router<AppState> {
             "/api/restaurants/:restaurant_id/order-sessions/active",
             get(get_active_session),
         )
+        .route(
+            "/api/restaurants/:restaurant_id/order-sessions/open",
+            get(list_open_sessions),
+        )
         // ── Order routes ──────────────────────────────────────────
         .route("/api/orders", post(create_order))
         .route("/api/orders/:id", get(get_order))
         .route("/api/orders/:id", delete(delete_order))
+        .route("/api/orders/:id/move-to-session", post(move_order_to_session))
         .route(
             "/api/order-sessions/:session_id/orders",
             get(list_orders_for_session),
@@ -60,6 +66,10 @@ pub fn order_routes() -> Router<AppState> {
         .route(
             "/api/order-sessions/:session_id/orders/mine",
             get(list_my_orders_in_session),
+        )
+        .route(
+            "/api/restaurants/:restaurant_id/orders/mine",
+            get(list_my_orders_in_open_sessions),
         )
         // ── Restaurant Order Settings routes ──────────────────────
         .route(
@@ -74,9 +84,9 @@ pub fn order_routes() -> Router<AppState> {
 
 // ==================== ORDER SESSION HANDLERS ====================
 
-/// Create a new order session (requires editor user)
+/// Create a new order session (requires authenticated user)
 pub async fn create_session(
-    EditorUser(user): EditorUser,
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     ApiJson(request): ApiJson<CreateOrderSessionRequest>,
 ) -> Result<(StatusCode, ApiJson<ApiResponse<OrderSession>>), ApiError> {
@@ -130,7 +140,7 @@ pub async fn delete_session(
 
 /// Cancel an order session (requires editor user)
 pub async fn cancel_session(
-    EditorUser(user): EditorUser,
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
@@ -144,9 +154,9 @@ pub async fn cancel_session(
     })))
 }
 
-/// Close an order session — stop accepting new orders (requires editor user)
+/// Close an order session — stop accepting new orders
 pub async fn close_session(
-    EditorUser(user): EditorUser,
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
@@ -160,9 +170,9 @@ pub async fn close_session(
     })))
 }
 
-/// Mark a session as sent — orders dispatched to restaurant (requires editor user)
+/// Mark a session as sent — orders dispatched to restaurant
 pub async fn send_session(
-    EditorUser(user): EditorUser,
+    AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
@@ -190,6 +200,18 @@ pub async fn reopen_session(
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
         session,
     })))
+}
+
+/// List all open sessions for a restaurant (by pickup time, ascending)
+pub async fn list_open_sessions(
+    State(app_state): State<AppState>,
+    Path(restaurant_id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<Vec<OrderSession>>>, ApiError> {
+    let sessions = app_state
+        .order_service
+        .list_open_sessions(restaurant_id)
+        .await?;
+    Ok(ApiJson(ApiResponse::success(sessions)))
 }
 
 /// List all sessions for a restaurant (most recent first)
@@ -259,6 +281,20 @@ pub async fn delete_order(
     }
 }
 
+/// Move an order to a different session
+pub async fn move_order_to_session(
+    AuthUser(user): AuthUser,
+    State(app_state): State<AppState>,
+    Path(order_id): Path<Uuid>,
+    ApiJson(request): ApiJson<MoveOrderToSessionRequest>,
+) -> Result<ApiJson<ApiResponse<Order>>, ApiError> {
+    let order = app_state
+        .order_service
+        .move_order_to_session(order_id, request.new_session_id, user.id, user.role)
+        .await?;
+    Ok(ApiJson(ApiResponse::success(order)))
+}
+
 /// List all orders in a session (with items)
 pub async fn list_orders_for_session(
     State(app_state): State<AppState>,
@@ -292,6 +328,19 @@ pub async fn list_my_orders_in_session(
     let orders = app_state
         .order_service
         .list_orders_by_user_in_session(session_id, user.id)
+        .await?;
+    Ok(ApiJson(ApiResponse::success(orders)))
+}
+
+/// List orders placed by the current user across all open sessions for a restaurant
+pub async fn list_my_orders_in_open_sessions(
+    AuthUser(user): AuthUser,
+    State(app_state): State<AppState>,
+    Path(restaurant_id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<Vec<Order>>>, ApiError> {
+    let orders = app_state
+        .order_service
+        .list_orders_by_user_in_open_sessions(restaurant_id, user.id)
         .await?;
     Ok(ApiJson(ApiResponse::success(orders)))
 }

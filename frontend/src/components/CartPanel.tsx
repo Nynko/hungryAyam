@@ -557,7 +557,7 @@ export default function CartPanel(props: CartPanelProps) {
                                   class="input is-small"
                                   type="text"
                                   placeholder={group.quantity > 1 ? `Item ${idx() + 1} — e.g. not spicy` : "e.g. not spicy, extra sauce…"}
-                                  value={entry.notes ?? ""}
+                                  ref={(el) => { el.value = entry.notes ?? ""; }}
                                   onInput={(e) =>
                                     updateCartItemNotes(
                                       props.restaurantId,

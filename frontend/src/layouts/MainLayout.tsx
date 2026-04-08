@@ -122,6 +122,11 @@ const MainLayout: ParentComponent = (props) => {
           <p>
             <strong>HungryAyam</strong> — Group food ordering made simple.
           </p>
+          <p>
+            <a href="https://github.com/Nynko/hungryAyam" target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>
+          </p>
         </div>
       </footer>
 

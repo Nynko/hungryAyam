@@ -1,6 +1,6 @@
-# Food Ordering Backend (Rust)
+# HungryAyam Backend (Rust)
 
-This project is a **Rust backend** for a semi-private food ordering application.
+A **Rust/Axum backend** for a semi-private group food ordering application.
 
 The architecture intentionally prioritizes:
 
@@ -8,15 +8,14 @@ The architecture intentionally prioritizes:
 * **Velocity**
 * **Explicit evolution paths**
 
-At the current stage, **domain models, database rows, and API DTOs share the same Rust structs**.
-This is a deliberate choice, not a limitation.
+Domain models, database rows, and API DTOs share the same Rust structs by default — a deliberate choice for this stage of development, not a limitation.
 
 ---
 
 ## 🧱 High-Level Architecture
 
 ```
-Frontend (SolidJS)
+Frontend (SolidJS + Deno)
         |
         | JSON / HTTPS
         ▼
@@ -39,227 +38,193 @@ The backend is the **single authority**:
 
 ```
 src/
-├─ api/
-│  └─ routes/        # HTTP handlers (Axum)
+├─ features/
+│  ├─ auth/              # JWT, cookies, session tokens, middleware extractors
+│  ├─ user/              # Users, roles, guest/password auth
+│  ├─ restaurant/        # Restaurant CRUD
+│  ├─ item/              # Menu items & tags
+│  ├─ menu/              # Menus, sections, section items
+│  ├─ order/             # Order sessions, orders, order items, settings
+│  ├─ offer/             # Offer slots, constraints, price validation
+│  ├─ availability/      # Availability rules (date range, time window, weekdays)
+│  ├─ upload/            # Image upload & WebP conversion
+│  └─ menu_scan/         # AI-powered menu scanning (Claude API)
 │
-├─ domain/           # Core models (domain / DB / API for now)
-│
-├─ repository/       # SQL queries (SQLx)
-│
-├─ services/         # Use-cases & business rules
-│
-├─ auth/             # JWT, cookies, middleware
-│
-├─ errors.rs         # API error handling
-├─ app.rs            # Router & application state
-└─ main.rs           # Application bootstrap
+├─ types/                # Validated custom types (Name, Email, PriceCents, …)
+├─ errors/               # ApiError — typed errors, internal errors logged not exposed
+├─ scheduler/            # Background tasks (auto-close sessions, reset menus)
+├─ state.rs              # Shared app state (DB pool, config)
+├─ app.rs                # Router & middleware setup
+└─ main.rs               # Application bootstrap
 ```
 
-The **folder structure already expresses architectural intent**, even when some layers share types.
+---
+
+## 🌐 API Overview
+
+All routes are prefixed with `/api/`.
+
+| Group | Key endpoints |
+|---|---|
+| **Auth** | `POST /auth/guest`, `POST /auth/login`, `POST /auth/register`, `GET /auth/me`, `POST /auth/logout` |
+| **Admin** | User management, role assignment, magic link generation, editor domain config |
+| **Restaurants** | CRUD + active listing |
+| **Items & Tags** | CRUD, batch create, restaurant-scoped listing |
+| **Menus** | CRUD with sections & items, permanent vs. non-permanent menus |
+| **Order Sessions** | Lifecycle: Open → Closed/Cancelled → Sent, per-restaurant settings |
+| **Orders** | Create, list (mine / all / summaries) |
+| **Offers** | Slots & constraints, price validation, activate/deactivate |
+| **Availability** | Rules assignable to restaurants, menus, items, or offers |
+| **Uploads** | `POST /uploads` — auto-resized WebP images |
+| **Menu Scan** | `POST /menu-scan` (images), `POST /menu-scan-url` (URL scraping) |
+| **Setup** | `GET /setup`, `POST /setup` — first-run admin bootstrap |
+
+---
+
+## 🔐 Authentication
+
+**Session-token based** — tokens live in the `user_sessions` table and are read from the `Authorization: Bearer` header or the `session_token` cookie.
+
+### Auth methods
+
+| Method | Description |
+|---|---|
+| **Guest (NameWithCookie)** | Name only, no password, 30-day session |
+| **Password** | Email + Argon2 password hash, 7-day session |
+
+### Roles
+
+| Role | Capabilities |
+|---|---|
+| _(unauthenticated)_ | Site access gate only |
+| **User** | View menus, create orders |
+| **Editor** | + Create/edit restaurants, menus, items, offers, order sessions |
+| **Admin** | + User management, role assignment, site settings |
+
+### Site access gate
+
+A shared site password (SHA-256 hashed, stored in `app_settings`) lets external visitors access the app. Grants a `site_access` cookie (365 days). Shareable magic links supported.
+
+### Editor eligibility
+
+Only password-authenticated users can become editors. An email domain restriction can optionally be enforced (configurable by admins).
 
 ---
 
 ## 🧠 Core Model Strategy
 
-### Single Source of Truth
+Each concept (e.g. `Restaurant`) is represented by **one Rust struct** that currently serves three roles:
 
-Each business concept (e.g. `Restaurant`) is represented by **one Rust struct** that currently serves three roles:
+1. **Domain model** — business truth
+2. **Database row** — `sqlx::FromRow`
+3. **API DTO** — TypeScript bindings via `ts-rs`
 
-1. **Domain model** (business truth)
-2. **Database row model** (`sqlx::FromRow`)
-3. **API DTO** (TypeScript generation)
-
-Example:
+Type aliases express architectural intent without duplication:
 
 ```rust
-use uuid::Uuid;
-use time::OffsetDateTime;
-use ts_rs::TS;
-
-// Remove `sqlx::FromRow` if the database diverges from the domain
-// Remove `TS` and `#[ts(export)]` if the frontend DTO diverges from the domain
-#[derive(Debug, Clone, TS, sqlx::FromRow)]
-#[ts(export)]
-pub struct Restaurant {
-    pub id: Uuid,
-    pub name: String,
-    pub image_url: Option<String>,
-    pub created_at: OffsetDateTime,
-}
+pub type RestaurantRow = Restaurant; // repository layer
+pub type RestaurantDto = Restaurant; // API layer
 ```
 
-This keeps the system:
+### Evolution path
 
-* Easy to reason about
-* Free of duplication
-* Fast to iterate on
+| Scenario | Action |
+|---|---|
+| DB schema diverges from domain | Remove `sqlx::FromRow`, introduce `RestaurantRow`, add conversion |
+| API shape diverges from domain | Remove `TS`/`#[ts(export)]`, introduce `RestaurantDto`, map explicitly |
+| Both diverge | Domain stays pure; repository and API each get their own types |
+
+No large refactors required — the architecture already shows where and how to split.
 
 ---
 
-## 🧩 Type Aliases Instead of Duplicate Models
+## ✨ Notable Features
 
-To keep **architectural clarity without duplication**, type aliases are used:
+### AI-Powered Menu Scanning
 
-```rust
-pub type RestaurantRow = Restaurant; // repository
-pub type RestaurantDto = Restaurant; // API
+* Endpoint: `POST /api/menu-scan` (up to 5 images × 10 MB) and `POST /api/menu-scan-url` (URL scraping + images)
+* Uses **Claude claude-sonnet-4-20250514** to extract sections, items, tags, and prices from menu photos or web pages
+* Daily rate limits: 20 global / 5 per user
+* Cancellation token propagated to Claude API on client disconnect
+
+### Image Upload & Optimisation
+
+* Accepts JPEG, PNG, WebP, GIF (max 10 MB)
+* Auto-resized to max 1200×1200 px (Lanczos3)
+* Converted to **WebP** (quality 82) and stored in `/uploads/`
+
+### Offers / Deals System
+
+A flexible pricing model for fixed-price menus (e.g., "menu du jour"):
+
+* **Offer** — base price, optional menu link
+* **Slots** — e.g., Starter / Main / Dessert, each with min/max item counts and a flat supplement
+* **Constraints** — filter allowed items per slot (by item, tag, or menu section), each with an optional per-item supplement
+* Price is validated server-side before order creation
+
+### Availability Rules
+
+Rules are assignable to restaurants, menus, items, and offers:
+
+* Date range (`valid_from` / `valid_to`)
+* Daily time window (`start_time` / `end_time`, supports overnight ranges)
+* Weekday filter (ISO 8601: Mon=0 … Sun=6)
+* Master `active` toggle
+
+### Order Session Lifecycle
+
+```
+Open → Closed → Sent
+     ↘ Cancelled
 ```
 
-This makes intent explicit:
-
-* These roles are **conceptually distinct**
-* They are **structurally identical for now**
-
----
-
-## 🪜 Evolution Strategy (Very Important)
-
-This project is designed to evolve safely.
-
-### When the database diverges from the domain
-
-Examples:
-
-* denormalization
-* audit fields
-* joins / views
-* legacy schemas
-
-Action:
-
-* Remove `sqlx::FromRow` from the domain model
-* Introduce a dedicated `RestaurantRow`
-* Add an explicit conversion
+* Sessions auto-close after `duration_minutes` (background scheduler)
+* Closed sessions can be reopened; Sent/Cancelled are terminal
+* Non-permanent menus auto-reset after a session closes
+* Per-restaurant: order limit and minimum order price
 
 ---
 
-### When the API diverges from the domain
+## 🗄️ Database & Migrations
 
-Examples:
+* Managed via **SQLx migrations** (`migrations/`)
+* 24 migrations as of April 2026
+* Schema lives in SQL, not Rust — versioned and repeatable
 
-* hide fields
-* rename fields
-* add computed fields
-* version the API
-
-Action:
-
-* Remove `TS` and `#[ts(export)]` from the domain model
-* Introduce a dedicated `RestaurantDto`
-* Map domain → DTO explicitly
+Key tables: `app_settings`, `users`, `user_sessions`, `restaurants`, `menus`, `menu_sections`, `menu_section_items`, `items`, `tags`, `order_sessions`, `orders`, `user_order_items`, `offers`, `offer_slots`, `offer_slot_constraints`, `availability_rules`, `restaurant_order_settings`, `scheduled_tasks`
 
 ---
 
-### When both diverge
+## ⚙️ Key Dependencies
 
-The same pattern applies:
-
-* Domain remains pure
-* Repository and API get their own models
-* Conversions become explicit and localized
-
-No large refactors are required.
-
----
-
-## 🗄️ Repository Layer
-
-The repository layer:
-
-* Contains **only SQL queries**
-* Uses SQLx
-* Returns domain models (or aliases)
-
-**No business logic lives here.**
-
----
-
-## ⚙️ Services Layer
-
-Services orchestrate:
-
-* Repositories
-* Business rules
-* Cross-entity workflows
-
-Examples:
-
-* Prevent creating multiple active orders
-* Enforce deadlines
-* Handle temporary vs permanent menus
-
-Services:
-
-* Do not know about HTTP
-* Do not know about JSON
-
----
-
-## 🌐 API Routes
-
-Routes:
-
-* Validate inputs
-* Call services
-* Return JSON responses
-
-They:
-
-* Do not contain business rules
-* Do not contain SQL
+| Crate | Purpose |
+|---|---|
+| `axum` 0.7 | Web framework |
+| `tokio` 1 | Async runtime |
+| `sqlx` 0.8 | SQL toolkit (compile-time verified queries, Postgres) |
+| `serde` / `serde_json` | Serialization |
+| `ts-rs` 7 | TypeScript type generation |
+| `argon2` | Password hashing |
+| `image` / `webp` | Image processing & WebP encoding |
+| `reqwest` 0.12 | HTTP client (Claude API calls) |
+| `tokio-util` | CancellationToken |
+| `tracing` | Structured logging |
+| `anyhow` / `thiserror` | Error handling |
 
 ---
 
 ## ⚠️ Error Handling
 
 * Internal logic uses `anyhow`
-* Public API uses a typed `ApiError`
-* Internal errors are logged, not exposed
-
-This keeps the API predictable and safe.
-
----
-
-## 🗄️ Database & Migrations
-
-* Managed via **SQLx migrations**
-* Schema lives in SQL, not Rust
-* Versioned and repeatable
-
-```
-migrations/
-└─ 2026xxxx_init_schema.sql
-```
+* Public API returns a typed `ApiError`
+* Internal errors are logged (via `tracing`), never exposed to clients
 
 ---
 
 ## 🎯 Design Philosophy
 
-This codebase favors:
-
 * **Clarity over ceremony**
 * **Explicit intent over abstraction**
-* **Refactoring only when necessary**
+* **Refactor only when necessary**
 
-As long as:
-
-```
-Domain == DB == API
-```
-
-Sharing models is the **simplest and safest option**.
-
-When that equality breaks, the architecture already shows **where and how to split**.
-
----
-
-## ✅ Summary
-
-* One struct per concept (for now)
-* Type aliases to express intent
-* No duplication
-* Clear evolution paths
-* Business rules enforced server-side
-* Frontend kept simple and untrusted
-
-This architecture is intentionally **minimal**, **honest**, and **future-proof**.
+As long as `Domain == DB == API`, sharing one struct is the simplest and safest option. When that equality breaks, the architecture already shows where and how to split — with no large rewrites required.

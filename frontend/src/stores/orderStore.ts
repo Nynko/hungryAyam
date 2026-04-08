@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js";
+import { createStore, produce } from "solid-js/store";
 import type { ApiResponse } from "@bindings/ApiResponse";
 import type { Order } from "@bindings/Order";
 import type { OrderItem } from "@bindings/OrderItem";
@@ -32,7 +33,7 @@ export interface CartItem {
 // ══════════════════════════════════════════════════════════════════
 
 /** Cart items keyed by restaurant ID */
-const [cartsByRestaurant, setCartsByRestaurant] = createSignal<
+const [cartsByRestaurant, setCartsByRestaurant] = createStore<
   Record<string, CartItem[]>
 >({});
 
@@ -59,66 +60,52 @@ let nextCartKey = 1;
  * Get the cart items for a specific restaurant.
  */
 function getCart(restaurantId: string): CartItem[] {
-  return cartsByRestaurant()[restaurantId] ?? [];
+  return cartsByRestaurant[restaurantId] ?? [];
 }
 
 /**
  * Add an item to the cart for a restaurant.
  */
 function addToCart(restaurantId: string, sectionItem: MenuSectionItem): void {
-  setCartsByRestaurant((prev) => {
-    const existing = prev[restaurantId] ?? [];
-    return {
-      ...prev,
-      [restaurantId]: [
-        ...existing,
-        { sectionItem, notes: null, key: nextCartKey++ },
-      ],
-    };
-  });
+  const existing = cartsByRestaurant[restaurantId] ?? [];
+  setCartsByRestaurant(restaurantId, [
+    ...existing,
+    { sectionItem, notes: null, key: nextCartKey++ },
+  ]);
 }
 
 /**
  * Remove an item from the cart by its unique key.
  */
 function removeFromCart(restaurantId: string, key: number): void {
-  setCartsByRestaurant((prev) => {
-    const existing = prev[restaurantId] ?? [];
-    return {
-      ...prev,
-      [restaurantId]: existing.filter((item) => item.key !== key),
-    };
-  });
+  setCartsByRestaurant(restaurantId, (prev) =>
+    (prev ?? []).filter((item) => item.key !== key),
+  );
 }
 
 /**
  * Update the notes for a cart item.
+ * Fine-grained store mutation — preserves object identity so <For> does not
+ * recreate DOM elements (and inputs do not lose focus while typing).
  */
 function updateCartItemNotes(
   restaurantId: string,
   key: number,
   notes: string | null,
 ): void {
-  setCartsByRestaurant((prev) => {
-    const existing = prev[restaurantId] ?? [];
-    return {
-      ...prev,
-      [restaurantId]: existing.map((item) =>
-        item.key === key ? { ...item, notes } : item,
-      ),
-    };
-  });
+  const cart = cartsByRestaurant[restaurantId];
+  if (!cart) return;
+  const idx = cart.findIndex((item) => item.key === key);
+  if (idx !== -1) {
+    setCartsByRestaurant(restaurantId, idx, "notes", notes);
+  }
 }
 
 /**
  * Clear the entire cart for a restaurant.
  */
 function clearCart(restaurantId: string): void {
-  setCartsByRestaurant((prev) => {
-    const next = { ...prev };
-    delete next[restaurantId];
-    return next;
-  });
+  setCartsByRestaurant(produce((draft) => { delete draft[restaurantId]; }));
 }
 
 /**

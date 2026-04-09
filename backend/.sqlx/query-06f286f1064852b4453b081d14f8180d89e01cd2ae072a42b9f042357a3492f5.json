@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                o.id,\n                o.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                o.session_id,\n                o.offer_id,\n                of.title as offer_title,\n                o.total_price_cents as \"total_price_cents: PriceCents\",\n                o.created_at\n            FROM orders o\n            JOIN order_sessions os ON os.id = o.session_id\n            JOIN users u ON u.id = o.user_id\n            LEFT JOIN offers of ON of.id = o.offer_id\n            WHERE o.session_id = $1\n            ORDER BY o.created_at ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "restaurant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "session_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "offer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "offer_title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "total_price_cents: PriceCents",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "06f286f1064852b4453b081d14f8180d89e01cd2ae072a42b9f042357a3492f5"
+}

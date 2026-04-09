@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO order_sessions (restaurant_id, start_date, end_date, allow_late, status, created_by, updated_by)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            RETURNING\n                id,\n                restaurant_id,\n                start_date,\n                end_date,\n                allow_late,\n                status as \"status: OrderSessionStatus\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by\n            ",
+  "query": "\n            UPDATE order_sessions\n            SET status     = $1,\n                updated_at = NOW(),\n                updated_by = $3\n            WHERE id = $2\n            RETURNING\n                id,\n                restaurant_id,\n                start_date,\n                end_date,\n                pickup_time,\n                allow_late,\n                status as \"status: OrderSessionStatus\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by\n            ",
   "describe": {
     "columns": [
       {
@@ -25,41 +25,42 @@
       },
       {
         "ordinal": 4,
+        "name": "pickup_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
         "name": "allow_late",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "status: OrderSessionStatus",
         "type_info": "Int2"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "updated_by",
         "type_info": "Uuid"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Timestamptz",
-        "Timestamptz",
-        "Bool",
         "Int2",
         "Uuid",
         "Uuid"
@@ -70,6 +71,7 @@
       false,
       false,
       false,
+      true,
       false,
       false,
       false,
@@ -78,5 +80,5 @@
       false
     ]
   },
-  "hash": "23a35aaceff84aaa203dca0776084a62133559fc7b553f18e4c6404ecef43eb6"
+  "hash": "5c989e3d98bf65bd42b7e98c5280130c5d5c86e8ede2bcaa653cc5e2c15ed8ea"
 }

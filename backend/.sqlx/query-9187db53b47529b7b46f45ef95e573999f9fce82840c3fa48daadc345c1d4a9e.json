@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                start_date,\n                end_date,\n                allow_late,\n                status as \"status: OrderSessionStatus\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by\n            FROM order_sessions\n            WHERE restaurant_id = $1\n            ORDER BY created_at DESC\n            ",
+  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                start_date,\n                end_date,\n                pickup_time,\n                allow_late,\n                status as \"status: OrderSessionStatus\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by\n            FROM order_sessions\n            WHERE restaurant_id = $1\n              AND status = $2\n              AND end_date > NOW()\n            ORDER BY created_at DESC\n            LIMIT 1\n            ",
   "describe": {
     "columns": [
       {
@@ -25,38 +25,44 @@
       },
       {
         "ordinal": 4,
+        "name": "pickup_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
         "name": "allow_late",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "status: OrderSessionStatus",
         "type_info": "Int2"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "updated_by",
         "type_info": "Uuid"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "Int2"
       ]
     },
     "nullable": [
@@ -64,6 +70,7 @@
       false,
       false,
       false,
+      true,
       false,
       false,
       false,
@@ -72,5 +79,5 @@
       false
     ]
   },
-  "hash": "72af45d9a619cb9265197cf36718cbe4c1e8377306013b8489462700d566859c"
+  "hash": "9187db53b47529b7b46f45ef95e573999f9fce82840c3fa48daadc345c1d4a9e"
 }

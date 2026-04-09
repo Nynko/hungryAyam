@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                o.id,\n                o.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                o.session_id,\n                o.offer_id,\n                o.total_price_cents as \"total_price_cents: PriceCents\",\n                o.created_at\n            FROM orders o\n            JOIN order_sessions os ON os.id = o.session_id\n            JOIN users u ON u.id = o.user_id\n            WHERE o.session_id = $1 AND o.user_id = $2\n            ORDER BY o.created_at ASC\n            ",
+  "query": "\n            SELECT\n                o.id,\n                o.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                o.session_id,\n                o.offer_id,\n                of.title as offer_title,\n                o.total_price_cents as \"total_price_cents: PriceCents\",\n                o.created_at\n            FROM orders o\n            JOIN order_sessions os ON os.id = o.session_id\n            JOIN users u ON u.id = o.user_id\n            LEFT JOIN offers of ON of.id = o.offer_id\n            WHERE o.session_id = $1 AND o.user_id = $2\n            ORDER BY o.created_at ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -35,11 +35,16 @@
       },
       {
         "ordinal": 6,
+        "name": "offer_title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
         "name": "total_price_cents: PriceCents",
         "type_info": "Int4"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz"
       }
@@ -58,8 +63,9 @@
       false,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "6b47133d371510d5ea35997038a8833040031bc181b4ed841fdf446ac865c91c"
+  "hash": "bcf7968a471b44eb2602334a413a598f97b66f79e359119e019b569e2e69fbac"
 }

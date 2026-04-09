@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT MIN(pickup_time) as \"min_pickup: chrono::DateTime<Utc>\"\n        FROM order_sessions\n        WHERE status = $1\n          AND pickup_time IS NOT NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "min_pickup: chrono::DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int2"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "9600df81f2d9454b7c3117831e2f8143e2188aed4ae87a9cd43abe2e782e578d"
+}

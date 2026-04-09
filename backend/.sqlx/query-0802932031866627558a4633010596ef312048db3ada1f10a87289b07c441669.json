@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE order_sessions\n            SET start_date  = COALESCE($1, start_date),\n                end_date    = COALESCE($2, end_date),\n                allow_late  = COALESCE($3, allow_late),\n                updated_at  = NOW(),\n                updated_by  = $5\n            WHERE id = $4\n            RETURNING\n                id,\n                restaurant_id,\n                start_date,\n                end_date,\n                allow_late,\n                status as \"status: OrderSessionStatus\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by\n            ",
+  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                start_date,\n                end_date,\n                pickup_time,\n                allow_late,\n                status as \"status: OrderSessionStatus\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by\n            FROM order_sessions\n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -25,41 +25,42 @@
       },
       {
         "ordinal": 4,
+        "name": "pickup_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
         "name": "allow_late",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "status: OrderSessionStatus",
         "type_info": "Int2"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "updated_by",
         "type_info": "Uuid"
       }
     ],
     "parameters": {
       "Left": [
-        "Timestamptz",
-        "Timestamptz",
-        "Bool",
-        "Uuid",
         "Uuid"
       ]
     },
@@ -68,6 +69,7 @@
       false,
       false,
       false,
+      true,
       false,
       false,
       false,
@@ -76,5 +78,5 @@
       false
     ]
   },
-  "hash": "2b39382275b6685e7a4dedd266a0616e1f87deb24102d0150a51bea5e3dc7713"
+  "hash": "0802932031866627558a4633010596ef312048db3ada1f10a87289b07c441669"
 }

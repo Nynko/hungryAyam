@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                o.id,\n                o.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                o.session_id,\n                o.offer_id,\n                o.total_price_cents as \"total_price_cents: PriceCents\",\n                o.created_at\n            FROM orders o\n            JOIN order_sessions os ON os.id = o.session_id\n            JOIN users u ON u.id = o.user_id\n            WHERE o.id = $1\n            ",
+  "query": "\n            SELECT\n                o.id,\n                o.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                o.session_id,\n                o.offer_id,\n                of.title as offer_title,\n                o.total_price_cents as \"total_price_cents: PriceCents\",\n                o.created_at\n            FROM orders o\n            JOIN order_sessions os ON os.id = o.session_id\n            JOIN users u ON u.id = o.user_id\n            LEFT JOIN offers of ON of.id = o.offer_id\n            WHERE os.restaurant_id = $1\n              AND o.user_id = $2\n              AND os.status = $3\n            ORDER BY os.end_date ASC, o.created_at ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -35,18 +35,25 @@
       },
       {
         "ordinal": 6,
+        "name": "offer_title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
         "name": "total_price_cents: PriceCents",
         "type_info": "Int4"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "Uuid",
+        "Int2"
       ]
     },
     "nullable": [
@@ -57,8 +64,9 @@
       false,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "36eb9bf71d40e6189fda2418196a012b18acfb4a83bffb883973437b2f8dad71"
+  "hash": "230609ddbf40d430cf315247de520af5266ffb3776d2526551b15933454271c8"
 }

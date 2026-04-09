@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                WITH inserted AS (\n                    INSERT INTO order_items (order_id, item_id, slot_id, notes)\n                    VALUES ($1, $2, $3, $4)\n                    RETURNING id, order_id, item_id, slot_id, notes\n                )\n                SELECT\n                    ins.id,\n                    ins.order_id,\n                    ins.item_id,\n                    it.name as item_name,\n                    it.base_price_cents as \"item_price_cents: PriceCents\",\n                    ins.slot_id,\n                    ins.notes\n                FROM inserted ins\n                JOIN items it ON it.id = ins.item_id\n                ",
+  "query": "\n            SELECT\n                oi.id,\n                oi.order_id,\n                oi.item_id,\n                it.name as item_name,\n                it.base_price_cents as \"item_price_cents: PriceCents\",\n                oi.slot_id,\n                ofs.label as slot_label,\n                oi.notes\n            FROM order_items oi\n            JOIN items it ON it.id = oi.item_id\n            LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id\n            WHERE oi.order_id = $1\n            ORDER BY COALESCE(ofs.position, 0) ASC, oi.id ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -35,16 +35,18 @@
       },
       {
         "ordinal": 6,
+        "name": "slot_label",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
         "name": "notes",
         "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Uuid",
-        "Uuid",
-        "Text"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -54,8 +56,9 @@
       false,
       false,
       true,
+      false,
       true
     ]
   },
-  "hash": "c5c6e8c3135f242e6145d6e4bfb124ebf12e616139ffb7ca0c376da646ed4a2a"
+  "hash": "e345c404ec83d5c45c1df3b45f4d6c103c2f76435d1e93324d4655a65304056a"
 }

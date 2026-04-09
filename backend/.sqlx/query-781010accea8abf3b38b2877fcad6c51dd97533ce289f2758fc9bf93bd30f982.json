@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            WITH inserted AS (\n                INSERT INTO orders (user_id, session_id, offer_id, total_price_cents)\n                VALUES ($1, $2, $3, $4)\n                RETURNING *\n            )\n            SELECT\n                i.id,\n                i.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                i.session_id,\n                i.offer_id,\n                of.title as offer_title,\n                i.total_price_cents as \"total_price_cents: PriceCents\",\n                i.created_at\n            FROM inserted i\n            JOIN order_sessions os ON os.id = i.session_id\n            JOIN users u ON u.id = i.user_id\n            LEFT JOIN offers of ON of.id = i.offer_id\n            ",
+  "query": "\n            SELECT\n                o.id,\n                o.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                o.session_id,\n                o.offer_id,\n                of.title as \"offer_title?\",\n                o.total_price_cents as \"total_price_cents: PriceCents\",\n                o.created_at\n            FROM orders o\n            JOIN order_sessions os ON os.id = o.session_id\n            JOIN users u ON u.id = o.user_id\n            LEFT JOIN offers of ON of.id = o.offer_id\n            WHERE o.session_id = $1 AND o.user_id = $2\n            ORDER BY o.created_at ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -35,7 +35,7 @@
       },
       {
         "ordinal": 6,
-        "name": "offer_title",
+        "name": "offer_title?",
         "type_info": "Text"
       },
       {
@@ -52,9 +52,7 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid",
-        "Uuid",
-        "Int4"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -64,10 +62,10 @@
       false,
       false,
       true,
-      true,
+      false,
       false,
       false
     ]
   },
-  "hash": "0e2f8fa8a7a06ee62e150eb286f416dd05754044ab9e64f54d8568d39eba9142"
+  "hash": "781010accea8abf3b38b2877fcad6c51dd97533ce289f2758fc9bf93bd30f982"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                WITH inserted AS (\n                    INSERT INTO order_items (order_id, item_id, slot_id, notes)\n                    VALUES ($1, $2, $3, $4)\n                    RETURNING id, order_id, item_id, slot_id, notes\n                )\n                SELECT\n                    ins.id,\n                    ins.order_id,\n                    ins.item_id,\n                    it.name as item_name,\n                    it.base_price_cents as \"item_price_cents: PriceCents\",\n                    ins.slot_id,\n                    ofs.label as slot_label,\n                    ins.notes\n                FROM inserted ins\n                JOIN items it ON it.id = ins.item_id\n                LEFT JOIN offer_slots ofs ON ofs.id = ins.slot_id\n                ",
+  "query": "\n                WITH inserted AS (\n                    INSERT INTO order_items (order_id, item_id, slot_id, notes)\n                    VALUES ($1, $2, $3, $4)\n                    RETURNING id, order_id, item_id, slot_id, notes\n                )\n                SELECT\n                    ins.id,\n                    ins.order_id,\n                    ins.item_id,\n                    it.name as item_name,\n                    it.base_price_cents as \"item_price_cents: PriceCents\",\n                    ins.slot_id,\n                    ofs.label as \"slot_label?\",\n                    ins.notes\n                FROM inserted ins\n                JOIN items it ON it.id = ins.item_id\n                LEFT JOIN offer_slots ofs ON ofs.id = ins.slot_id\n                ",
   "describe": {
     "columns": [
       {
@@ -35,7 +35,7 @@
       },
       {
         "ordinal": 6,
-        "name": "slot_label",
+        "name": "slot_label?",
         "type_info": "Text"
       },
       {
@@ -63,5 +63,5 @@
       true
     ]
   },
-  "hash": "45129a4d69aed213d7dd4c23bce84fd238eda5f7d8283fa65b22350291d12263"
+  "hash": "9465473a9a1c3a1cf0bf139a9474fe1d32b58f9e3a738223bc059c919e368068"
 }

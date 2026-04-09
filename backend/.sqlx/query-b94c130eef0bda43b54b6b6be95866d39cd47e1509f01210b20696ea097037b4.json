@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                o.id,\n                o.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                o.session_id,\n                o.offer_id,\n                of.title as offer_title,\n                o.total_price_cents as \"total_price_cents: PriceCents\",\n                o.created_at\n            FROM orders o\n            JOIN order_sessions os ON os.id = o.session_id\n            JOIN users u ON u.id = o.user_id\n            LEFT JOIN offers of ON of.id = o.offer_id\n            WHERE os.restaurant_id = $1\n              AND o.user_id = $2\n              AND os.status = $3\n            ORDER BY os.end_date ASC, o.created_at ASC\n            ",
+  "query": "\n            SELECT\n                o.id,\n                o.user_id,\n                u.name as user_name,\n                os.restaurant_id,\n                o.session_id,\n                o.offer_id,\n                of.title as \"offer_title?\",\n                o.total_price_cents as \"total_price_cents: PriceCents\",\n                o.created_at\n            FROM orders o\n            JOIN order_sessions os ON os.id = o.session_id\n            JOIN users u ON u.id = o.user_id\n            LEFT JOIN offers of ON of.id = o.offer_id\n            WHERE o.session_id = $1\n            ORDER BY o.created_at ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -35,7 +35,7 @@
       },
       {
         "ordinal": 6,
-        "name": "offer_title",
+        "name": "offer_title?",
         "type_info": "Text"
       },
       {
@@ -51,9 +51,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Uuid",
-        "Int2"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -68,5 +66,5 @@
       false
     ]
   },
-  "hash": "230609ddbf40d430cf315247de520af5266ffb3776d2526551b15933454271c8"
+  "hash": "b94c130eef0bda43b54b6b6be95866d39cd47e1509f01210b20696ea097037b4"
 }

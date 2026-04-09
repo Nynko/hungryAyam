@@ -308,7 +308,7 @@ impl OrderRepository {
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
-                of.title as offer_title,
+                of.title as "offer_title?",
                 o.total_price_cents as "total_price_cents: PriceCents",
                 o.created_at
             FROM orders o
@@ -451,7 +451,7 @@ impl OrderRepository {
                 os.restaurant_id,
                 i.session_id,
                 i.offer_id,
-                of.title as offer_title,
+                of.title as "offer_title?",
                 i.total_price_cents as "total_price_cents: PriceCents",
                 i.created_at
             FROM inserted i
@@ -484,7 +484,7 @@ impl OrderRepository {
                     it.name as item_name,
                     it.base_price_cents as "item_price_cents: PriceCents",
                     ins.slot_id,
-                    ofs.label as slot_label,
+                    ofs.label as "slot_label?",
                     ins.notes
                 FROM inserted ins
                 JOIN items it ON it.id = ins.item_id
@@ -518,7 +518,7 @@ impl OrderRepository {
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
-                of.title as offer_title,
+                of.title as "offer_title?",
                 o.total_price_cents as "total_price_cents: PriceCents",
                 o.created_at
             FROM orders o
@@ -562,7 +562,7 @@ impl OrderRepository {
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
-                of.title as offer_title,
+                of.title as "offer_title?",
                 o.total_price_cents as "total_price_cents: PriceCents",
                 o.created_at
             FROM orders o
@@ -782,7 +782,7 @@ impl OrderRepository {
                 os.restaurant_id,
                 o.session_id,
                 o.offer_id,
-                of.title as offer_title,
+                of.title as "offer_title?",
                 o.total_price_cents as "total_price_cents: PriceCents",
                 o.created_at
             FROM orders o
@@ -812,7 +812,7 @@ impl OrderRepository {
                 it.name as item_name,
                 it.base_price_cents as "item_price_cents: PriceCents",
                 oi.slot_id,
-                ofs.label as slot_label,
+                ofs.label as "slot_label?",
                 oi.notes
             FROM order_items oi
             JOIN items it ON it.id = oi.item_id
@@ -849,7 +849,7 @@ impl OrderRepository {
                 it.name as item_name,
                 it.base_price_cents as "item_price_cents: PriceCents",
                 oi.slot_id,
-                ofs.label as slot_label,
+                ofs.label as "slot_label?",
                 oi.notes
             FROM order_items oi
             JOIN items it ON it.id = oi.item_id

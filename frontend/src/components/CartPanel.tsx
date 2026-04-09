@@ -24,6 +24,7 @@ import {
   getOfferCartTotal,
   getOfferCartCount,
   removeOfferFromCart,
+  updateOfferCartNotes,
   clearOfferCart,
   formatOfferPrice,
   type OfferCartEntry,
@@ -80,6 +81,7 @@ interface CartGroup {
 
 export default function CartPanel(props: CartPanelProps) {
   const [expandedGroupId, setExpandedGroupId] = createSignal<string | null>(null);
+  const [expandedOfferKey, setExpandedOfferKey] = createSignal<number | null>(null);
   const [successMessage, setSuccessMessage] = createSignal<string | null>(null);
   const [placingOfferOrder, setPlacingOfferOrder] = createSignal(false);
   const [offerOrderError, setOfferOrderError] = createSignal<string | null>(null);
@@ -471,10 +473,59 @@ export default function CartPanel(props: CartPanelProps) {
                 </div>
 
                 {/* Notes */}
-                <Show when={entry.notes}>
-                  <p class="is-size-7 has-text-grey-dark mt-2 is-italic">
-                    📝 {entry.notes}
-                  </p>
+                <Show
+                  when={expandedOfferKey() === entry.key}
+                  fallback={
+                    <Show
+                      when={entry.notes}
+                      fallback={
+                        <button
+                          class="button is-ghost is-small px-0 has-text-grey mt-1"
+                          style={{ height: "auto", "font-size": "0.72rem", "text-decoration": "none" }}
+                          onClick={() => setExpandedOfferKey(entry.key)}
+                        >
+                          ＋ Add a note
+                        </button>
+                      }
+                    >
+                      <div
+                        class="is-flex is-align-items-center mt-2"
+                        style={{ gap: "0.3rem", cursor: "pointer" }}
+                        onClick={() => setExpandedOfferKey(entry.key)}
+                        title="Click to edit note"
+                      >
+                        <span class="is-size-7 has-text-grey-dark is-italic">📝 {entry.notes}</span>
+                        <span class="is-size-7 has-text-grey-light">✏️</span>
+                      </div>
+                    </Show>
+                  }
+                >
+                  <div class="mt-2 pt-2" style={{ "border-top": "1px solid var(--bulma-border-weak)" }}>
+                    <div class="field mb-1">
+                      <div class="control">
+                        <input
+                          class="input is-small"
+                          type="text"
+                          placeholder="e.g. extra spicy, no sauce…"
+                          ref={(el) => { el.value = entry.notes ?? ""; }}
+                          onInput={(e) =>
+                            updateOfferCartNotes(
+                              props.restaurantId,
+                              entry.key,
+                              e.currentTarget.value || null,
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                    <button
+                      class="button is-ghost is-small px-0 has-text-grey"
+                      style={{ height: "auto", "font-size": "0.72rem" }}
+                      onClick={() => setExpandedOfferKey(null)}
+                    >
+                      Done
+                    </button>
+                  </div>
                 </Show>
 
                 {/* Price breakdown */}

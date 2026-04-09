@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js";
+import { createStore, produce } from "solid-js/store";
 import type { ApiResponse } from "@bindings/ApiResponse";
 import type { Offer } from "@bindings/Offer";
 import type { OfferSlot } from "@bindings/OfferSlot";
@@ -52,7 +53,7 @@ const [offersByRestaurant, setOffersByRestaurant] = createSignal<
 >({});
 
 /** Offer cart entries keyed by restaurant ID. */
-const [offerCartsByRestaurant, setOfferCartsByRestaurant] = createSignal<
+const [offerCartsByRestaurant, setOfferCartsByRestaurant] = createStore<
   Record<string, OfferCartEntry[]>
 >({});
 
@@ -482,7 +483,7 @@ async function validateOfferSelection(
  * Get the offer cart entries for a restaurant.
  */
 function getOfferCart(restaurantId: string): OfferCartEntry[] {
-  return offerCartsByRestaurant()[restaurantId] ?? [];
+  return offerCartsByRestaurant[restaurantId] ?? [];
 }
 
 /**
@@ -505,34 +506,40 @@ function addOfferToCart(
     notes,
   };
 
-  setOfferCartsByRestaurant((prev) => {
-    const existing = prev[restaurantId] ?? [];
-    return { ...prev, [restaurantId]: [...existing, entry] };
-  });
+  const existing = offerCartsByRestaurant[restaurantId] ?? [];
+  setOfferCartsByRestaurant(restaurantId, [...existing, entry]);
+}
+
+/**
+ * Update the notes for an offer cart entry.
+ */
+function updateOfferCartNotes(
+  restaurantId: string,
+  key: number,
+  notes: string | null,
+): void {
+  const cart = offerCartsByRestaurant[restaurantId];
+  if (!cart) return;
+  const idx = cart.findIndex((e) => e.key === key);
+  if (idx !== -1) {
+    setOfferCartsByRestaurant(restaurantId, idx, "notes", notes);
+  }
 }
 
 /**
  * Remove an offer entry from the cart by its key.
  */
 function removeOfferFromCart(restaurantId: string, key: number): void {
-  setOfferCartsByRestaurant((prev) => {
-    const existing = prev[restaurantId] ?? [];
-    return {
-      ...prev,
-      [restaurantId]: existing.filter((e) => e.key !== key),
-    };
-  });
+  setOfferCartsByRestaurant(restaurantId, (prev) =>
+    (prev ?? []).filter((e) => e.key !== key),
+  );
 }
 
 /**
  * Clear all offer cart entries for a restaurant.
  */
 function clearOfferCart(restaurantId: string): void {
-  setOfferCartsByRestaurant((prev) => {
-    const next = { ...prev };
-    delete next[restaurantId];
-    return next;
-  });
+  setOfferCartsByRestaurant(produce((draft) => { delete draft[restaurantId]; }));
 }
 
 /**
@@ -547,7 +554,7 @@ function getOfferCartTotal(restaurantId: string): number {
  * Get the count of offer entries in the cart.
  */
 function getOfferCartCount(restaurantId: string): number {
-  return (offerCartsByRestaurant()[restaurantId] ?? []).length;
+  return (offerCartsByRestaurant[restaurantId] ?? []).length;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -668,6 +675,7 @@ export {
   // Offer Cart
   getOfferCart,
   addOfferToCart,
+  updateOfferCartNotes,
   removeOfferFromCart,
   clearOfferCart,
   getOfferCartTotal,

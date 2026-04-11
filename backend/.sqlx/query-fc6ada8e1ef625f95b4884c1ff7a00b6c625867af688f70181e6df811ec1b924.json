@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM offer_slot_constraints WHERE slot_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fc6ada8e1ef625f95b4884c1ff7a00b6c625867af688f70181e6df811ec1b924"
+}

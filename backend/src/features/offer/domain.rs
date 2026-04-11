@@ -118,9 +118,9 @@ pub struct OfferSlotConstraint {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct OfferSlot {
-    /// Generated server-side. Ignored on both create and update (replace-all semantics).
+    /// Server-generated on create. On update, supply the existing slot UUID to update
+    /// the slot in place; omit (null) to insert a new slot.
     #[create_ignore]
-    #[update_ignore]
     pub id: Uuid,
     /// Assigned server-side from the parent offer.
     #[create_ignore]

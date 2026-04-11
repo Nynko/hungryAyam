@@ -207,15 +207,16 @@ export default function OffersManager(props: OffersManagerProps) {
           description: draft.description || null,
           base_price_cents: dollarsToCents(draft.basePriceDisplay),
           is_active: draft.isActive,
-          slots: buildCreateSlots(draft.slots).map((s) => ({
+          slots: draft.slots.map((s) => ({
+            id: s.slotId,
             label: s.label,
-            min_items: s.min_items,
-            max_items: s.max_items,
-            supplement_cents: s.supplement_cents,
-            slot_group: s.slot_group,
+            min_items: s.minItems,
+            max_items: s.maxItems,
+            supplement_cents: dollarsToCents(s.supplementDisplay),
+            slot_group: s.slotGroup.trim() || null,
             constraints: s.constraints.map((c) => ({
               kind: c.kind,
-              supplement_cents: c.supplement_cents,
+              supplement_cents: dollarsToCents(c.supplementDisplay),
             })),
           })),
         };

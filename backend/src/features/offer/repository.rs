@@ -210,18 +210,29 @@ impl OfferRepository {
             None => return Ok(None),
         };
 
-        // If slots were provided, replace-all
+        // If slots were provided, upsert: update existing, insert new, delete removed.
         let slots = if let Some(new_slots) = request.slots {
-            // Delete all existing slots (cascades to constraints)
-            sqlx::query!("DELETE FROM offer_slots WHERE offer_id = $1", offer_row.id)
-                .execute(&mut *tx)
-                .await?;
+            // Collect IDs of slots being kept/updated.
+            let kept_ids: Vec<Uuid> = new_slots.iter().filter_map(|s| s.id).collect();
+
+            // Delete slots no longer present (ON DELETE SET NULL handles order_items).
+            sqlx::query!(
+                "DELETE FROM offer_slots WHERE offer_id = $1 AND NOT (id = ANY($2))",
+                offer_row.id,
+                &kept_ids,
+            )
+            .execute(&mut *tx)
+            .await?;
 
             let mut slots = Vec::with_capacity(new_slots.len());
             for (pos, slot_req) in new_slots.iter().enumerate() {
-                let slot = self
-                    .create_slot_in_tx(&mut tx, offer_row.id, pos as i32, &slot_req.into())
-                    .await?;
+                let slot = if let Some(slot_id) = slot_req.id {
+                    self.update_slot_in_tx(&mut tx, slot_id, pos as i32, slot_req)
+                        .await?
+                } else {
+                    self.create_slot_in_tx(&mut tx, offer_row.id, pos as i32, &slot_req.into())
+                        .await?
+                };
                 slots.push(slot);
             }
             slots
@@ -489,6 +500,74 @@ impl OfferRepository {
             let constraint = self
                 .create_constraint_in_tx(tx, slot_row.id, c_req)
                 .await?;
+            constraints.push(constraint);
+        }
+
+        Ok(self.slot_row_to_domain(slot_row, constraints))
+    }
+
+    /// Update an existing slot in place and replace its constraints.
+    async fn update_slot_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        slot_id: Uuid,
+        position: i32,
+        request: &crate::features::offer::domain::UpdateOfferSlot,
+    ) -> Result<OfferSlot> {
+        let slot_row = sqlx::query_as!(
+            OfferSlotRow,
+            r#"
+            UPDATE offer_slots
+            SET
+                label           = COALESCE($2, label),
+                min_items       = COALESCE($3, min_items),
+                max_items       = COALESCE($4, max_items),
+                supplement_cents = COALESCE($5, supplement_cents),
+                slot_group      = $6,
+                position        = $7
+            WHERE id = $1
+            RETURNING
+                id,
+                offer_id,
+                label as "label: Name",
+                min_items,
+                max_items,
+                supplement_cents,
+                position,
+                slot_group
+            "#,
+            slot_id,
+            request.label.as_ref().map(|n| n.as_ref()),
+            request.min_items,
+            request.max_items,
+            request.supplement_cents,
+            request.slot_group.as_deref(),
+            position,
+        )
+        .fetch_one(&mut **tx)
+        .await?;
+
+        // Replace constraints for this slot.
+        sqlx::query!("DELETE FROM offer_slot_constraints WHERE slot_id = $1", slot_id)
+            .execute(&mut **tx)
+            .await?;
+
+        let create_constraints: Vec<CreateOfferSlotConstraint> = request
+            .constraints
+            .as_ref()
+            .map(|cs| {
+                cs.iter()
+                    .map(|c| CreateOfferSlotConstraint {
+                        kind: c.kind.clone(),
+                        supplement_cents: c.supplement_cents.unwrap_or(0),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut constraints = Vec::with_capacity(create_constraints.len());
+        for c_req in &create_constraints {
+            let constraint = self.create_constraint_in_tx(tx, slot_row.id, c_req).await?;
             constraints.push(constraint);
         }
 

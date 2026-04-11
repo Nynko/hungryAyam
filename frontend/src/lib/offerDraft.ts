@@ -95,6 +95,7 @@ export function offerToDraft(offer: Offer): DraftOffer {
     menuId: offer.menu_id,
     slots: offer.slots.map((slot) => ({
       tempId: nextSlotTempId(),
+      slotId: slot.id,
       label: slot.label,
       minItems: slot.min_items,
       maxItems: slot.max_items,
@@ -112,6 +113,7 @@ export function offerToDraft(offer: Offer): DraftOffer {
 export function emptySlot(): DraftSlot {
   return {
     tempId: nextSlotTempId(),
+    slotId: null,
     label: "",
     minItems: 1,
     maxItems: 1,

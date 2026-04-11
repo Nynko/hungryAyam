@@ -86,6 +86,7 @@ fn create_offer_serialization_roundtrip() {
             min_items: 1,
             max_items: 1,
             supplement_cents: 0,
+            slot_group: None,
             constraints: vec![CreateOfferSlotConstraint {
                 kind: SlotConstraintKind::Item(item_id),
                 supplement_cents: 0,
@@ -127,6 +128,7 @@ fn create_offer_with_supplements_serialization_roundtrip() {
                 min_items: 1,
                 max_items: 1,
                 supplement_cents: 0,
+                slot_group: None,
                 constraints: vec![CreateOfferSlotConstraint {
                     kind: SlotConstraintKind::Item(item_id),
                     supplement_cents: 0,
@@ -137,6 +139,7 @@ fn create_offer_with_supplements_serialization_roundtrip() {
                 min_items: 0,
                 max_items: 1,
                 supplement_cents: 300, // +$3.00 slot supplement
+                slot_group: None,
                 constraints: vec![
                     CreateOfferSlotConstraint {
                         kind: SlotConstraintKind::Tag(tag_id),

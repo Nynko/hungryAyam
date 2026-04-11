@@ -96,7 +96,11 @@ export default function CartPanel(props: CartPanelProps) {
     d.setHours(d.getHours() + 1, 0, 0, 0);
     return toDatetimeLocal(d);
   });
-  const [newSlotPickup, setNewSlotPickup] = createSignal("");
+  const [newSlotPickup, setNewSlotPickup] = createSignal(() => {
+    const d = new Date();
+    d.setHours(d.getHours() + 1, 30, 0, 0);
+    return toDatetimeLocal(d);
+  });
   const [creatingSession, setCreatingSession] = createSignal(false);
   const [newSlotError, setNewSlotError] = createSignal<string | null>(null);
 
@@ -316,28 +320,32 @@ export default function CartPanel(props: CartPanelProps) {
 
   // ── Offer entry helpers ─────────────────────────────────────────
 
-  /** Group offer selections by slot label for display. */
+  /** Group offer selections by slot_group (if set) or by individual slot. */
   const offerSelectionsBySlot = (
     entry: OfferCartEntry,
   ): Array<{ label: string; items: Array<{ name: string; supplementCents: number }>; slotSupplementCents: number }> => {
-    const slotMap = new Map<
+    const groupMap = new Map<
       string,
       { label: string; items: Array<{ name: string; supplementCents: number }>; slotSupplementCents: number }
     >();
 
     for (const sel of entry.selections) {
       const slot = entry.offer.slots.find((s) => s.id === sel.slotId);
-      const label = slot?.label ?? "Unknown";
+      const groupKey = slot?.slot_group ?? sel.slotId;
+      const label = slot?.slot_group
+        ? entry.offer.slots
+            .filter((s) => s.slot_group === slot.slot_group)
+            .map((s) => s.label)
+            .join(" + ")
+        : (slot?.label ?? "Unknown");
       const slotSupplement = slot?.supplement_cents ?? 0;
 
-      const existing = slotMap.get(sel.slotId);
+      const existing = groupMap.get(groupKey);
       if (existing) {
-        existing.items.push({
-          name: sel.item.name,
-          supplementCents: sel.supplementCents,
-        });
+        existing.items.push({ name: sel.item.name, supplementCents: sel.supplementCents });
+        existing.slotSupplementCents += slotSupplement;
       } else {
-        slotMap.set(sel.slotId, {
+        groupMap.set(groupKey, {
           label,
           items: [{ name: sel.item.name, supplementCents: sel.supplementCents }],
           slotSupplementCents: slotSupplement,
@@ -345,7 +353,7 @@ export default function CartPanel(props: CartPanelProps) {
       }
     }
 
-    return Array.from(slotMap.values());
+    return Array.from(groupMap.values());
   };
 
   return (

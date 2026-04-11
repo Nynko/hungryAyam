@@ -50,6 +50,7 @@ interface DraftSlot {
   maxItems: number;
   /** Displayed/edited as dollars (string), converted to cents for backend. */
   supplementDisplay: string;
+  slotGroup: string;
   constraints: DraftSlotConstraint[];
 }
 
@@ -116,6 +117,7 @@ function offerToDraft(offer: Offer): DraftOffer {
       minItems: slot.min_items,
       maxItems: slot.max_items,
       supplementDisplay: centsToDollars(slot.supplement_cents),
+      slotGroup: slot.slot_group ?? "",
       constraints: slot.constraints.map((c) => ({
         tempId: nextConstraintTempId(),
         kind: c.kind,
@@ -132,6 +134,7 @@ function emptySlot(): DraftSlot {
     minItems: 1,
     maxItems: 1,
     supplementDisplay: "0.00",
+    slotGroup: "",
     constraints: [],
   };
 }
@@ -316,6 +319,7 @@ export default function OfferEditor(props: OfferEditorProps) {
       min_items: s.minItems,
       max_items: s.maxItems,
       supplement_cents: dollarsToCents(s.supplementDisplay),
+      slot_group: s.slotGroup.trim() || null,
       constraints: s.constraints.map(
         (c): CreateOfferSlotConstraint => ({
           kind: c.kind,
@@ -965,6 +969,29 @@ export default function OfferEditor(props: OfferEditorProps) {
                                 }
                               />
                             </div>
+                          </div>
+                        </div>
+
+                        <div class="column is-4">
+                          <div class="field">
+                            <label class="label is-small">Group</label>
+                            <div class="control">
+                              <input
+                                class="input is-small"
+                                type="text"
+                                placeholder="e.g. main_course"
+                                value={slot.slotGroup}
+                                onInput={(e) =>
+                                  setDraft(
+                                    "slots",
+                                    slotIndex(),
+                                    "slotGroup",
+                                    e.currentTarget.value,
+                                  )
+                                }
+                              />
+                            </div>
+                            <p class="help">Slots sharing a group are treated as a unit</p>
                           </div>
                         </div>
 

@@ -485,6 +485,7 @@ impl OrderRepository {
                     it.base_price_cents as "item_price_cents: PriceCents",
                     ins.slot_id,
                     ofs.label as "slot_label?",
+                    ofs.slot_group as "slot_group?",
                     ins.notes
                 FROM inserted ins
                 JOIN items it ON it.id = ins.item_id
@@ -813,6 +814,7 @@ impl OrderRepository {
                 it.base_price_cents as "item_price_cents: PriceCents",
                 oi.slot_id,
                 ofs.label as "slot_label?",
+                ofs.slot_group as "slot_group?",
                 oi.notes
             FROM order_items oi
             JOIN items it ON it.id = oi.item_id
@@ -850,6 +852,7 @@ impl OrderRepository {
                 it.base_price_cents as "item_price_cents: PriceCents",
                 oi.slot_id,
                 ofs.label as "slot_label?",
+                ofs.slot_group as "slot_group?",
                 oi.notes
             FROM order_items oi
             JOIN items it ON it.id = oi.item_id
@@ -972,6 +975,7 @@ impl OrderRepository {
             item_price_cents: row.item_price_cents,
             slot_id: row.slot_id,
             slot_label: row.slot_label,
+            slot_group: row.slot_group,
             notes: row.notes,
         }
     }

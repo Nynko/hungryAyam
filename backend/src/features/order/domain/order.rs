@@ -34,6 +34,9 @@ pub struct OrderItem {
     /// Display label of the offer slot (loaded via JOIN with offer_slots table).
     #[create_ignore]
     pub slot_label: Option<String>,
+    /// Slot group key (loaded via JOIN with offer_slots table).
+    #[create_ignore]
+    pub slot_group: Option<String>,
     pub notes: Option<String>,
 }
 

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                oi.id,\n                oi.order_id,\n                oi.item_id,\n                it.name as item_name,\n                it.base_price_cents as \"item_price_cents: PriceCents\",\n                oi.slot_id,\n                ofs.label as \"slot_label?\",\n                oi.notes\n            FROM order_items oi\n            JOIN items it ON it.id = oi.item_id\n            LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id\n            WHERE oi.order_id = ANY($1)\n            ORDER BY COALESCE(ofs.position, 0) ASC, oi.id ASC\n            ",
+  "query": "\n            SELECT\n                oi.id,\n                oi.order_id,\n                oi.item_id,\n                it.name as item_name,\n                it.base_price_cents as \"item_price_cents: PriceCents\",\n                oi.slot_id,\n                ofs.label as \"slot_label?\",\n                ofs.slot_group as \"slot_group?\",\n                oi.notes\n            FROM order_items oi\n            JOIN items it ON it.id = oi.item_id\n            LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id\n            WHERE oi.order_id = ANY($1)\n            ORDER BY COALESCE(ofs.position, 0) ASC, oi.id ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -40,6 +40,11 @@
       },
       {
         "ordinal": 7,
+        "name": "slot_group?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
         "name": "notes",
         "type_info": "Text"
       }
@@ -57,8 +62,9 @@
       false,
       true,
       false,
+      true,
       true
     ]
   },
-  "hash": "0c1457dcc787e4ff5f459b2f9c5688c4eb15d40627d1610dd3f76e0c5f87df5e"
+  "hash": "9be440a1be2bc33a08ac5f8180cc1720c55edb7e76083cb068571f1405994185"
 }

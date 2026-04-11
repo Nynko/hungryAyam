@@ -94,7 +94,7 @@ function SessionOrderList(props: { session: OrderSession }) {
     const groups = new Map<string, {
       title: string;
       count: number;
-      slots: Map<string, Map<string, number>>;
+      slots: Map<string, { labels: Set<string>; items: Map<string, number> }>;
     }>();
 
     for (const order of orders().filter((o) => !!o.offer_id)) {
@@ -109,21 +109,23 @@ function SessionOrderList(props: { session: OrderSession }) {
       group.count += 1;
 
       for (const item of order.items) {
-        const slotLabel = item.slot_label ?? "—";
-        if (!group.slots.has(slotLabel)) {
-          group.slots.set(slotLabel, new Map());
+        // Group by slot_group when set, otherwise by individual slot label.
+        const groupKey = item.slot_group ?? item.slot_label ?? "—";
+        if (!group.slots.has(groupKey)) {
+          group.slots.set(groupKey, { labels: new Set<string>(), items: new Map() });
         }
-        const itemMap = group.slots.get(slotLabel)!;
-        itemMap.set(item.item_name, (itemMap.get(item.item_name) ?? 0) + 1);
+        const slotEntry = group.slots.get(groupKey)!;
+        if (item.slot_label) slotEntry.labels.add(item.slot_label);
+        slotEntry.items.set(item.item_name, (slotEntry.items.get(item.item_name) ?? 0) + 1);
       }
     }
 
     return Array.from(groups.values()).map((g) => ({
       title: g.title,
       count: g.count,
-      slots: Array.from(g.slots.entries()).map(([label, items]) => ({
-        label,
-        items: Array.from(items.entries()).map(([name, qty]) => ({ name, qty })),
+      slots: Array.from(g.slots.values()).map((entry) => ({
+        label: Array.from(entry.labels).join(" + ") || "—",
+        items: Array.from(entry.items.entries()).map(([name, qty]) => ({ name, qty })),
       })),
     }));
   });

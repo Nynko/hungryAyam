@@ -52,6 +52,7 @@ pub struct OrderItemRow {
     pub item_price_cents: PriceCents,
     pub slot_id: Option<Uuid>,
     pub slot_label: Option<String>,
+    pub slot_group: Option<String>,
     pub notes: Option<String>,
 }
 

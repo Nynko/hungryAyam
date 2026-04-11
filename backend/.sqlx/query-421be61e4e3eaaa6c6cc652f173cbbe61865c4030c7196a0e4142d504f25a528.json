@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO offer_slots (offer_id, label, min_items, max_items, supplement_cents, position)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            RETURNING\n                id,\n                offer_id,\n                label as \"label: Name\",\n                min_items,\n                max_items,\n                supplement_cents,\n                position\n            ",
+  "query": "\n            SELECT\n                id,\n                offer_id,\n                label as \"label: Name\",\n                min_items,\n                max_items,\n                supplement_cents,\n                position,\n                slot_group\n            FROM offer_slots\n            WHERE offer_id = $1\n            ORDER BY position\n            ",
   "describe": {
     "columns": [
       {
@@ -37,16 +37,16 @@
         "ordinal": 6,
         "name": "position",
         "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "slot_group",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Text",
-        "Int4",
-        "Int4",
-        "Int4",
-        "Int4"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -56,8 +56,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "5c5455217626e23d029ad75ff277595c0e80407e678eb665663c982446c1a8ae"
+  "hash": "421be61e4e3eaaa6c6cc652f173cbbe61865c4030c7196a0e4142d504f25a528"
 }

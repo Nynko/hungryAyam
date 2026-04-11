@@ -461,8 +461,8 @@ impl OfferRepository {
         let slot_row = sqlx::query_as!(
             OfferSlotRow,
             r#"
-            INSERT INTO offer_slots (offer_id, label, min_items, max_items, supplement_cents, position)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO offer_slots (offer_id, label, min_items, max_items, supplement_cents, position, slot_group)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING
                 id,
                 offer_id,
@@ -470,7 +470,8 @@ impl OfferRepository {
                 min_items,
                 max_items,
                 supplement_cents,
-                position
+                position,
+                slot_group
             "#,
             offer_id,
             request.label.as_ref(),
@@ -478,6 +479,7 @@ impl OfferRepository {
             request.max_items,
             request.supplement_cents,
             position,
+            request.slot_group,
         )
         .fetch_one(&mut **tx)
         .await?;
@@ -531,7 +533,8 @@ impl OfferRepository {
                 min_items,
                 max_items,
                 supplement_cents,
-                position
+                position,
+                slot_group
             FROM offer_slots
             WHERE offer_id = $1
             ORDER BY position
@@ -560,7 +563,8 @@ impl OfferRepository {
                 min_items,
                 max_items,
                 supplement_cents,
-                position
+                position,
+                slot_group
             FROM offer_slots
             WHERE offer_id = $1
             ORDER BY position
@@ -695,7 +699,8 @@ impl OfferRepository {
                 min_items,
                 max_items,
                 supplement_cents,
-                position
+                position,
+                slot_group
             FROM offer_slots
             WHERE offer_id = ANY($1)
             ORDER BY offer_id, position
@@ -814,6 +819,7 @@ impl OfferRepository {
             max_items: row.max_items,
             supplement_cents: row.supplement_cents,
             position: row.position,
+            slot_group: row.slot_group,
             constraints,
         }
     }
@@ -858,6 +864,7 @@ impl From<&crate::features::offer::domain::UpdateOfferSlot> for CreateOfferSlot 
                 .max_items
                 .expect("max_items is required when replacing slots"),
             supplement_cents: update.supplement_cents.unwrap_or(0),
+            slot_group: update.slot_group.clone(),
             constraints: update
                 .constraints
                 .as_ref()

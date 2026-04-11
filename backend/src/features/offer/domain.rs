@@ -138,6 +138,11 @@ pub struct OfferSlot {
     #[update_ignore]
     pub position: i32,
 
+    /// Optional group name. Slots sharing the same group are treated as a unit:
+    /// they must be filled together, are priced together, and are shown together
+    /// in order summaries (e.g. "Plat" and "Accompagnement" in the same group).
+    pub slot_group: Option<String>,
+
     /// Constraints for this slot (populated when loading a full offer).
     /// On create, nested `CreateOfferSlotConstraint` items are expected.
     /// On update, if provided the full set replaces existing constraints (replace-all semantics).

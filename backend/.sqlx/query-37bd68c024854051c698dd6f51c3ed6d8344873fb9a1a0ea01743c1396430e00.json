@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                offer_id,\n                label as \"label: Name\",\n                min_items,\n                max_items,\n                supplement_cents,\n                position\n            FROM offer_slots\n            WHERE offer_id = ANY($1)\n            ORDER BY offer_id, position\n            ",
+  "query": "\n            SELECT\n                id,\n                offer_id,\n                label as \"label: Name\",\n                min_items,\n                max_items,\n                supplement_cents,\n                position,\n                slot_group\n            FROM offer_slots\n            WHERE offer_id = ANY($1)\n            ORDER BY offer_id, position\n            ",
   "describe": {
     "columns": [
       {
@@ -37,6 +37,11 @@
         "ordinal": 6,
         "name": "position",
         "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "slot_group",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -51,8 +56,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "6aef7ddb2a8392e0bce3a0f866d9e2168d1f51fa1dd0268c000edca51d1ce868"
+  "hash": "37bd68c024854051c698dd6f51c3ed6d8344873fb9a1a0ea01743c1396430e00"
 }

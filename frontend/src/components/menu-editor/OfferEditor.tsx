@@ -1,12 +1,7 @@
-import { Show, For, Index, createSignal, createEffect, onMount } from "solid-js";
+import { Show, For, createSignal, createEffect, onMount } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import type { Offer } from "@bindings/Offer";
-import type { OfferSlot } from "@bindings/OfferSlot";
-import type { OfferSlotConstraint } from "@bindings/OfferSlotConstraint";
-import type { SlotConstraintKind } from "@bindings/SlotConstraintKind";
 import type { CreateOffer } from "@bindings/CreateOffer";
-import type { CreateOfferSlot } from "@bindings/CreateOfferSlot";
-import type { CreateOfferSlotConstraint } from "@bindings/CreateOfferSlotConstraint";
 import type { UpdateOffer } from "@bindings/UpdateOffer";
 import type { MenuSection } from "@bindings/MenuSection";
 import {
@@ -18,12 +13,25 @@ import {
   activateOffer,
   deactivateOffer,
   formatOfferPrice,
-  offerLoading,
   offerError,
   clearOfferError,
 } from "@/stores/offerStore";
 import { showConfirm } from "@/stores/confirmStore";
-import { editorState } from "@/stores/menuEditorStore";
+import SlotFormFields from "@/components/SlotFormFields";
+import {
+  type DraftOffer,
+  emptyDraftOffer,
+  offerToDraft,
+  emptySlot,
+  emptyConstraint,
+  centsToDollars,
+  dollarsToCents,
+  constraintKindKey,
+  constraintKindValue,
+  flattenSectionsFromMenus,
+  buildCreateSlots,
+  validateDraft,
+} from "@/lib/offerDraft";
 
 // ══════════════════════════════════════════════════════════════════
 // Types
@@ -34,149 +42,6 @@ interface OfferEditorProps {
   menuId: string | null;
   /** All sections from the current menu draft (for Section constraint picker). */
   menuSections: MenuSection[];
-}
-
-interface DraftSlotConstraint {
-  tempId: string;
-  kind: SlotConstraintKind;
-  /** Displayed/edited as dollars (string), converted to cents for backend. */
-  supplementDisplay: string;
-}
-
-interface DraftSlot {
-  tempId: string;
-  label: string;
-  minItems: number;
-  maxItems: number;
-  /** Displayed/edited as dollars (string), converted to cents for backend. */
-  supplementDisplay: string;
-  slotGroup: string;
-  constraints: DraftSlotConstraint[];
-}
-
-interface DraftOffer {
-  title: string;
-  description: string;
-  /** Displayed/edited as dollars (string), converted to cents for backend. */
-  basePriceDisplay: string;
-  isActive: boolean;
-  slots: DraftSlot[];
-}
-
-let _constraintTempId = 0;
-function nextConstraintTempId(): string {
-  return `constraint-${++_constraintTempId}`;
-}
-
-let _slotTempId = 0;
-function nextSlotTempId(): string {
-  return `slot-${++_slotTempId}`;
-}
-
-// ══════════════════════════════════════════════════════════════════
-// Price helpers
-// ══════════════════════════════════════════════════════════════════
-
-/** Convert cents (integer) to a display string like "12.50". */
-function centsToDollars(cents: number): string {
-  return (cents / 100).toFixed(2);
-}
-
-/** Convert a display string like "12.50" or "12,50" to cents (integer).
- *  Returns 0 for invalid input. */
-function dollarsToCents(display: string): number {
-  const normalized = display.replace(",", ".");
-  const parsed = parseFloat(normalized);
-  if (isNaN(parsed) || parsed < 0) return 0;
-  return Math.round(parsed * 100);
-}
-
-// ══════════════════════════════════════════════════════════════════
-// Helpers
-// ══════════════════════════════════════════════════════════════════
-
-function emptyDraftOffer(): DraftOffer {
-  return {
-    title: "",
-    description: "",
-    basePriceDisplay: "0.00",
-    isActive: false,
-    slots: [],
-  };
-}
-
-function offerToDraft(offer: Offer): DraftOffer {
-  return {
-    title: offer.title,
-    description: offer.description ?? "",
-    basePriceDisplay: centsToDollars(offer.base_price_cents),
-    isActive: offer.is_active,
-    slots: offer.slots.map((slot) => ({
-      tempId: nextSlotTempId(),
-      label: slot.label,
-      minItems: slot.min_items,
-      maxItems: slot.max_items,
-      supplementDisplay: centsToDollars(slot.supplement_cents),
-      slotGroup: slot.slot_group ?? "",
-      constraints: slot.constraints.map((c) => ({
-        tempId: nextConstraintTempId(),
-        kind: c.kind,
-        supplementDisplay: centsToDollars(c.supplement_cents),
-      })),
-    })),
-  };
-}
-
-function emptySlot(): DraftSlot {
-  return {
-    tempId: nextSlotTempId(),
-    label: "",
-    minItems: 1,
-    maxItems: 1,
-    supplementDisplay: "0.00",
-    slotGroup: "",
-    constraints: [],
-  };
-}
-
-function emptyConstraint(): DraftSlotConstraint {
-  return {
-    tempId: nextConstraintTempId(),
-    kind: { Section: "" },
-    supplementDisplay: "0.00",
-  };
-}
-
-/** Flatten nested sections into a flat list with depth info. */
-function flattenSections(
-  sections: MenuSection[],
-  depth: number = 0,
-): Array<{ id: string; name: string; depth: number }> {
-  const result: Array<{ id: string; name: string; depth: number }> = [];
-  for (const s of sections) {
-    result.push({ id: s.id, name: s.name, depth });
-    if (s.subsections && s.subsections.length > 0) {
-      result.push(...flattenSections(s.subsections, depth + 1));
-    }
-  }
-  return result;
-}
-
-/** Extract constraint kind key. */
-function constraintKindKey(
-  kind: SlotConstraintKind,
-): "Item" | "Tag" | "Section" {
-  if ("Item" in kind) return "Item";
-  if ("Tag" in kind) return "Tag";
-  return "Section";
-}
-
-/** Extract constraint kind value (the UUID). */
-function constraintKindValue(kind: SlotConstraintKind): string {
-  if ("Item" in kind) return kind.Item;
-  if ("Tag" in kind) return (kind as { Tag: string }).Tag;
-  if ("Section" in kind) return (kind as { Section: string }).Section;
-  return "";
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -235,9 +100,6 @@ export default function OfferEditor(props: OfferEditorProps) {
     }
   });
 
-  // ── Flat sections for the constraint picker ────────────────────
-  const flatSections = () => flattenSections(props.menuSections);
-
   // ── Draft manipulation (via createStore path setters) ──────────
 
   const addSlot = () => {
@@ -281,58 +143,13 @@ export default function OfferEditor(props: OfferEditorProps) {
     );
   };
 
-  // ── Validation ─────────────────────────────────────────────────
-  const validate = (): string | null => {
-    if (!draft.title.trim()) return "Offer title is required.";
-    if (dollarsToCents(draft.basePriceDisplay) < 0)
-      return "Base price cannot be negative.";
-    if (draft.slots.length === 0) return "At least one slot is required.";
-
-    for (const slot of draft.slots) {
-      if (!slot.label.trim()) return "All slots must have a label.";
-      if (slot.minItems < 0)
-        return `Slot "${slot.label}": min items cannot be negative.`;
-      if (slot.maxItems < slot.minItems)
-        return `Slot "${slot.label}": max items must be ≥ min items.`;
-      if (dollarsToCents(slot.supplementDisplay) < 0)
-        return `Slot "${slot.label}": supplement cannot be negative.`;
-      if (slot.constraints.length === 0)
-        return `Slot "${slot.label}": at least one constraint is required.`;
-
-      for (const c of slot.constraints) {
-        const value = constraintKindValue(c.kind);
-        if (!value)
-          return `Slot "${slot.label}": a constraint is missing its target.`;
-        if (dollarsToCents(c.supplementDisplay) < 0)
-          return `Slot "${slot.label}": constraint supplement cannot be negative.`;
-      }
-    }
-
-    return null;
-  };
-
   // ── Save ───────────────────────────────────────────────────────
-
-  const buildCreateSlots = (): CreateOfferSlot[] =>
-    draft.slots.map((s) => ({
-      label: s.label,
-      min_items: s.minItems,
-      max_items: s.maxItems,
-      supplement_cents: dollarsToCents(s.supplementDisplay),
-      slot_group: s.slotGroup.trim() || null,
-      constraints: s.constraints.map(
-        (c): CreateOfferSlotConstraint => ({
-          kind: c.kind,
-          supplement_cents: dollarsToCents(c.supplementDisplay),
-        }),
-      ),
-    }));
 
   const handleSave = async () => {
     setLocalError(null);
     setLocalSuccess(null);
 
-    const err = validate();
+    const err = validateDraft(draft);
     if (err) {
       setLocalError(err);
       return;
@@ -349,7 +166,7 @@ export default function OfferEditor(props: OfferEditorProps) {
           description: draft.description || null,
           base_price_cents: dollarsToCents(draft.basePriceDisplay),
           is_active: draft.isActive,
-          slots: buildCreateSlots().map((s) => ({
+          slots: buildCreateSlots(draft.slots).map((s) => ({
             label: s.label,
             min_items: s.min_items,
             max_items: s.max_items,
@@ -382,7 +199,7 @@ export default function OfferEditor(props: OfferEditorProps) {
           description: draft.description || null,
           base_price_cents: dollarsToCents(draft.basePriceDisplay),
           is_active: draft.isActive,
-          slots: buildCreateSlots(),
+          slots: buildCreateSlots(draft.slots),
         };
 
         const result = await createOffer(request);
@@ -676,7 +493,9 @@ export default function OfferEditor(props: OfferEditorProps) {
                               );
                               const sectionName = () => {
                                 if (kindKey === "Section") {
-                                  const section = flatSections().find(
+                                  const section = flattenSectionsFromMenus(
+                                    menuId() ? [{ id: menuId()!, name: "Current Menu", sections: props.menuSections }] : [],
+                                  ).find(
                                     (s) => s.id === kindValue,
                                   );
                                   return (
@@ -904,351 +723,14 @@ export default function OfferEditor(props: OfferEditorProps) {
                         />
                       </div>
 
-                      {/* Slot fields */}
-                      <div class="columns is-multiline">
-                        <div class="column is-4">
-                          <div class="field">
-                            <label class="label is-small">Label *</label>
-                            <div class="control">
-                              <input
-                                class="input is-small"
-                                type="text"
-                                placeholder="e.g. Starter"
-                                value={slot.label}
-                                onInput={(e) =>
-                                  setDraft(
-                                    "slots",
-                                    slotIndex(),
-                                    "label",
-                                    e.currentTarget.value,
-                                  )
-                                }
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="column is-2">
-                          <div class="field">
-                            <label class="label is-small">Min</label>
-                            <div class="control">
-                              <input
-                                class="input is-small"
-                                type="number"
-                                min="0"
-                                value={slot.minItems}
-                                onInput={(e) =>
-                                  setDraft(
-                                    "slots",
-                                    slotIndex(),
-                                    "minItems",
-                                    parseInt(e.currentTarget.value) || 0,
-                                  )
-                                }
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="column is-2">
-                          <div class="field">
-                            <label class="label is-small">Max</label>
-                            <div class="control">
-                              <input
-                                class="input is-small"
-                                type="number"
-                                min="0"
-                                value={slot.maxItems}
-                                onInput={(e) =>
-                                  setDraft(
-                                    "slots",
-                                    slotIndex(),
-                                    "maxItems",
-                                    parseInt(e.currentTarget.value) || 0,
-                                  )
-                                }
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="column is-4">
-                          <div class="field">
-                            <label class="label is-small">Group</label>
-                            <div class="control">
-                              <input
-                                class="input is-small"
-                                type="text"
-                                placeholder="e.g. main_course"
-                                value={slot.slotGroup}
-                                onInput={(e) =>
-                                  setDraft(
-                                    "slots",
-                                    slotIndex(),
-                                    "slotGroup",
-                                    e.currentTarget.value,
-                                  )
-                                }
-                              />
-                            </div>
-                            <p class="help">Slots sharing a group are treated as a unit</p>
-                          </div>
-                        </div>
-
-                        <div class="column is-4">
-                          <div class="field">
-                            <label class="label is-small">
-                              Slot Supplement (€)
-                            </label>
-                            <div class="control">
-                              <input
-                                class="input is-small"
-                                type="text"
-                                inputmode="decimal"
-                                placeholder="0.00"
-                                value={slot.supplementDisplay}
-                                onInput={(e) =>
-                                  setDraft(
-                                    "slots",
-                                    slotIndex(),
-                                    "supplementDisplay",
-                                    e.currentTarget.value,
-                                  )
-                                }
-                                onBlur={(e) => {
-                                  const cents = dollarsToCents(
-                                    e.currentTarget.value,
-                                  );
-                                  setDraft(
-                                    "slots",
-                                    slotIndex(),
-                                    "supplementDisplay",
-                                    centsToDollars(cents),
-                                  );
-                                }}
-                              />
-                            </div>
-                            <p class="help">
-                              {dollarsToCents(slot.supplementDisplay) === 0
-                                ? "Included in base"
-                                : `+€${centsToDollars(dollarsToCents(slot.supplementDisplay))}`}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* ── Constraints ──────────────────────── */}
-                      <div class="mt-2">
-                        <div class="is-flex is-justify-content-space-between is-align-items-center mb-1">
-                          <span class="is-size-7 has-text-weight-semibold has-text-grey-dark">
-                            Constraints ({slot.constraints.length})
-                          </span>
-                          <button
-                            class="button is-small"
-                            onClick={() => addConstraint(slotIndex())}
-                          >
-                            <span
-                              class="icon is-small"
-                              style={{ "font-size": "0.7rem" }}
-                            >
-                              <span>➕</span>
-                            </span>
-                            <span class="is-size-7">Add Constraint</span>
-                          </button>
-                        </div>
-
-                        <Show when={slot.constraints.length === 0}>
-                          <p class="has-text-grey is-size-7 is-italic ml-2">
-                            Add constraints to define which items are allowed.
-                          </p>
-                        </Show>
-
-                        <Index each={slot.constraints}>
-                          {(constraint, cIndex) => {
-                            const kindKey = () =>
-                              constraintKindKey(constraint().kind);
-                            const kindValue = () =>
-                              constraintKindValue(constraint().kind);
-
-                            return (
-                              <div
-                                class="is-flex is-align-items-center mb-2"
-                                style={{ gap: "0.5rem" }}
-                              >
-                                {/* Constraint type selector */}
-                                <div class="select is-small">
-                                  <select
-                                    value={kindKey()}
-                                    onChange={(e) => {
-                                      const newKind = e.currentTarget.value as
-                                        | "Item"
-                                        | "Tag"
-                                        | "Section";
-                                      let newConstraintKind: SlotConstraintKind;
-                                      if (newKind === "Item")
-                                        newConstraintKind = { Item: "" };
-                                      else if (newKind === "Tag")
-                                        newConstraintKind = { Tag: "" };
-                                      else
-                                        newConstraintKind = { Section: "" };
-
-                                      setDraft(
-                                        "slots",
-                                        slotIndex(),
-                                        "constraints",
-                                        cIndex,
-                                        "kind",
-                                        newConstraintKind,
-                                      );
-                                    }}
-                                  >
-                                    <option value="Section">Section</option>
-                                    <option value="Tag">Tag</option>
-                                    <option value="Item">Item</option>
-                                  </select>
-                                </div>
-
-                                {/* Value selector/input */}
-                                <Show when={kindKey() === "Section"}>
-                                  <div
-                                    class="select is-small"
-                                    style={{ flex: "1" }}
-                                  >
-                                    <select
-                                      value={kindValue()}
-                                      onChange={(e) => {
-                                        setDraft(
-                                          "slots",
-                                          slotIndex(),
-                                          "constraints",
-                                          cIndex,
-                                          "kind",
-                                          {
-                                            Section: e.currentTarget.value,
-                                          },
-                                        );
-                                      }}
-                                    >
-                                      <option value="">
-                                        — Select section —
-                                      </option>
-                                      <For each={flatSections()}>
-                                        {(section) => (
-                                          <option value={section.id}>
-                                            {"  ".repeat(section.depth)}
-                                            {section.name}
-                                          </option>
-                                        )}
-                                      </For>
-                                    </select>
-                                  </div>
-                                </Show>
-
-                                <Show
-                                  when={
-                                    kindKey() === "Tag" ||
-                                    kindKey() === "Item"
-                                  }
-                                >
-                                  <div
-                                    class="control is-expanded"
-                                    style={{ flex: "1" }}
-                                  >
-                                    <input
-                                      class="input is-small"
-                                      type="text"
-                                      placeholder={`${kindKey()} UUID`}
-                                      value={kindValue()}
-                                      onInput={(e) => {
-                                        const k = kindKey();
-                                        let newKind: SlotConstraintKind;
-                                        if (k === "Item")
-                                          newKind = {
-                                            Item: e.currentTarget.value,
-                                          };
-                                        else if (k === "Tag")
-                                          newKind = {
-                                            Tag: e.currentTarget.value,
-                                          };
-                                        else
-                                          newKind = {
-                                            Section: e.currentTarget.value,
-                                          };
-
-                                        setDraft(
-                                          "slots",
-                                          slotIndex(),
-                                          "constraints",
-                                          cIndex,
-                                          "kind",
-                                          newKind,
-                                        );
-                                      }}
-                                    />
-                                  </div>
-                                </Show>
-
-                                {/* Constraint supplement (€) */}
-                                <div
-                                  class="control"
-                                  style={{ width: "80px" }}
-                                >
-                                  <input
-                                    class="input is-small"
-                                    type="text"
-                                    inputmode="decimal"
-                                    placeholder="0.00"
-                                    title="Supplement (€)"
-                                    value={constraint().supplementDisplay}
-                                    onInput={(e) =>
-                                      setDraft(
-                                        "slots",
-                                        slotIndex(),
-                                        "constraints",
-                                        cIndex,
-                                        "supplementDisplay",
-                                        e.currentTarget.value,
-                                      )
-                                    }
-                                    onBlur={(e) => {
-                                      const cents = dollarsToCents(
-                                        e.currentTarget.value,
-                                      );
-                                      setDraft(
-                                        "slots",
-                                        slotIndex(),
-                                        "constraints",
-                                        cIndex,
-                                        "supplementDisplay",
-                                        centsToDollars(cents),
-                                      );
-                                    }}
-                                  />
-                                </div>
-                                <span
-                                  class="is-size-7 has-text-grey"
-                                  style={{ "white-space": "nowrap" }}
-                                >
-                                  {dollarsToCents(
-                                    constraint().supplementDisplay,
-                                  ) === 0
-                                    ? "incl."
-                                    : `+€${centsToDollars(dollarsToCents(constraint().supplementDisplay))}`}
-                                </span>
-
-                                {/* Remove constraint */}
-                                <button
-                                  class="delete is-small"
-                                  title="Remove constraint"
-                                  onClick={() =>
-                                    removeConstraint(slotIndex(), cIndex)
-                                  }
-                                />
-                              </div>
-                            );
-                          }}
-                        </Index>
-                      </div>
+                      <SlotFormFields
+                        slot={slot}
+                        slotIndex={slotIndex()}
+                        setDraft={setDraft}
+                        menus={menuId() ? [{ id: menuId()!, name: "Current Menu", sections: props.menuSections }] : []}
+                        onAddConstraint={() => addConstraint(slotIndex())}
+                        onRemoveConstraint={(cIndex) => removeConstraint(slotIndex(), cIndex)}
+                      />
                     </div>
                   )}
                 </For>

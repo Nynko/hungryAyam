@@ -85,47 +85,100 @@ function SessionOrderList(props: { session: OrderSession }) {
   });
 
   /**
-   * Group offer orders by offer, then aggregate items by slot → item name → quantity.
-   * Slot insertion order is preserved (reflects the order items appear in the data).
+   * Group offer orders by offer, then aggregate items by slot/slot-group.
+   *
+   * For grouped slots (sharing a slot_group), items are combined per-order into
+   * combo strings (e.g. "Kofte + Boulghour") and identical combos are counted.
+   * For ungrouped slots, items are counted individually as before.
    */
   const aggregatedOfferGroups = createMemo(() => {
-    // offer_id → { title, count, slots: Map<slotLabel, Map<itemName, qty>> }
-    // Items come from DB ordered by ofs.position so Map insertion order = slot order.
-    const groups = new Map<string, {
+    const offerMap = new Map<string, {
       title: string;
       count: number;
-      slots: Map<string, { labels: Set<string>; items: Map<string, number> }>;
+      // slotKey → { label, combos: Map<comboString, qty> } for grouped slots
+      //            { label, items: Map<itemName, qty> }       for ungrouped slots
+      slots: Map<string, {
+        label: string;
+        grouped: boolean;
+        combos: Map<string, number>;  // combo string → count (grouped)
+        items: Map<string, number>;   // item name → count (ungrouped)
+      }>;
     }>();
 
     for (const order of orders().filter((o) => !!o.offer_id)) {
       const offerId = order.offer_id!;
       const title = order.offer_title ?? `Offer (${offerId.slice(0, 8)})`;
 
-      if (!groups.has(offerId)) {
-        groups.set(offerId, { title, count: 0, slots: new Map() });
+      if (!offerMap.has(offerId)) {
+        offerMap.set(offerId, { title, count: 0, slots: new Map() });
       }
 
-      const group = groups.get(offerId)!;
+      const group = offerMap.get(offerId)!;
       group.count += 1;
 
+      // Partition this order's items by slot key (slot_group or slot_label).
+      const orderSlots = new Map<string, {
+        labels: Set<string>;
+        grouped: boolean;
+        itemsBySlotLabel: Map<string, string[]>; // slot_label → item names (preserves slot order)
+      }>();
+
       for (const item of order.items) {
-        // Group by slot_group when set, otherwise by individual slot label.
-        const groupKey = item.slot_group ?? item.slot_label ?? "—";
-        if (!group.slots.has(groupKey)) {
-          group.slots.set(groupKey, { labels: new Set<string>(), items: new Map() });
+        const slotKey = item.slot_group ?? item.slot_label ?? "—";
+        const isGrouped = !!item.slot_group;
+        if (!orderSlots.has(slotKey)) {
+          orderSlots.set(slotKey, { labels: new Set(), grouped: isGrouped, itemsBySlotLabel: new Map() });
         }
-        const slotEntry = group.slots.get(groupKey)!;
-        if (item.slot_label) slotEntry.labels.add(item.slot_label);
-        slotEntry.items.set(item.item_name, (slotEntry.items.get(item.item_name) ?? 0) + 1);
+        const entry = orderSlots.get(slotKey)!;
+        if (item.slot_label) entry.labels.add(item.slot_label);
+        // Collect items per slot_label within the group to preserve slot ordering.
+        const slotLabel = item.slot_label ?? "—";
+        if (!entry.itemsBySlotLabel.has(slotLabel)) {
+          entry.itemsBySlotLabel.set(slotLabel, []);
+        }
+        entry.itemsBySlotLabel.get(slotLabel)!.push(item.item_name);
+      }
+
+      // Merge this order's slots into the aggregate.
+      for (const [slotKey, entry] of orderSlots) {
+        if (!group.slots.has(slotKey)) {
+          group.slots.set(slotKey, {
+            label: Array.from(entry.labels).join(" + ") || "—",
+            grouped: entry.grouped,
+            combos: new Map(),
+            items: new Map(),
+          });
+        }
+        const agg = group.slots.get(slotKey)!;
+
+        if (entry.grouped) {
+          // Build combo string: join one item per slot label with " + ".
+          // Each slot_label contributes its items joined by " & " if multiple.
+          const parts: string[] = [];
+          for (const items of entry.itemsBySlotLabel.values()) {
+            parts.push(items.join(" & "));
+          }
+          const combo = parts.join(" + ");
+          agg.combos.set(combo, (agg.combos.get(combo) ?? 0) + 1);
+        } else {
+          // Ungrouped: count individual items.
+          for (const items of entry.itemsBySlotLabel.values()) {
+            for (const name of items) {
+              agg.items.set(name, (agg.items.get(name) ?? 0) + 1);
+            }
+          }
+        }
       }
     }
 
-    return Array.from(groups.values()).map((g) => ({
+    return Array.from(offerMap.values()).map((g) => ({
       title: g.title,
       count: g.count,
-      slots: Array.from(g.slots.values()).map((entry) => ({
-        label: Array.from(entry.labels).join(" + ") || "—",
-        items: Array.from(entry.items.entries()).map(([name, qty]) => ({ name, qty })),
+      slots: Array.from(g.slots.values()).map((s) => ({
+        label: s.label,
+        items: s.grouped
+          ? Array.from(s.combos.entries()).map(([name, qty]) => ({ name, qty }))
+          : Array.from(s.items.entries()).map(([name, qty]) => ({ name, qty })),
       })),
     }));
   });

@@ -106,7 +106,7 @@ impl ItemRepository {
                     sqlx::query_as!(
                         AvailabilityRuleRow,
                         r#"
-                        SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                        SELECT id, valid_from, valid_to, start_time, end_time, weekdays, public_holidays_country, public_holidays_mode, active
                         FROM availability_rules
                         WHERE id = $1
                         "#,
@@ -121,6 +121,8 @@ impl ItemRepository {
                         start_time: r.start_time,
                         end_time: r.end_time,
                         weekdays: r.weekdays,
+                        public_holidays_country: r.public_holidays_country,
+                        public_holidays_mode: r.public_holidays_mode.as_deref().and_then(|s| match s { "exclude" => Some(crate::features::availability::domain::PublicHolidaysMode::Exclude), "only" => Some(crate::features::availability::domain::PublicHolidaysMode::Only), _ => None }),
                         active: r.active,
                     })
                 } else {
@@ -243,7 +245,7 @@ impl ItemRepository {
                     sqlx::query_as!(
                         AvailabilityRuleRow,
                         r#"
-                        SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                        SELECT id, valid_from, valid_to, start_time, end_time, weekdays, public_holidays_country, public_holidays_mode, active
                         FROM availability_rules
                         WHERE id = $1
                         "#,
@@ -258,6 +260,8 @@ impl ItemRepository {
                         start_time: r.start_time,
                         end_time: r.end_time,
                         weekdays: r.weekdays,
+                        public_holidays_country: r.public_holidays_country,
+                        public_holidays_mode: r.public_holidays_mode.as_deref().and_then(|s| match s { "exclude" => Some(crate::features::availability::domain::PublicHolidaysMode::Exclude), "only" => Some(crate::features::availability::domain::PublicHolidaysMode::Only), _ => None }),
                         active: r.active,
                     })
                 } else {
@@ -475,7 +479,7 @@ impl ItemRepository {
             let rule_rows = sqlx::query_as!(
                 AvailabilityRuleRow,
                 r#"
-                SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+                SELECT id, valid_from, valid_to, start_time, end_time, weekdays, public_holidays_country, public_holidays_mode, active
                 FROM availability_rules
                 WHERE id = ANY($1)
                 "#,
@@ -494,6 +498,8 @@ impl ItemRepository {
                         start_time: r.start_time,
                         end_time: r.end_time,
                         weekdays: r.weekdays,
+                        public_holidays_country: r.public_holidays_country,
+                        public_holidays_mode: r.public_holidays_mode.as_deref().and_then(|s| match s { "exclude" => Some(crate::features::availability::domain::PublicHolidaysMode::Exclude), "only" => Some(crate::features::availability::domain::PublicHolidaysMode::Only), _ => None }),
                         active: r.active,
                     };
                     (rule.id, rule)

@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::features::availability::{
     db_model::AvailabilityRuleRow,
-    domain::{AvailabilityRule, CreateAvailabilityRule, UpdateAvailabilityRule},
+    domain::{AvailabilityRule, CreateAvailabilityRule, PublicHolidaysMode, UpdateAvailabilityRule},
 };
 
 #[derive(Clone)]
@@ -20,25 +20,26 @@ impl AvailabilityRepository {
 
     /// Create a new availability rule.
     pub async fn create(&self, request: CreateAvailabilityRule) -> Result<AvailabilityRule> {
+        let ph_mode = request.public_holidays_mode.as_ref().map(mode_to_str);
         let row = sqlx::query_as!(
             AvailabilityRuleRow,
             r#"
-            INSERT INTO availability_rules (valid_from, valid_to, start_time, end_time, weekdays, active)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO availability_rules (
+                valid_from, valid_to, start_time, end_time, weekdays,
+                public_holidays_country, public_holidays_mode, active
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING
-                id,
-                valid_from,
-                valid_to,
-                start_time,
-                end_time,
-                weekdays,
-                active
+                id, valid_from, valid_to, start_time, end_time, weekdays,
+                public_holidays_country, public_holidays_mode, active
             "#,
             request.valid_from,
             request.valid_to,
             request.start_time,
             request.end_time,
             request.weekdays.as_deref(),
+            request.public_holidays_country,
+            ph_mode,
             request.active,
         )
         .fetch_one(&self.pool)
@@ -52,7 +53,8 @@ impl AvailabilityRepository {
         let row = sqlx::query_as!(
             AvailabilityRuleRow,
             r#"
-            SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+            SELECT id, valid_from, valid_to, start_time, end_time, weekdays,
+                   public_holidays_country, public_holidays_mode, active
             FROM availability_rules
             WHERE id = $1
             "#,
@@ -66,24 +68,30 @@ impl AvailabilityRepository {
 
     /// Update an availability rule.
     pub async fn update(&self, request: UpdateAvailabilityRule) -> Result<Option<AvailabilityRule>> {
+        let ph_mode = request.public_holidays_mode.as_ref().map(mode_to_str);
         let row = sqlx::query_as!(
             AvailabilityRuleRow,
             r#"
             UPDATE availability_rules
-            SET valid_from  = COALESCE($1, valid_from),
-                valid_to    = COALESCE($2, valid_to),
-                start_time  = COALESCE($3, start_time),
-                end_time    = COALESCE($4, end_time),
-                weekdays    = COALESCE($5, weekdays),
-                active      = COALESCE($6, active)
-            WHERE id = $7
-            RETURNING id, valid_from, valid_to, start_time, end_time, weekdays, active
+            SET valid_from              = COALESCE($1, valid_from),
+                valid_to                = COALESCE($2, valid_to),
+                start_time              = COALESCE($3, start_time),
+                end_time                = COALESCE($4, end_time),
+                weekdays                = COALESCE($5, weekdays),
+                public_holidays_country = $6,
+                public_holidays_mode    = $7,
+                active                  = COALESCE($8, active)
+            WHERE id = $9
+            RETURNING id, valid_from, valid_to, start_time, end_time, weekdays,
+                      public_holidays_country, public_holidays_mode, active
             "#,
             request.valid_from,
             request.valid_to,
             request.start_time,
             request.end_time,
             request.weekdays.as_deref(),
+            request.public_holidays_country,
+            ph_mode,
             request.active,
             request.id,
         )
@@ -94,25 +102,18 @@ impl AvailabilityRepository {
     }
 
     /// Delete an availability rule by ID.
-    /// This will set the FK columns on restaurants/menus/items/offers to NULL first.
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
-        // First, clear any FK references to this rule
         sqlx::query!("UPDATE restaurants SET availability_rule_id = NULL WHERE availability_rule_id = $1", id)
-            .execute(&self.pool)
-            .await?;
+            .execute(&self.pool).await?;
         sqlx::query!("UPDATE menus SET availability_rule_id = NULL WHERE availability_rule_id = $1", id)
-            .execute(&self.pool)
-            .await?;
+            .execute(&self.pool).await?;
         sqlx::query!("UPDATE items SET availability_rule_id = NULL WHERE availability_rule_id = $1", id)
-            .execute(&self.pool)
-            .await?;
+            .execute(&self.pool).await?;
         sqlx::query!("UPDATE offers SET availability_rule_id = NULL WHERE availability_rule_id = $1", id)
-            .execute(&self.pool)
-            .await?;
+            .execute(&self.pool).await?;
 
         let result = sqlx::query!("DELETE FROM availability_rules WHERE id = $1", id)
-            .execute(&self.pool)
-            .await?;
+            .execute(&self.pool).await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -122,7 +123,8 @@ impl AvailabilityRepository {
         let rows = sqlx::query_as!(
             AvailabilityRuleRow,
             r#"
-            SELECT id, valid_from, valid_to, start_time, end_time, weekdays, active
+            SELECT id, valid_from, valid_to, start_time, end_time, weekdays,
+                   public_holidays_country, public_holidays_mode, active
             FROM availability_rules
             ORDER BY id
             "#,
@@ -133,127 +135,91 @@ impl AvailabilityRepository {
         Ok(rows.into_iter().map(|r| self.row_to_domain(r)).collect())
     }
 
-    /// Assign an availability rule to a menu.
     pub async fn assign_to_menu(&self, menu_id: Uuid, rule_id: Option<Uuid>) -> Result<bool> {
         let result = sqlx::query!(
-            "UPDATE menus SET availability_rule_id = $1 WHERE id = $2",
-            rule_id,
-            menu_id,
-        )
-        .execute(&self.pool)
-        .await?;
+            "UPDATE menus SET availability_rule_id = $1 WHERE id = $2", rule_id, menu_id)
+            .execute(&self.pool).await?;
         Ok(result.rows_affected() > 0)
     }
 
-    /// Assign an availability rule to an item.
     pub async fn assign_to_item(&self, item_id: Uuid, rule_id: Option<Uuid>) -> Result<bool> {
         let result = sqlx::query!(
-            "UPDATE items SET availability_rule_id = $1 WHERE id = $2",
-            rule_id,
-            item_id,
-        )
-        .execute(&self.pool)
-        .await?;
+            "UPDATE items SET availability_rule_id = $1 WHERE id = $2", rule_id, item_id)
+            .execute(&self.pool).await?;
         Ok(result.rows_affected() > 0)
     }
 
-    /// Assign an availability rule to an offer.
     pub async fn assign_to_offer(&self, offer_id: Uuid, rule_id: Option<Uuid>) -> Result<bool> {
         let result = sqlx::query!(
-            "UPDATE offers SET availability_rule_id = $1 WHERE id = $2",
-            rule_id,
-            offer_id,
-        )
-        .execute(&self.pool)
-        .await?;
+            "UPDATE offers SET availability_rule_id = $1 WHERE id = $2", rule_id, offer_id)
+            .execute(&self.pool).await?;
         Ok(result.rows_affected() > 0)
     }
 
-    /// Assign an availability rule to a restaurant.
     pub async fn assign_to_restaurant(&self, restaurant_id: Uuid, rule_id: Option<Uuid>) -> Result<bool> {
         let result = sqlx::query!(
-            "UPDATE restaurants SET availability_rule_id = $1 WHERE id = $2",
-            rule_id,
-            restaurant_id,
-        )
-        .execute(&self.pool)
-        .await?;
+            "UPDATE restaurants SET availability_rule_id = $1 WHERE id = $2", rule_id, restaurant_id)
+            .execute(&self.pool).await?;
         Ok(result.rows_affected() > 0)
     }
 
-    /// Get the availability rule assigned to a menu (if any).
     pub async fn get_for_menu(&self, menu_id: Uuid) -> Result<Option<AvailabilityRule>> {
         let row = sqlx::query_as!(
             AvailabilityRuleRow,
             r#"
-            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays, ar.active
+            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays,
+                   ar.public_holidays_country, ar.public_holidays_mode, ar.active
             FROM availability_rules ar
             JOIN menus m ON m.availability_rule_id = ar.id
             WHERE m.id = $1
-            "#,
-            menu_id,
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
+            "#, menu_id)
+        .fetch_optional(&self.pool).await?;
         Ok(row.map(|r| self.row_to_domain(r)))
     }
 
-    /// Get the availability rule assigned to an item (if any).
     pub async fn get_for_item(&self, item_id: Uuid) -> Result<Option<AvailabilityRule>> {
         let row = sqlx::query_as!(
             AvailabilityRuleRow,
             r#"
-            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays, ar.active
+            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays,
+                   ar.public_holidays_country, ar.public_holidays_mode, ar.active
             FROM availability_rules ar
             JOIN items i ON i.availability_rule_id = ar.id
             WHERE i.id = $1
-            "#,
-            item_id,
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
+            "#, item_id)
+        .fetch_optional(&self.pool).await?;
         Ok(row.map(|r| self.row_to_domain(r)))
     }
 
-    /// Get the availability rule assigned to an offer (if any).
     pub async fn get_for_offer(&self, offer_id: Uuid) -> Result<Option<AvailabilityRule>> {
         let row = sqlx::query_as!(
             AvailabilityRuleRow,
             r#"
-            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays, ar.active
+            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays,
+                   ar.public_holidays_country, ar.public_holidays_mode, ar.active
             FROM availability_rules ar
             JOIN offers o ON o.availability_rule_id = ar.id
             WHERE o.id = $1
-            "#,
-            offer_id,
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
+            "#, offer_id)
+        .fetch_optional(&self.pool).await?;
         Ok(row.map(|r| self.row_to_domain(r)))
     }
 
-    /// Get the availability rule assigned to a restaurant (if any).
     pub async fn get_for_restaurant(&self, restaurant_id: Uuid) -> Result<Option<AvailabilityRule>> {
         let row = sqlx::query_as!(
             AvailabilityRuleRow,
             r#"
-            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays, ar.active
+            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays,
+                   ar.public_holidays_country, ar.public_holidays_mode, ar.active
             FROM availability_rules ar
             JOIN restaurants r ON r.availability_rule_id = ar.id
             WHERE r.id = $1
-            "#,
-            restaurant_id,
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
+            "#, restaurant_id)
+        .fetch_optional(&self.pool).await?;
         Ok(row.map(|r| self.row_to_domain(r)))
     }
 
-    // ==================== HELPERS ====================
+    // ── Helpers ────────────────────────────────────────────────────
 
     fn row_to_domain(&self, row: AvailabilityRuleRow) -> AvailabilityRule {
         AvailabilityRule {
@@ -263,7 +229,24 @@ impl AvailabilityRepository {
             start_time: row.start_time,
             end_time: row.end_time,
             weekdays: row.weekdays,
+            public_holidays_country: row.public_holidays_country,
+            public_holidays_mode: row.public_holidays_mode.as_deref().and_then(str_to_mode),
             active: row.active,
         }
+    }
+}
+
+fn mode_to_str(mode: &PublicHolidaysMode) -> &'static str {
+    match mode {
+        PublicHolidaysMode::Exclude => "exclude",
+        PublicHolidaysMode::Only => "only",
+    }
+}
+
+fn str_to_mode(s: &str) -> Option<PublicHolidaysMode> {
+    match s {
+        "exclude" => Some(PublicHolidaysMode::Exclude),
+        "only" => Some(PublicHolidaysMode::Only),
+        _ => None,
     }
 }

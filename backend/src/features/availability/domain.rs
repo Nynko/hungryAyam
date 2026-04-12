@@ -4,12 +4,26 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
+use super::holidays::is_public_holiday;
+
+/// Whether public holidays should be excluded from or required for availability.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PublicHolidaysMode {
+    /// Entity is NOT available on public holidays.
+    Exclude,
+    /// Entity is ONLY available on public holidays.
+    Only,
+}
+
 /// An availability rule defining when something (item, menu, or offer) is available.
 ///
 /// All fields are optional constraints — if a field is `None`, that dimension is unrestricted:
 /// - `valid_from` / `valid_to`: date range (inclusive)
 /// - `start_time` / `end_time`: daily time window
 /// - `weekdays`: which days of the week (0=Monday .. 6=Sunday, ISO 8601)
+/// - `public_holidays_country` / `public_holidays_mode`: public holiday constraint
 /// - `active`: master toggle (if false, the rule is ignored / entity treated as always-available)
 #[domain_struct(create, update(all_optional))]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -24,6 +38,14 @@ pub struct AvailabilityRule {
     pub end_time: Option<NaiveTime>,
     #[serde(default)]
     pub weekdays: Option<Vec<i16>>,
+    /// ISO 3166-1 alpha-2 country code for public holiday computation (e.g. "FR").
+    /// Must be set together with `public_holidays_mode`.
+    #[serde(default)]
+    pub public_holidays_country: Option<String>,
+    /// Whether to exclude or require public holidays.
+    /// Must be set together with `public_holidays_country`.
+    #[serde(default)]
+    pub public_holidays_mode: Option<PublicHolidaysMode>,
     /// Master toggle. When `false`, the rule is ignored and the entity is
     /// treated as always-available.
     #[update_required]
@@ -38,6 +60,7 @@ impl AvailabilityRule {
     /// - If `valid_from` is set, date must be >= valid_from
     /// - If `valid_to` is set, date must be <= valid_to
     /// - If `weekdays` is set and non-empty, the weekday must be in the list
+    /// - If `public_holidays_country` + `public_holidays_mode` are set, checks holiday constraint
     /// - If `start_time` and/or `end_time` are set, time must be in range
     ///   (supports overnight ranges like 22:00 - 06:00)
     pub fn is_available_at(&self, date: NaiveDate, time: NaiveTime) -> bool {
@@ -63,6 +86,23 @@ impl AvailabilityRule {
                 let weekday_num = date.weekday().num_days_from_monday() as i16;
                 if !days.contains(&weekday_num) {
                     return false;
+                }
+            }
+        }
+
+        // Public holiday check
+        if let (Some(country), Some(mode)) = (&self.public_holidays_country, &self.public_holidays_mode) {
+            let is_holiday = is_public_holiday(country, date);
+            match mode {
+                PublicHolidaysMode::Exclude => {
+                    if is_holiday {
+                        return false;
+                    }
+                }
+                PublicHolidaysMode::Only => {
+                    if !is_holiday {
+                        return false;
+                    }
                 }
             }
         }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT ar.id, ar.valid_from, ar.valid_to, ar.start_time, ar.end_time, ar.weekdays, ar.active\n            FROM availability_rules ar\n            JOIN restaurants r ON r.availability_rule_id = ar.id\n            WHERE r.id = $1\n            ",
+  "query": "\n                SELECT id, valid_from, valid_to, start_time, end_time, weekdays, public_holidays_country, public_holidays_mode, active\n                FROM availability_rules\n                WHERE id = ANY($1)\n                ",
   "describe": {
     "columns": [
       {
@@ -35,13 +35,23 @@
       },
       {
         "ordinal": 6,
+        "name": "public_holidays_country",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "public_holidays_mode",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
         "name": "active",
         "type_info": "Bool"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "UuidArray"
       ]
     },
     "nullable": [
@@ -51,8 +61,10 @@
       true,
       true,
       true,
+      true,
+      true,
       false
     ]
   },
-  "hash": "93bc439f57a49c787f8378b74e9e14378b204a07e1f57a5b69e7591599c46dd3"
+  "hash": "65530919131ed8b282e8b239e5051c447b8735a91d283b98142d05243d55eafb"
 }

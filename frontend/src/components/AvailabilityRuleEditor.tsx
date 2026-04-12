@@ -1,5 +1,6 @@
 import { Show, For, createSignal, createEffect, batch } from "solid-js";
 import type { AvailabilityRule } from "@bindings/AvailabilityRule";
+import type { PublicHolidaysMode } from "@bindings/PublicHolidaysMode";
 import type { CreateAvailabilityRule } from "@bindings/CreateAvailabilityRule";
 import type { UpdateAvailabilityRule } from "@bindings/UpdateAvailabilityRule";
 import type { AssignAvailabilityRequest } from "@bindings/AssignAvailabilityRequest";
@@ -8,6 +9,11 @@ import { showConfirm } from "@/stores/confirmStore";
 
 // ── Weekday helpers ──────────────────────────────────────────────
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// ── Supported countries ──────────────────────────────────────────
+const SUPPORTED_COUNTRIES: { code: string; label: string }[] = [
+  { code: "FR", label: "🇫🇷 France" },
+];
 
 // ── Time formatting ──────────────────────────────────────────────
 
@@ -99,6 +105,8 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
   const [startTime, setStartTime] = createSignal("");
   const [endTime, setEndTime] = createSignal("");
   const [weekdays, setWeekdays] = createSignal<number[]>([]);
+  const [publicHolidaysCountry, setPublicHolidaysCountry] = createSignal<string>("");
+  const [publicHolidaysMode, setPublicHolidaysMode] = createSignal<PublicHolidaysMode | "">("");
 
   // ── Auto-dismiss success ───────────────────────────────────────
   createEffect(() => {
@@ -117,6 +125,8 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
       setStartTime(formatTimeForInput(rule.start_time));
       setEndTime(formatTimeForInput(rule.end_time));
       setWeekdays(rule.weekdays ?? []);
+      setPublicHolidaysCountry(rule.public_holidays_country ?? "");
+      setPublicHolidaysMode(rule.public_holidays_mode ?? "");
     } else {
       setActive(true);
       setValidFrom("");
@@ -124,6 +134,8 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
       setStartTime("");
       setEndTime("");
       setWeekdays([]);
+      setPublicHolidaysCountry("");
+      setPublicHolidaysMode("");
     }
   };
 
@@ -153,12 +165,16 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
     setSaving(true);
 
     try {
+      const country = publicHolidaysCountry() || null;
+      const mode = publicHolidaysMode() || null;
       const ruleData = {
         valid_from: validFrom() || null,
         valid_to: validTo() || null,
         start_time: formatTimeForBackend(startTime()),
         end_time: formatTimeForBackend(endTime()),
         weekdays: weekdays().length > 0 ? weekdays() : null,
+        public_holidays_country: country,
+        public_holidays_mode: (country && mode) ? mode as PublicHolidaysMode : null,
         active: active(),
       };
 
@@ -239,6 +255,12 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
       }
       if (rule.weekdays && rule.weekdays.length > 0 && rule.weekdays.length < 7) {
         parts.push(rule.weekdays.map((d) => WEEKDAY_LABELS[d]).join(", "));
+      }
+      if (rule.public_holidays_country && rule.public_holidays_mode) {
+        const country = SUPPORTED_COUNTRIES.find(c => c.code === rule.public_holidays_country)?.label ?? rule.public_holidays_country;
+        parts.push(rule.public_holidays_mode === "exclude"
+          ? `No ${country} holidays`
+          : `${country} holidays only`);
       }
       if (parts.length === 0) parts.push("Active (no constraints)");
     }
@@ -441,6 +463,51 @@ export default function AvailabilityRuleEditor(props: AvailabilityRuleEditorProp
                 </p>
               </div>
             </div>
+
+            {/* Public holidays */}
+            <div class="column is-6">
+              <div class="field">
+                <label class="label is-small">Public holidays</label>
+                <div class="control">
+                  <div class="select is-small is-fullwidth">
+                    <select
+                      value={publicHolidaysCountry()}
+                      disabled={saving() || !active()}
+                      onChange={(e) => {
+                        setPublicHolidaysCountry(e.currentTarget.value);
+                        if (!e.currentTarget.value) setPublicHolidaysMode("");
+                        else if (!publicHolidaysMode()) setPublicHolidaysMode("exclude");
+                      }}
+                    >
+                      <option value="">No holiday constraint</option>
+                      <For each={SUPPORTED_COUNTRIES}>
+                        {(c) => <option value={c.code}>{c.label}</option>}
+                      </For>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Show when={publicHolidaysCountry()}>
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label is-small">Holiday rule</label>
+                  <div class="control">
+                    <div class="select is-small is-fullwidth">
+                      <select
+                        value={publicHolidaysMode()}
+                        disabled={saving() || !active()}
+                        onChange={(e) => setPublicHolidaysMode(e.currentTarget.value as PublicHolidaysMode)}
+                      >
+                        <option value="exclude">Exclude — not available on holidays</option>
+                        <option value="only">Only — available on holidays only</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Show>
           </div>
 
           {/* Actions */}

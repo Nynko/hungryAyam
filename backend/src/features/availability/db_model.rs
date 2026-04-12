@@ -11,5 +11,7 @@ pub struct AvailabilityRuleRow {
     pub start_time: Option<NaiveTime>,
     pub end_time: Option<NaiveTime>,
     pub weekdays: Option<Vec<i16>>,
+    pub public_holidays_country: Option<String>,
+    pub public_holidays_mode: Option<String>,
     pub active: bool,
 }

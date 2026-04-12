@@ -1,4 +1,4 @@
-import { createSignal, createResource, createMemo, Show, For, onMount, onCleanup } from "solid-js";
+import { createSignal, createEffect, createResource, createMemo, Show, For, onMount, onCleanup } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import type { Restaurant } from "@bindings/Restaurant";
 import type { Menu } from "@bindings/Menu";
@@ -160,7 +160,30 @@ export default function RestaurantPage() {
   });
 
   // ── Ordering mode ───────────────────────────────────────────────
+  // Starts false; set once on first load based on availability + menus.
+  // Non-editors are auto-started in ordering mode when:
+  //   - the restaurant is currently available, AND
+  //   - at least one active non-permanent menu has an available item.
   const [orderingMode, setOrderingMode] = createSignal(false);
+  const [orderingModeInitialized, setOrderingModeInitialized] = createSignal(false);
+
+  const hasOrderableMenus = (m: Menu[]) =>
+    m.every(
+      (menu) =>
+        menu.is_active &&
+        (menu.permanent ||
+          menu.sections.some((section) => section.items.some((item) => item.is_available))
+        )
+    );
+
+  createEffect(() => {
+    const r = restaurant();
+    const m = menus();
+    if (!orderingModeInitialized() && r && m) {
+      setOrderingMode(!isEditor() && restaurantAvailability().available && hasOrderableMenus(m));
+      setOrderingModeInitialized(true);
+    }
+  });
   const [showCreateSession, setShowCreateSession] = createSignal(false);
 
   // ── Offer composer state ────────────────────────────────────────

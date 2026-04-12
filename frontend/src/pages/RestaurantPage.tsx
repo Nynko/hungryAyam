@@ -67,7 +67,11 @@ export default function RestaurantPage() {
   const params = useParams<{ id: string }>();
 
   const [restaurant] = createResource(() => params.id, fetchRestaurant);
-  const [menus] = createResource(() => params.id, fetchMenus);
+  const [menusVersion, setMenusVersion] = createSignal(0);
+  const [menus, { refetch: refetchMenus }] = createResource(
+    () => ({ id: params.id, _v: menusVersion() }),
+    ({ id }) => fetchMenus(id)
+  );
 
   // ── Open sessions ───────────────────────────────────────────────
   const [sessionVersion, setSessionVersion] = createSignal(0);
@@ -200,16 +204,43 @@ export default function RestaurantPage() {
   const activeMenus = () =>
     (menus() ?? [])
       .filter((m) => m.is_active && !offerOwnedMenuIds().has(m.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
 
   /** All active menus (unfiltered), used in non-ordering mode where we show everything. */
   const allActiveMenus = () =>
-    (menus() ?? []).filter((m) => m.is_active).sort((a, b) => a.name.localeCompare(b.name));
+    (menus() ?? [])
+      .filter((m) => m.is_active)
+      .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
 
   const inactiveMenus = () =>
-    (menus() ?? []).filter((m) => !m.is_active).sort((a, b) => a.name.localeCompare(b.name));
+    (menus() ?? [])
+      .filter((m) => !m.is_active)
+      .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
 
   const [showInactive, setShowInactive] = createSignal(false);
+
+  // ── Menu reordering (editor only) ──────────────────────────────
+  const [reordering, setReordering] = createSignal(false);
+
+  const moveMenu = async (menuId: string, newPosition: number) => {
+    setReordering(true);
+    try {
+      const res = await fetch("/api/update-menu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          menu_id: menuId,
+          actions: [{ ChangePositionMenu: { position: newPosition } }],
+        }),
+      });
+      if (!res.ok) throw new Error(`Failed to reorder menu (${res.status})`);
+      setMenusVersion((v) => v + 1);
+    } catch (e) {
+      console.error("[RestaurantPage] moveMenu failed:", e);
+    } finally {
+      setReordering(false);
+    }
+  };
 
   // Sessions that can still accept new orders
   const orderableSessions = createMemo(() =>
@@ -871,11 +902,31 @@ export default function RestaurantPage() {
                   {/* Active menus (unfiltered in non-ordering view) */}
                   <Show when={allActiveMenus().length > 0}>
                     <For each={allActiveMenus()}>
-                      {(menu) => (
+                      {(menu, index) => (
                         <div class="mb-5">
                           <MenuView menu={menu} hideUnavailable={!menu.permanent && !isEditor()} />
                           <Show when={isEditor() || (!menu.permanent && isAuthenticated())}>
-                            <div class="has-text-right mt-2">
+                            <div class="is-flex is-justify-content-flex-end is-align-items-center mt-2" style={{ gap: "0.5rem" }}>
+                              <Show when={isEditor()}>
+                                <div class="buttons are-small mb-0">
+                                  <button
+                                    class="button is-small is-light"
+                                    disabled={index() === 0 || reordering()}
+                                    title="Move up"
+                                    onClick={() => moveMenu(menu.id, menu.position - 1)}
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    class="button is-small is-light"
+                                    disabled={index() === allActiveMenus().length - 1 || reordering()}
+                                    title="Move down"
+                                    onClick={() => moveMenu(menu.id, menu.position + 1)}
+                                  >
+                                    ↓
+                                  </button>
+                                </div>
+                              </Show>
                               <A
                                 href={`/restaurants/${r().id}/menus/${menu.id}/edit`}
                                 class="button is-small is-info is-outlined"

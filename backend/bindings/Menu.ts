@@ -2,4 +2,4 @@
 import type { AvailabilityRule } from "./AvailabilityRule";
 import type { MenuSection } from "./MenuSection";
 
-export interface Menu { id: string, restaurant_id: string, name: string, description: string | null, is_active: boolean, permanent: boolean, updated_at: string, created_by: string, updated_by: string, sections: Array<MenuSection>, availability_rule: AvailabilityRule | null, }
+export interface Menu { id: string, restaurant_id: string, name: string, description: string | null, is_active: boolean, permanent: boolean, position: number, updated_at: string, created_by: string, updated_by: string, sections: Array<MenuSection>, availability_rule: AvailabilityRule | null, }

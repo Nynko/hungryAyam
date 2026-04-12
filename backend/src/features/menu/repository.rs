@@ -57,6 +57,7 @@ impl MenuRepository {
                 description,
                 is_active,
                 permanent,
+                position,
                 created_at,
                 updated_at,
                 created_by,
@@ -96,6 +97,7 @@ impl MenuRepository {
                 description,
                 is_active,
                 permanent,
+                position,
                 created_at,
                 updated_at,
                 created_by,
@@ -131,6 +133,7 @@ impl MenuRepository {
                 description,
                 is_active,
                 permanent,
+                position,
                 created_at,
                 updated_at,
                 created_by,
@@ -138,7 +141,7 @@ impl MenuRepository {
                 availability_rule_id
             FROM menus
             WHERE restaurant_id = $1
-            ORDER BY name ASC
+            ORDER BY position ASC, name ASC
             "#,
             restaurant_id
         )
@@ -167,6 +170,7 @@ impl MenuRepository {
                 description,
                 is_active,
                 permanent,
+                position,
                 created_at,
                 updated_at,
                 created_by,
@@ -174,7 +178,7 @@ impl MenuRepository {
                 availability_rule_id
             FROM menus
             WHERE restaurant_id = $1 AND is_active = true
-            ORDER BY name ASC
+            ORDER BY position ASC, name ASC
             "#,
             restaurant_id
         )
@@ -543,7 +547,28 @@ impl MenuRepository {
                     Some(row_id)
                 }
 
-                // ── 6. ChangePositionSection ──────────────────────────
+                // ── 6. ChangePositionMenu ────────────────────────────
+                UpdateMenuAction::ChangePositionMenu { position } => {
+                    sqlx::query_scalar!(
+                        r#"
+                        UPDATE menus
+                        SET position   = $1,
+                            updated_at = NOW(),
+                            updated_by = $3
+                        WHERE id = $2
+                        RETURNING id
+                        "#,
+                        position.as_ref(),
+                        menu_id,
+                        user_id
+                    )
+                    .fetch_one(&mut *tx)
+                    .await?;
+
+                    None
+                }
+
+                // ── 7. ChangePositionSection ──────────────────────────
                 UpdateMenuAction::ChangePositionSection {
                     section_id,
                     position,
@@ -1030,6 +1055,7 @@ impl MenuRepository {
             description: row.description,
             is_active: row.is_active,
             permanent: row.permanent,
+            position: row.position,
             updated_at: row.updated_at,
             created_by: row.created_by,
             updated_by: row.updated_by,

@@ -1,4 +1,5 @@
 import { createSignal, createResource, Show, For, onMount, onCleanup } from "solid-js";
+import type { AvailabilityRule } from "@bindings/AvailabilityRule";
 import { A, useParams, useNavigate } from "@solidjs/router";
 import type { Restaurant } from "@bindings/Restaurant";
 import type { Menu } from "@bindings/Menu";
@@ -52,6 +53,7 @@ export default function MenuEditor() {
     !isEditor() && isEditMode() && !editorState.draft.permanent;
   const [modeSelected, setModeSelected] = createSignal(false);
   const [scanMode, setScanMode] = createSignal(false);
+  const [menuAvailabilityRule, setMenuAvailabilityRule] = createSignal<AvailabilityRule | null>(null);
   const [showAddSection, setShowAddSection] = createSignal(false);
   const [newSectionName, setNewSectionName] = createSignal("");
 
@@ -62,7 +64,8 @@ export default function MenuEditor() {
   onMount(async () => {
     if (isEditMode()) {
       // Edit mode: load existing menu
-      await fetchAndLoadMenu(params.menuId!);
+      const menu = await fetchAndLoadMenu(params.menuId!);
+      setMenuAvailabilityRule(menu?.availability_rule ?? null);
       setModeSelected(true); // skip mode selector
     }
     // Create mode: store init happens when user picks manual mode
@@ -235,7 +238,7 @@ export default function MenuEditor() {
           </div>
 
           {/* Toolbar (name, description, toggles, save/cancel) */}
-          <MenuEditorToolbar onSaved={handleSaved} onCancel={handleCancel} availabilityOnly={availabilityOnly()} />
+          <MenuEditorToolbar onSaved={handleSaved} onCancel={handleCancel} availabilityOnly={availabilityOnly()} availabilityRule={menuAvailabilityRule()} />
 
           {/* ── Offer Editor (integrated into menu, editor only) ── */}
           <Show when={!availabilityOnly()}>

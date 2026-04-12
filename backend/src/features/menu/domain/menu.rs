@@ -29,6 +29,10 @@ pub struct Menu {
     /// Non-permanent (rotating) menus can be "reset" - items become unavailable
     /// but stay in the candidate pool for easy re-selection.
     pub permanent: bool,
+    /// Display order within the restaurant (ascending).
+    #[create_ignore]
+    #[unit_create_ignore]
+    pub position: i32,
     // #[derived_domain_ignore]
     // pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]

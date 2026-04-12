@@ -58,6 +58,10 @@ pub enum UpdateMenuAction {
         item_tags: Vec<TagInput>,
     },
 
+    ChangePositionMenu {
+        position: Position,
+    },
+
     ChangePositionSection {
         section_id: EntityRef,
         position: Position,

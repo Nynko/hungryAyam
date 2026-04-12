@@ -14,6 +14,7 @@ pub struct MenuRow {
     pub description: Option<String>,
     pub is_active: bool,
     pub permanent: bool,
+    pub position: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub created_by: Uuid,

@@ -14,6 +14,8 @@ import {
   resetMenu,
 } from "@/stores/menuEditorStore";
 import { showConfirm } from "@/stores/confirmStore";
+import AvailabilityRuleEditor from "@/components/AvailabilityRuleEditor";
+import type { AvailabilityRule } from "@bindings/AvailabilityRule";
 
 interface MenuEditorToolbarProps {
   onSaved?: () => void;
@@ -21,10 +23,15 @@ interface MenuEditorToolbarProps {
   /** When true, hide menu metadata fields (name, description, toggles) and
    *  the reset button. Only show save/discard/cancel actions. */
   availabilityOnly?: boolean;
+  /** Initial availability rule for this menu (edit mode only). */
+  availabilityRule?: AvailabilityRule | null;
 }
 
 export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
   const [resetResult, setResetResult] = createSignal<string | null>(null);
+  const [availabilityRule, setAvailabilityRule] = createSignal<AvailabilityRule | null>(
+    props.availabilityRule ?? null
+  );
 
   const handleReset = async () => {
     const confirmed = await showConfirm({
@@ -180,6 +187,21 @@ export default function MenuEditorToolbar(props: MenuEditorToolbarProps) {
               </div>
             </div>
           </div>
+
+          {/* Availability rule (edit mode only) */}
+          <Show when={!editorState.isNewMenu}>
+            <div class="column is-12">
+              <div class="field">
+                <label class="label">Availability</label>
+                <AvailabilityRuleEditor
+                  rule={availabilityRule()}
+                  entityType="menu"
+                  entityId={editorState.draft.id}
+                  onChanged={(rule) => setAvailabilityRule(rule)}
+                />
+              </div>
+            </div>
+          </Show>
 
           {/* Action count (edit mode only) */}
           <Show when={!editorState.isNewMenu && actionQueue().length > 0}>

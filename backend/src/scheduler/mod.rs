@@ -29,7 +29,10 @@ use tokio::time::{sleep_until, Instant};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::features::order::domain::order_session::OrderSessionStatus;
+use crate::features::{
+    email::EmailService,
+    order::domain::order_session::OrderSessionStatus,
+};
 
 /// Maximum time the scheduler will sleep before waking up to re-check.
 /// This caps drift from events inserted without a notify (e.g. direct DB edits).
@@ -49,7 +52,7 @@ async fn resolve_system_user(pool: &PgPool) -> Option<Uuid> {
 ///
 /// The scheduler runs indefinitely until the process exits. It uses the
 /// provided `Notify` handle to wake early when relevant data changes.
-pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>) {
+pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>, email_service: Option<EmailService>) {
     tokio::spawn(async move {
         info!("Scheduler started (sleep_until + Notify pattern)");
 
@@ -69,7 +72,7 @@ pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>) {
             // 1. Run any tasks that are currently due
             let (reset_result, close_result, finish_result) = tokio::join!(
                 run_menu_auto_reset(&pool, system_user),
-                run_session_auto_close(&pool, system_user),
+                run_session_auto_close(&pool, system_user, email_service.as_ref()),
                 run_session_auto_finish(&pool, system_user),
             );
 
@@ -393,18 +396,29 @@ async fn process_menu_reset(
 struct CloseCandidate {
     session_id: Uuid,
     restaurant_id: Uuid,
+    pickup_time: Option<chrono::DateTime<Utc>>,
+    notify_on_session_close: bool,
+    restaurant_name: String,
+    restaurant_phone: Option<String>,
 }
 
-async fn run_session_auto_close(pool: &PgPool, system_user: Uuid) -> anyhow::Result<()> {
-    // Find open sessions whose end_date has passed AND whose restaurant has
-    // auto_close_session enabled.
+async fn run_session_auto_close(
+    pool: &PgPool,
+    system_user: Uuid,
+    email_service: Option<&EmailService>,
+) -> anyhow::Result<()> {
     let candidates = sqlx::query_as!(
         CloseCandidate,
         r#"
-        SELECT os.id as session_id,
-               os.restaurant_id
+        SELECT os.id            as session_id,
+               os.restaurant_id as restaurant_id,
+               os.pickup_time   as "pickup_time?: chrono::DateTime<Utc>",
+               ros.notify_on_session_close,
+               r.name           as restaurant_name,
+               r.phone_number   as "restaurant_phone?: String"
         FROM order_sessions os
         JOIN restaurant_order_settings ros ON ros.restaurant_id = os.restaurant_id
+        JOIN restaurants r ON r.id = os.restaurant_id
         WHERE os.status = $1
           AND os.end_date <= NOW()
           AND os.allow_late = false
@@ -419,8 +433,22 @@ async fn run_session_auto_close(pool: &PgPool, system_user: Uuid) -> anyhow::Res
         return Ok(());
     }
 
+    // Fetch notification email once (global setting)
+    let notification_email: Option<String> = if email_service.is_some() {
+        sqlx::query_scalar!(
+            r#"SELECT notification_email FROM app_settings WHERE id = 1"#
+        )
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+    } else {
+        None
+    };
+
     for candidate in candidates {
-        if let Err(e) = close_session(pool, &candidate, system_user).await {
+        if let Err(e) = close_session(pool, &candidate, system_user, email_service, notification_email.as_deref()).await {
             error!(
                 "Scheduler: auto-close failed for session {}: {e:#}",
                 candidate.session_id
@@ -435,6 +463,8 @@ async fn close_session(
     pool: &PgPool,
     candidate: &CloseCandidate,
     system_user: Uuid,
+    email_service: Option<&EmailService>,
+    notification_email: Option<&str>,
 ) -> anyhow::Result<()> {
     let result = sqlx::query!(
         r#"
@@ -453,11 +483,59 @@ async fn close_session(
     .execute(pool)
     .await?;
 
-    if result.rows_affected() > 0 {
-        info!(
-            "Scheduler: auto-closed session {} for restaurant {}",
-            candidate.session_id, candidate.restaurant_id
-        );
+    if result.rows_affected() == 0 {
+        return Ok(());
+    }
+
+    info!(
+        "Scheduler: auto-closed session {} for restaurant {}",
+        candidate.session_id, candidate.restaurant_id
+    );
+
+    // Send notification email if configured
+    if candidate.notify_on_session_close {
+        if let (Some(svc), Some(to)) = (email_service, notification_email) {
+            // Fetch order summary for this session
+            // Fetch aggregated order: total quantity per item across all users
+            let rows = sqlx::query!(
+                r#"
+                SELECT i.name as item_name,
+                       COUNT(oi.id) as "qty!: i64"
+                FROM orders o
+                JOIN order_items oi ON oi.order_id = o.id
+                JOIN items i ON i.id = oi.item_id
+                WHERE o.session_id = $1
+                GROUP BY i.name
+                ORDER BY i.name
+                "#,
+                candidate.session_id,
+            )
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+            let pickup = candidate.pickup_time
+                .map(|t| t.format("%H:%M").to_string())
+                .unwrap_or_else(|| "not set".to_string());
+
+            let phone = candidate.restaurant_phone.as_deref().unwrap_or("—");
+
+            let mut order_lines = String::new();
+            for row in &rows {
+                order_lines.push_str(&format!("{} {}\n", row.qty, row.item_name));
+            }
+
+            let body = format!(
+                "PHONE:{phone}\nTIME:{pickup}\nORDERS:\n{order_lines}",
+                phone = phone,
+                pickup = pickup,
+                order_lines = order_lines.trim_end(),
+            );
+
+            if let Err(e) = svc.send_plain(to, &format!("Order ready — {}", candidate.restaurant_name), body).await {
+                warn!("Scheduler: failed to send session-close notification: {e}");
+            }
+        }
     }
 
     Ok(())

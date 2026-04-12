@@ -135,6 +135,10 @@ pub struct RestaurantOrderSettings {
     /// passes. The scheduler transitions Open sessions whose end_date is in
     /// the past to Closed status.
     pub auto_close_session: bool,
+    /// When true, an email is sent to the globally configured `notification_email`
+    /// (in app_settings) each time a session closes, containing the order summary
+    /// and the restaurant's phone number (for SMS forwarding via iPhone Shortcuts).
+    pub notify_on_session_close: bool,
     #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]

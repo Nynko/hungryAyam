@@ -98,4 +98,5 @@ pub struct UpdateOrderSettingsRequest {
     #[serde(default)]
     pub update_menu_reset_time: bool,
     pub auto_close_session: Option<bool>,
+    pub notify_on_session_close: Option<bool>,
 }

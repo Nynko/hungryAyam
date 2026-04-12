@@ -31,6 +31,7 @@ impl AppSetupRepository {
                 max_menu_nesting_depth,
                 access_hash as "access_hash: HashedPassword",
                 editor_email_domain,
+                notification_email,
                 created_at,
                 updated_at
             "#,
@@ -52,6 +53,7 @@ impl AppSetupRepository {
                 max_menu_nesting_depth,
                 access_hash as "access_hash: HashedPassword",
                 editor_email_domain,
+                notification_email,
                 created_at,
                 updated_at
             FROM app_settings
@@ -80,6 +82,7 @@ impl AppSetupRepository {
                 max_menu_nesting_depth,
                 access_hash as "access_hash: HashedPassword",
                 editor_email_domain,
+                notification_email,
                 created_at,
                 updated_at
             "#,
@@ -134,6 +137,38 @@ impl AppSetupRepository {
             WHERE id = 1
             "#,
             domain
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get the global notification email address.
+    pub async fn get_notification_email(&self) -> Result<Option<String>> {
+        let result: Option<Option<String>> = sqlx::query_scalar!(
+            r#"
+            SELECT notification_email
+            FROM app_settings
+            WHERE id = 1
+            "#
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result.flatten())
+    }
+
+    /// Set or clear the global notification email address.
+    pub async fn set_notification_email(&self, email: Option<&str>) -> Result<()> {
+        sqlx::query!(
+            r#"
+            UPDATE app_settings
+            SET notification_email = $1,
+                updated_at = NOW()
+            WHERE id = 1
+            "#,
+            email
         )
         .execute(&self.pool)
         .await?;

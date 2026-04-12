@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT i.name as item_name,\n                       COUNT(oi.id) as \"qty!: i64\"\n                FROM orders o\n                JOIN order_items oi ON oi.order_id = o.id\n                JOIN items i ON i.id = oi.item_id\n                WHERE o.session_id = $1\n                GROUP BY i.name\n                ORDER BY i.name\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "item_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "qty!: i64",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "02306f857eee885731bb7c83986cdeb94f50f9151fa1112e8db1b04c7ff9ccb9"
+}

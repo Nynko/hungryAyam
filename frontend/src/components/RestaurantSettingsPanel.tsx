@@ -60,6 +60,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
   const [defaultEndTime, setDefaultEndTime] = createSignal("");
   const [autoCreateSession, setAutoCreateSession] = createSignal(true);
   const [autoCloseSession, setAutoCloseSession] = createSignal(true);
+  const [notifyOnSessionClose, setNotifyOnSessionClose] = createSignal(false);
   const [menuResetEnabled, setMenuResetEnabled] = createSignal(false);
   const [menuResetTime, setMenuResetTime] = createSignal("");
   const [timezone, setTimezone] = createSignal("");
@@ -94,6 +95,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
     setDefaultEndTime(formatTimeForInput(s.default_end_time));
     setAutoCreateSession(s.auto_create_session);
     setAutoCloseSession(s.auto_close_session);
+    setNotifyOnSessionClose(s.notify_on_session_close);
     setMenuResetEnabled(s.menu_reset_time != null);
     setMenuResetTime(formatTimeForInput(s.menu_reset_time));
     setTimezone(s.timezone);
@@ -201,8 +203,9 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       timezone: timezone().trim(),
       auto_create_session: autoCreateSession(),
       menu_reset_time: menuResetEnabled() ? formatTimeForBackend(menuResetTime()) : null,
-      update_menu_reset_time: true, // always send the menu_reset_time value
+      update_menu_reset_time: true,
       auto_close_session: autoCloseSession(),
+      notify_on_session_close: notifyOnSessionClose(),
     };
 
     const result = await updateOrderSettings(request);
@@ -513,6 +516,26 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
               </div>
             </div>
 
+            {/* ── Notify on session close ───────────────── */}
+            <div class="column is-6">
+              <div class="field">
+                <label class="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={notifyOnSessionClose()}
+                    onChange={(e) => setNotifyOnSessionClose(e.currentTarget.checked)}
+                    disabled={saving()}
+                  />{" "}
+                  <strong>Notify on session close</strong>
+                </label>
+                <p class="help">
+                  Send an email notification when this restaurant's session closes,
+                  including the pickup time and the restaurant's phone number.
+                  Requires a notification email to be configured in admin settings.
+                </p>
+              </div>
+            </div>
+
             {/* ── Menu auto-reset ───────────────────────── */}
             <div class="column is-6">
               <div class="field">
@@ -594,6 +617,10 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
                         ? `Daily at ${menuResetTime() || "—"}`
                         : "Disabled"}
                     </strong>
+                  </li>
+                  <li>
+                    Notify on close:{" "}
+                    <strong>{notifyOnSessionClose() ? "Yes" : "No"}</strong>
                   </li>
                 </ul>
               </div>

@@ -22,6 +22,10 @@ pub struct AppSetup {
     /// E.g. "example.com" — users with matching email can self-promote to Editor.
     #[create_ignore]
     pub editor_email_domain: Option<String>,
+    /// Global email address to receive session-close notifications (e.g. iCloud
+    /// address that triggers an iPhone Shortcuts automation to send an SMS).
+    #[create_ignore]
+    pub notification_email: Option<String>,
     #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]

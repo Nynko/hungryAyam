@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                max_menu_nesting_depth,\n                access_hash as \"access_hash: HashedPassword\",\n                editor_email_domain,\n                created_at,\n                updated_at\n            FROM app_settings\n            WHERE id = 1\n            ",
+  "query": "\n            INSERT INTO app_settings (id, access_hash)\n            VALUES (1, $1)\n            RETURNING\n                id,\n                max_menu_nesting_depth,\n                access_hash as \"access_hash: HashedPassword\",\n                editor_email_domain,\n                notification_email,\n                created_at,\n                updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -25,26 +25,34 @@
       },
       {
         "ordinal": 4,
+        "name": "notification_email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Text"
+      ]
     },
     "nullable": [
       false,
       false,
       false,
       true,
+      true,
       false,
       false
     ]
   },
-  "hash": "c7df7d44b42dd42bf2c90b869917648b7d127c0426fa3807f90d7d0cd57f8479"
+  "hash": "753409c1d51a25c844d81ab01a0d5440e27c2389bf794bedc349b3ffeb8b3eef"
 }

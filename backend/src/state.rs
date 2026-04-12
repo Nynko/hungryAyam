@@ -39,7 +39,8 @@ use crate::{
             repository::AvailabilityRepository,
             service::AvailabilityService
         },
-        menu_scan::service::MenuScanService
+        menu_scan::service::MenuScanService,
+        email::EmailService,
     }
 };
 
@@ -64,6 +65,10 @@ pub struct AppState {
     pub menu_scan_service: MenuScanService,
     /// Directory where uploaded images are stored.
     pub upload_dir: PathBuf,
+    /// Optional email service — `None` if SMTP is not configured.
+    pub email_service: Option<EmailService>,
+    /// Public base URL used in email links.
+    pub base_url: String,
 }
 
 pub fn build_state(
@@ -71,6 +76,8 @@ pub fn build_state(
     db: PgPool,
     scheduler_notify: Arc<Notify>,
     upload_dir: PathBuf,
+    email_service: Option<EmailService>,
+    base_url: String,
 ) -> AppState {
 
     // Create repositories
@@ -85,7 +92,8 @@ pub fn build_state(
     let session_repository = SessionRepository::new(db.clone());
 
     // Create services
-    let auth_service = AuthService::new(user_repository.clone(), session_repository.clone());
+    let auth_service = AuthService::new(user_repository.clone(), session_repository.clone())
+        .with_email(email_service.clone(), base_url.clone());
     let setup_service = AppSetupService::new(setup_repository.clone(), auth_service.clone());
     let restaurant_service = RestaurantService::new(restaurant_repository);
     let user_service = UserService::new(user_repository);
@@ -112,5 +120,7 @@ pub fn build_state(
         menu_scan_service,
         scheduler_notify,
         upload_dir,
+        email_service,
+        base_url,
     }
 }

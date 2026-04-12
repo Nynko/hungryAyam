@@ -8,3 +8,4 @@ pub mod offer;
 pub mod availability;
 pub mod upload;
 pub mod menu_scan;
+pub mod email;

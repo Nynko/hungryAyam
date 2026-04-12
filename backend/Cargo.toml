@@ -50,6 +50,7 @@ sha2 = "0.10"
 # HTTP client (for external API calls)
 reqwest = { version = "0.12", features = ["json"] }
 base64 = "0.22"
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "smtp-transport"] }
 
 # URL parsing & lightweight regex (for menu URL scanning)
 url = "2"

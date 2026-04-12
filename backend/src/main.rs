@@ -21,7 +21,8 @@ mod scheduler;
 
 use crate::{
     state::build_state,
-    app::build_app
+    app::build_app,
+    features::email::EmailService,
 };
 
 #[tokio::main]
@@ -46,6 +47,35 @@ async fn main() -> anyhow::Result<()> {
     let upload_dir = std::path::PathBuf::from(
         std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "/data/uploads".to_string()),
     );
+    let base_url = std::env::var("APP_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:5173".to_string());
+    let email_service = match (
+        std::env::var("SMTP_HOST"),
+        std::env::var("SMTP_USER"),
+        std::env::var("SMTP_PASSWORD"),
+        std::env::var("SMTP_FROM"),
+    ) {
+        (Ok(host), Ok(user), Ok(password), Ok(from)) => {
+            let port = std::env::var("SMTP_PORT")
+                .ok()
+                .and_then(|p| p.parse::<u16>().ok())
+                .unwrap_or(587);
+            match EmailService::new(&host, port, &user, &password, &from) {
+                Ok(svc) => {
+                    info!("email service configured (host={})", host);
+                    Some(svc)
+                }
+                Err(e) => {
+                    tracing::warn!("failed to build email service: {e} — email sending disabled");
+                    None
+                }
+            }
+        }
+        _ => {
+            tracing::warn!("SMTP_HOST/USER/PASSWORD/FROM not set — email sending disabled");
+            None
+        }
+    };
 
     // --------------------------------------------------
     // Database
@@ -91,12 +121,13 @@ async fn main() -> anyhow::Result<()> {
     // --------------------------------------------------
     // App state
     // --------------------------------------------------
-    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone(), upload_dir);
+    let scheduler_email = email_service.clone();
+    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone(), upload_dir, email_service, base_url);
 
     // --------------------------------------------------
     // Background scheduler (menu auto-reset, session auto-close)
     // --------------------------------------------------
-    scheduler::spawn_scheduler(db, scheduler_notify);
+    scheduler::spawn_scheduler(db, scheduler_notify, scheduler_email);
 
     // --------------------------------------------------
     // Router

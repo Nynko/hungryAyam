@@ -69,7 +69,7 @@ async fn seed_second_restaurant(pool: &PgPool, user_id: Uuid) -> Uuid {
 /// Build a fully-wired Router backed by the given pool.
 fn app(pool: PgPool) -> Router {
     let setup_done = Arc::new(AtomicBool::new(true));
-    let state = build_state(setup_done, pool, Arc::new(Notify::new()), std::path::PathBuf::from("/tmp/test_uploads"));
+    let state = build_state(setup_done, pool, Arc::new(Notify::new()), std::path::PathBuf::from("/tmp/test_uploads"), None, "http://localhost:5173".to_string());
     build_app(state)
 }
 

@@ -3,9 +3,12 @@ use uuid::Uuid;
 
 use crate::{
     auth::session::SessionRepository,
-    features::user::{
-        domain::{CreateUser, User},
-        repository::UserRepository,
+    features::{
+        email::EmailService,
+        user::{
+            domain::{CreateUser, User},
+            repository::UserRepository,
+        },
     },
     types::{
         auth::AuthMethod,
@@ -24,6 +27,8 @@ use crate::{
 pub struct AuthService {
     user_repository: UserRepository,
     session_repository: SessionRepository,
+    pub email_service: Option<EmailService>,
+    pub base_url: String,
 }
 
 /// Response returned after successful authentication (login or guest creation).
@@ -41,6 +46,37 @@ impl AuthService {
         Self {
             user_repository,
             session_repository,
+            email_service: None,
+            base_url: "http://localhost:5173".to_string(),
+        }
+    }
+
+    pub fn user_repository_ref(&self) -> &UserRepository {
+        &self.user_repository
+    }
+
+    pub fn with_email(mut self, email_service: Option<EmailService>, base_url: String) -> Self {
+        self.email_service = email_service;
+        self.base_url = base_url;
+        self
+    }
+
+    /// Generate a verification token, store it, and send the verification email.
+    /// Silently logs errors — registration succeeds even if email fails.
+    pub async fn send_verification_email(&self, user: &User) {
+        let Some(email) = user.email.as_ref() else { return };
+        let Some(svc) = self.email_service.as_ref() else { return };
+
+        let token = format!("{}", uuid::Uuid::new_v4().as_simple());
+        let expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
+
+        if let Err(e) = self.user_repository.set_verification_token(user.id, &token, expires_at).await {
+            tracing::warn!("failed to store verification token for {}: {e}", user.id);
+            return;
+        }
+
+        if let Err(e) = svc.send_verification(email.as_ref().as_str(), user.name.as_ref(), &token, &self.base_url).await {
+            tracing::warn!("failed to send verification email to {}: {e}", email.as_ref().as_str());
         }
     }
 
@@ -298,9 +334,13 @@ impl AuthService {
             role: Some(role),
         };
 
-        self.user_repository
+        let user = self.user_repository
             .create(create, Some(password_hash))
-            .await
+            .await?;
+
+        self.send_verification_email(&user).await;
+
+        Ok(user)
     }
 
     /// Upgrade a NameWithCookie (guest) user to a Password user (admin action).
@@ -346,6 +386,8 @@ impl AuthService {
 
         // Invalidate all existing sessions (force re-login with password)
         self.session_repository.delete_by_user_id(user_id).await?;
+
+        self.send_verification_email(&user).await;
 
         Ok(user)
     }

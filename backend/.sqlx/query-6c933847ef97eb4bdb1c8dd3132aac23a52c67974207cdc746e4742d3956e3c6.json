@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE app_settings\n            SET notification_email = $1,\n                updated_at = NOW()\n            WHERE id = 1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6c933847ef97eb4bdb1c8dd3132aac23a52c67974207cdc746e4742d3956e3c6"
+}

@@ -16,6 +16,14 @@ export default function Admin() {
   const [domainSaveMsg, setDomainSaveMsg] = createSignal<string | null>(null);
   const [domainError, setDomainError] = createSignal<string | null>(null);
 
+  // ── Notification email ──────────────────────────────────────────
+  const [notifEmail, setNotifEmail] = createSignal("");
+  const [notifEmailSaved, setNotifEmailSaved] = createSignal<string | null>(null);
+  const [notifLoading, setNotifLoading] = createSignal(false);
+  const [notifSaveMsg, setNotifSaveMsg] = createSignal<string | null>(null);
+  const [notifError, setNotifError] = createSignal<string | null>(null);
+  const [testLoading, setTestLoading] = createSignal(false);
+
   onMount(async () => {
     if (!isAdmin()) return;
 
@@ -43,6 +51,20 @@ export default function Admin() {
         if (json.success) {
           setEditorDomain(json.data ?? "");
           setEditorDomainSaved(json.data ?? null);
+        }
+      }
+    } catch {
+      // silently ignore
+    }
+
+    // Fetch notification email
+    try {
+      const res = await fetch("/api/admin/settings/notification-email");
+      if (res.ok) {
+        const json: ApiResponse<string | null> = await res.json();
+        if (json.success) {
+          setNotifEmail(json.data ?? "");
+          setNotifEmailSaved(json.data ?? null);
         }
       }
     } catch {
@@ -86,6 +108,57 @@ export default function Admin() {
       setDomainError("Failed to save editor domain.");
     } finally {
       setDomainLoading(false);
+    }
+  };
+
+  const handleTestNotifEmail = async () => {
+    setTestLoading(true);
+    setNotifError(null);
+    setNotifSaveMsg(null);
+    try {
+      const res = await fetch("/api/admin/settings/test-notification-email", { method: "POST" });
+      const json: ApiResponse<string> = await res.json();
+      if (res.ok && json.success) {
+        setNotifSaveMsg(json.data ?? "Test email sent!");
+        setTimeout(() => setNotifSaveMsg(null), 4000);
+      } else {
+        setNotifError(json.error ?? "Failed to send test email.");
+      }
+    } catch {
+      setNotifError("Failed to send test email.");
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  const handleSaveNotifEmail = async () => {
+    setNotifLoading(true);
+    setNotifError(null);
+    setNotifSaveMsg(null);
+
+    const email = notifEmail().trim().toLowerCase() || null;
+
+    try {
+      const res = await fetch("/api/admin/settings/notification-email", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const json: ApiResponse<string | null> = await res.json();
+
+      if (res.ok && json.success) {
+        setNotifEmailSaved(json.data ?? null);
+        setNotifEmail(json.data ?? "");
+        setNotifSaveMsg(email ? `Notification email set to ${email}` : "Notification email cleared.");
+        setTimeout(() => setNotifSaveMsg(null), 3000);
+      } else {
+        setNotifError(json.error ?? "Failed to save.");
+      }
+    } catch {
+      setNotifError("Failed to save notification email.");
+    } finally {
+      setNotifLoading(false);
     }
   };
 
@@ -178,6 +251,64 @@ export default function Admin() {
             <Show when={editorDomainSaved()}>
               <p class="help">
                 Currently set to: <strong>@{editorDomainSaved()}</strong>
+              </p>
+            </Show>
+          </div>
+
+          {/* ── Notification Email ───────────────────────────────── */}
+          <div class="box">
+            <h2 class="title is-5">📧 Notification Email</h2>
+            <p class="mb-3">
+              Email address that receives a summary when an order session closes
+              (pickup time + restaurant phone number). Used to trigger SMS via
+              iPhone Shortcuts. Leave empty to disable.
+            </p>
+
+            <Show when={notifSaveMsg()}>
+              <div class="notification is-success is-light">{notifSaveMsg()}</div>
+            </Show>
+
+            <Show when={notifError()}>
+              <div class="notification is-danger is-light">{notifError()}</div>
+            </Show>
+
+            <div class="field has-addons">
+              <div class="control is-expanded">
+                <input
+                  class="input"
+                  type="email"
+                  placeholder="you@icloud.com"
+                  value={notifEmail()}
+                  onInput={(e) => setNotifEmail(e.currentTarget.value)}
+                  disabled={notifLoading()}
+                />
+              </div>
+              <div class="control">
+                <button
+                  class="button is-primary"
+                  classList={{ "is-loading": notifLoading() }}
+                  onClick={handleSaveNotifEmail}
+                  disabled={notifLoading() || testLoading()}
+                >
+                  Save
+                </button>
+              </div>
+              <div class="control">
+                <button
+                  class="button is-light"
+                  classList={{ "is-loading": testLoading() }}
+                  onClick={handleTestNotifEmail}
+                  disabled={testLoading() || notifLoading() || !notifEmailSaved()}
+                  title="Send a test email to the saved address"
+                >
+                  Send test
+                </button>
+              </div>
+            </div>
+
+            <Show when={notifEmailSaved()}>
+              <p class="help">
+                Currently set to: <strong>{notifEmailSaved()}</strong>
               </p>
             </Show>
           </div>

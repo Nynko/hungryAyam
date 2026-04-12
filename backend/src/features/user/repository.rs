@@ -263,6 +263,59 @@ impl UserRepository {
         Ok(user)
     }
 
+    /// Store an email verification token (overwrites any existing one).
+    pub async fn set_verification_token(
+        &self,
+        user_id: Uuid,
+        token: &str,
+        expires_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        sqlx::query!(
+            r#"
+            UPDATE users
+            SET email_verification_token = $1,
+                email_verification_token_expires_at = $2
+            WHERE id = $3
+            "#,
+            token,
+            expires_at,
+            user_id
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Mark the user's email as verified and clear the token.
+    /// Returns `None` if the token is not found or has expired.
+    pub async fn consume_verification_token(&self, token: &str) -> Result<Option<User>> {
+        let user = sqlx::query_as!(
+            UserRow,
+            r#"
+            UPDATE users
+            SET email_verified_at = NOW(),
+                email_verification_token = NULL,
+                email_verification_token_expires_at = NULL,
+                updated_at = NOW()
+            WHERE email_verification_token = $1
+              AND email_verification_token_expires_at > NOW()
+            RETURNING
+                id,
+                name as "name: Name",
+                email as "email?: Email",
+                auth_method as "auth_method: AuthMethod",
+                password_hash,
+                role as "role?: UserRole",
+                created_at,
+                updated_at
+            "#,
+            token
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(user)
+    }
+
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
         let result = sqlx::query!(
             "DELETE FROM users WHERE id = $1",

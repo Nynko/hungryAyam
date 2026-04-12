@@ -639,6 +639,7 @@ impl OrderRepository {
                 auto_create_session,
                 menu_reset_time,
                 auto_close_session,
+                notify_on_session_close,
                 created_at,
                 updated_at
             FROM restaurant_order_settings
@@ -673,6 +674,7 @@ impl OrderRepository {
                 auto_create_session,
                 menu_reset_time,
                 auto_close_session,
+                notify_on_session_close,
                 created_at,
                 updated_at
             "#,
@@ -704,6 +706,7 @@ impl OrderRepository {
                 auto_create_session,
                 menu_reset_time,
                 auto_close_session,
+                notify_on_session_close,
                 created_at,
                 updated_at
             "#,
@@ -736,9 +739,10 @@ impl OrderRepository {
                 sending_method      = COALESCE($3, sending_method),
                 timezone            = COALESCE($4, timezone),
                 auto_create_session = COALESCE($5, auto_create_session),
-                menu_reset_time     = CASE WHEN $7 THEN $6 ELSE menu_reset_time END,
-                auto_close_session  = COALESCE($8, auto_close_session),
-                updated_at          = NOW()
+                menu_reset_time          = CASE WHEN $7 THEN $6 ELSE menu_reset_time END,
+                auto_close_session       = COALESCE($8, auto_close_session),
+                notify_on_session_close  = COALESCE($10, notify_on_session_close),
+                updated_at               = NOW()
             WHERE id = $9
             RETURNING
                 id,
@@ -750,6 +754,7 @@ impl OrderRepository {
                 auto_create_session,
                 menu_reset_time,
                 auto_close_session,
+                notify_on_session_close,
                 created_at,
                 updated_at
             "#,
@@ -762,6 +767,7 @@ impl OrderRepository {
             request.update_menu_reset_time,
             request.auto_close_session,
             request.id,
+            request.notify_on_session_close,
         )
         .fetch_optional(&self.pool)
         .await?;

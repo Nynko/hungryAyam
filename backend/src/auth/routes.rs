@@ -34,6 +34,7 @@ pub fn auth_routes() -> Router<AppState> {
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
         .route("/api/auth/register", post(self_register))
+        .route("/api/auth/verify-email", post(verify_email))
         .route("/api/auth/toggle-editor", post(toggle_editor))
         .route("/api/auth/profile/name", put(change_name))
         .route("/api/auth/editor-eligibility", get(check_editor_eligibility))
@@ -47,6 +48,8 @@ pub fn admin_auth_routes() -> Router<AppState> {
         .route("/api/admin/users/:id/upgrade", post(admin_upgrade_user))
         .route("/api/admin/users/:id/role", put(admin_change_role))
         .route("/api/admin/settings/editor-domain", get(get_editor_domain).put(set_editor_domain))
+        .route("/api/admin/settings/notification-email", get(get_notification_email).put(set_notification_email))
+        .route("/api/admin/settings/test-notification-email", post(test_notification_email))
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -371,6 +374,32 @@ pub async fn self_register(
     Ok(ApiJson(ApiResponse::success(())))
 }
 
+/// Request body for email verification.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct VerifyEmailRequest {
+    pub token: String,
+}
+
+/// `POST /api/auth/verify-email`
+///
+/// Verify a user's email address using the token sent by email.
+/// The token is single-use and expires after 24 hours.
+pub async fn verify_email(
+    State(state): State<AppState>,
+    ApiJson(request): ApiJson<VerifyEmailRequest>,
+) -> Result<ApiJson<ApiResponse<crate::features::user::domain::User>>, ApiError> {
+    let user = state
+        .auth_service
+        .user_repository_ref()
+        .consume_verification_token(&request.token)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or(ApiError::NotFound)?;
+
+    Ok(ApiJson(ApiResponse::success(user)))
+}
+
 /// `POST /api/auth/toggle-editor`
 ///
 /// Toggle between User and Editor roles. Only eligible registered users
@@ -533,6 +562,80 @@ pub async fn get_editor_domain(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(ApiJson(ApiResponse::success(domain)))
+}
+
+/// `GET /api/admin/settings/notification-email`
+///
+/// Get the globally configured notification email address.
+pub async fn get_notification_email(
+    AdminUser(_admin): AdminUser,
+    State(state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<Option<String>>>, ApiError> {
+    let email = state
+        .setup_repository
+        .get_notification_email()
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(ApiJson(ApiResponse::success(email)))
+}
+
+/// Request body for setting the notification email.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct SetNotificationEmailRequest {
+    /// The email address to notify on session close. `null` to clear.
+    pub email: Option<String>,
+}
+
+/// `PUT /api/admin/settings/notification-email`
+///
+/// Set or clear the global notification email address.
+pub async fn set_notification_email(
+    AdminUser(_admin): AdminUser,
+    State(state): State<AppState>,
+    ApiJson(request): ApiJson<SetNotificationEmailRequest>,
+) -> Result<ApiJson<ApiResponse<Option<String>>>, ApiError> {
+    let email = request.email.map(|e| e.trim().to_lowercase());
+
+    state
+        .setup_repository
+        .set_notification_email(email.as_deref())
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(ApiJson(ApiResponse::success(email)))
+}
+
+/// `POST /api/admin/settings/test-notification-email`
+///
+/// Send a test email to the configured notification address.
+/// Returns an error if SMTP is not configured or sending fails.
+pub async fn test_notification_email(
+    AdminUser(_admin): AdminUser,
+    State(state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<String>>, ApiError> {
+    let svc = state
+        .email_service
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("SMTP is not configured on the server.".to_string()))?;
+
+    let to = state
+        .setup_repository
+        .get_notification_email()
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::BadRequest("No notification email address configured.".to_string()))?;
+
+    svc.send(
+        &to,
+        "Test notification — HungryAyam",
+        "<p>This is a test email from HungryAyam. SMTP is working correctly.</p>".to_string(),
+    )
+    .await
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(ApiJson(ApiResponse::success(format!("Test email sent to {to}"))))
 }
 
 /// `PUT /api/admin/settings/editor-domain`

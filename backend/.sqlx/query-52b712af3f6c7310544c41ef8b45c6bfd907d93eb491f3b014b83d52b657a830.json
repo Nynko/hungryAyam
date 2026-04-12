@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                created_at,\n                updated_at\n            FROM restaurant_order_settings\n            WHERE restaurant_id = $1\n            ",
+  "query": "\n            INSERT INTO restaurant_order_settings (restaurant_id)\n            VALUES ($1)\n            ON CONFLICT (restaurant_id) DO UPDATE SET restaurant_id = EXCLUDED.restaurant_id\n            RETURNING\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                notify_on_session_close,\n                created_at,\n                updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -50,11 +50,16 @@
       },
       {
         "ordinal": 9,
+        "name": "notify_on_session_close",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -75,8 +80,9 @@
       true,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "75cd69358b3775610091e2e3a9fc88f842d76eeba3b4e51e6fbdf2f64489cb9f"
+  "hash": "52b712af3f6c7310544c41ef8b45c6bfd907d93eb491f3b014b83d52b657a830"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO restaurant_order_settings (restaurant_id, default_start_time, default_end_time, sending_method, timezone, auto_create_session, menu_reset_time, auto_close_session)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n            RETURNING\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                created_at,\n                updated_at\n            ",
+  "query": "\n            INSERT INTO restaurant_order_settings (restaurant_id, default_start_time, default_end_time, sending_method, timezone, auto_create_session, menu_reset_time, auto_close_session)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n            RETURNING\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                notify_on_session_close,\n                created_at,\n                updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -50,11 +50,16 @@
       },
       {
         "ordinal": 9,
+        "name": "notify_on_session_close",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -82,8 +87,9 @@
       true,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "92e55df5d78d1f994c8276a284e64557b4551e316e66242da554037724d82a8e"
+  "hash": "abe3d277d9d427d7519c7fa3e162293eae81467f13ad8690211f1f25d9841840"
 }

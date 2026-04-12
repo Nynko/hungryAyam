@@ -3,10 +3,41 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 /// A tag inferred by the AI from the menu image (e.g. "spicy", "vegetarian").
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+///
+/// Claude sometimes returns tags as plain strings (`"vegetarian"`) and sometimes
+/// as objects (`{"name": "vegetarian"}`). The custom Deserialize handles both.
+#[derive(Debug, Clone, Serialize, TS)]
 #[ts(export)]
 pub struct ScannedTag {
     pub name: String,
+}
+
+impl<'de> Deserialize<'de> for ScannedTag {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = ScannedTag;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a string or an object with a name field")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<ScannedTag, E> {
+                Ok(ScannedTag { name: v.to_owned() })
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<ScannedTag, M::Error> {
+                let mut name = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "name" {
+                        name = Some(map.next_value()?);
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                name.map(|n| ScannedTag { name: n })
+                    .ok_or_else(|| serde::de::Error::missing_field("name"))
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 /// A single item extracted from the menu image.

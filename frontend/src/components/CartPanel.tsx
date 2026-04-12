@@ -781,7 +781,7 @@ export default function CartPanel(props: CartPanelProps) {
           {/* No session at all */}
           <Show when={props.openSessions.length === 0}>
             <div class="notification is-info is-light is-size-7 py-2 px-3">
-              No pickup session open yet — one will be created automatically.
+              No pickup session open yet — one will be created automatically (default pickup: 12:15).
             </div>
           </Show>
 

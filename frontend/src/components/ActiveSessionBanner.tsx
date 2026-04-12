@@ -10,6 +10,7 @@ import {
   finishSession,
   reopenSession,
   fetchOpenSessions,
+  updateSession,
 } from "@/stores/orderStore";
 import { isAuthenticated } from "@/stores/authStore";
 import { showConfirm } from "@/stores/confirmStore";
@@ -42,8 +43,46 @@ function formatCountdown(ms: number): string {
   return `${seconds}s`;
 }
 
+/** Convert an ISO datetime string to a datetime-local input value (YYYY-MM-DDTHH:MM). */
+function toDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
+
+  // ── Pickup time edit ────────────────────────────────────────────
+  const [editingPickup, setEditingPickup] = createSignal(false);
+  const [pickupInput, setPickupInput] = createSignal("");
+  const [pickupSaving, setPickupSaving] = createSignal(false);
+
+  const startEditPickup = () => {
+    setPickupInput(
+      props.session.pickup_time ? toDatetimeLocal(props.session.pickup_time) : "",
+    );
+    setEditingPickup(true);
+  };
+
+  const savePickup = async () => {
+    setPickupSaving(true);
+    const val = pickupInput().trim();
+    const result = await updateSession({
+      id: props.session.id,
+      start_date: null,
+      end_date: null,
+      update_pickup_time: true,
+      pickup_time: val ? new Date(val).toISOString() : null,
+      allow_late: null,
+    });
+    setPickupSaving(false);
+    if (result) {
+      setEditingPickup(false);
+      await fetchOpenSessions(props.restaurantId);
+      props.onSessionChanged?.();
+    }
+  };
 
   // ── Live countdown ──────────────────────────────────────────────
   const endDate = createMemo(() => new Date(props.session.end_date));
@@ -188,13 +227,55 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
 
       {/* Info row */}
       <div class="is-flex is-flex-wrap-wrap mt-2" style={{ gap: "1rem" }}>
-        <Show when={props.session.pickup_time}>
-          {(pt) => (
-            <span class="is-size-7">
+        <Show
+          when={isAuthenticated() && editingPickup()}
+          fallback={
+            <span class="is-size-7 is-flex is-align-items-center" style={{ gap: "0.35rem" }}>
               <strong>Pickup:</strong>{" "}
-              {new Date(pt()).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+              <Show
+                when={props.session.pickup_time}
+                fallback={<span class="has-text-grey-light">—</span>}
+              >
+                {(pt) => new Date(pt()).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+              </Show>
+              <Show when={isAuthenticated()}>
+                <button
+                  class="button is-ghost is-small py-0 px-1"
+                  style={{ height: "auto", "min-height": "unset" }}
+                  title="Edit pickup time"
+                  onClick={startEditPickup}
+                >
+                  ✏️
+                </button>
+              </Show>
             </span>
-          )}
+          }
+        >
+          <span class="is-flex is-align-items-center is-size-7" style={{ gap: "0.35rem" }}>
+            <strong>Pickup:</strong>
+            <input
+              class="input is-small"
+              style={{ width: "13rem" }}
+              type="datetime-local"
+              value={pickupInput()}
+              onInput={(e) => setPickupInput(e.currentTarget.value)}
+            />
+            <button
+              class="button is-primary is-small"
+              classList={{ "is-loading": pickupSaving() }}
+              disabled={pickupSaving()}
+              onClick={savePickup}
+            >
+              Save
+            </button>
+            <button
+              class="button is-small"
+              disabled={pickupSaving()}
+              onClick={() => setEditingPickup(false)}
+            >
+              Cancel
+            </button>
+          </span>
         </Show>
         <span class="is-size-7">
           <strong>Orders close:</strong>{" "}

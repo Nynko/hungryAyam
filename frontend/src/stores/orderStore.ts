@@ -6,7 +6,7 @@ import type { OrderItem } from "@bindings/OrderItem";
 import type { OrderSession } from "@bindings/OrderSession";
 import type { OrderSessionStatus } from "@bindings/OrderSessionStatus";
 import type { CreateOrderSession } from "@bindings/CreateOrderSession";
-import type { UpdateOrderSession } from "@bindings/UpdateOrderSession";
+import type { UpdateOrderSessionRequest } from "@bindings/UpdateOrderSessionRequest";
 import type { CreateOrder } from "@bindings/CreateOrder";
 import type { CreateOrderItem } from "@bindings/CreateOrderItem";
 import type { MoveOrderToSessionRequest } from "@bindings/MoveOrderToSessionRequest";
@@ -342,10 +342,10 @@ async function createSession(
 }
 
 /**
- * Update an order session (mutable fields: start_date, end_date, allow_late).
+ * Update an order session (mutable fields: start_date, end_date, pickup_time, allow_late).
  */
 async function updateSession(
-  request: UpdateOrderSession,
+  request: UpdateOrderSessionRequest,
 ): Promise<OrderSession | null> {
   try {
     setSessionLoading(true);

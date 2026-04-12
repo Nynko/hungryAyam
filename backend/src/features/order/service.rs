@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::Utc;
+use chrono::{NaiveTime, Utc};
 use std::sync::Arc;
 use tokio::sync::Notify;
 use uuid::Uuid;
@@ -750,11 +750,17 @@ impl OrderService {
             (start_dt, end_dt)
         };
 
+        // Default pickup time: 12:15 on the same day as the session end date.
+        let default_pickup = end_dt
+            .date_naive()
+            .and_time(NaiveTime::from_hms_opt(12, 15, 0).expect("valid time"))
+            .and_utc();
+
         let create_request = CreateOrderSession {
             restaurant_id,
             start_date: start_dt,
             end_date: end_dt,
-            pickup_time: None,
+            pickup_time: Some(default_pickup),
             allow_late: false,
         };
 

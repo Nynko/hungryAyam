@@ -14,7 +14,7 @@ import type { OrderSessionStatus } from "@bindings/OrderSessionStatus";
 import { Card } from "@/components/Card";
 import { isImageSrc } from "@/lib/imageUrl";
 import ActiveSessionBanner from "@/components/ActiveSessionBanner";
-import { isAuthenticated } from "@/stores/authStore";
+import { isAuthenticated, isAdmin } from "@/stores/authStore";
 import {
   fetchSessionsForRestaurant,
   fetchOpenSessions,
@@ -24,6 +24,7 @@ import {
   groupOrderItems,
   orderError,
   clearOrderError,
+  updateSession,
 } from "@/stores/orderStore";
 
 // ── Data fetchers ─────────────────────────────────────────────────
@@ -624,6 +625,48 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                       ),
                     );
 
+                    // ── Inline pickup time edit ────────────────
+                    const [editingPickup, setEditingPickup] = createSignal(false);
+                    const [pickupInput, setPickupInput] = createSignal("");
+                    const [pickupSaving, setPickupSaving] = createSignal(false);
+                    const [localPickupTime, setLocalPickupTime] = createSignal(
+                      session.pickup_time ?? null,
+                    );
+
+                    const startEditPickup = (e: MouseEvent) => {
+                      e.stopPropagation();
+                      const pt = localPickupTime();
+                      if (pt) {
+                        const d = new Date(pt);
+                        const pad = (n: number) => String(n).padStart(2, "0");
+                        setPickupInput(
+                          `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`,
+                        );
+                      } else {
+                        setPickupInput("");
+                      }
+                      setEditingPickup(true);
+                    };
+
+                    const savePickup = async (e: MouseEvent) => {
+                      e.stopPropagation();
+                      setPickupSaving(true);
+                      const val = pickupInput().trim();
+                      const result = await updateSession({
+                        id: session.id,
+                        start_date: null,
+                        end_date: null,
+                        update_pickup_time: true,
+                        pickup_time: val ? new Date(val).toISOString() : null,
+                        allow_late: null,
+                      });
+                      setPickupSaving(false);
+                      if (result) {
+                        setLocalPickupTime(result.pickup_time ?? null);
+                        setEditingPickup(false);
+                      }
+                    };
+
                     return (
                       <div
                         class="box mb-3 p-3"
@@ -670,6 +713,11 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                                 Late OK
                               </span>
                             </Show>
+                            <Show when={localPickupTime()}>
+                              <span class="is-size-7 has-text-grey">
+                                🕐 Pickup: {new Date(localPickupTime()!).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" })}
+                              </span>
+                            </Show>
                           </div>
 
                           <div
@@ -691,8 +739,61 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                           </div>
                         </div>
 
-                        {/* Expanded session: show orders */}
+                        {/* Expanded session: pickup edit + orders */}
                         <Show when={isExpanded()}>
+                          {/* Pickup time row (admin only) */}
+                          <Show when={isAdmin()}>
+                            <div class="mt-3 mb-2 is-flex is-align-items-center is-flex-wrap-wrap" style={{ gap: "0.5rem" }}>
+                              <span class="is-size-7"><strong>Pickup time:</strong></span>
+                              <Show
+                                when={editingPickup()}
+                                fallback={
+                                  <>
+                                    <span class="is-size-7">
+                                      <Show
+                                        when={localPickupTime()}
+                                        fallback={<span class="has-text-grey-light">not set</span>}
+                                      >
+                                        {(pt) => new Date(pt()).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+                                      </Show>
+                                    </span>
+                                    <button
+                                      class="button is-ghost is-small py-0 px-1"
+                                      style={{ height: "auto", "min-height": "unset" }}
+                                      title="Edit pickup time"
+                                      onClick={startEditPickup}
+                                    >
+                                      ✏️
+                                    </button>
+                                  </>
+                                }
+                              >
+                                <input
+                                  class="input is-small"
+                                  style={{ width: "13rem" }}
+                                  type="datetime-local"
+                                  value={pickupInput()}
+                                  onInput={(e) => setPickupInput(e.currentTarget.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                <button
+                                  class="button is-primary is-small"
+                                  classList={{ "is-loading": pickupSaving() }}
+                                  disabled={pickupSaving()}
+                                  onClick={savePickup}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  class="button is-small"
+                                  disabled={pickupSaving()}
+                                  onClick={(e) => { e.stopPropagation(); setEditingPickup(false); }}
+                                >
+                                  Cancel
+                                </button>
+                              </Show>
+                            </div>
+                          </Show>
                           <SessionOrderList session={session} />
                         </Show>
                       </div>

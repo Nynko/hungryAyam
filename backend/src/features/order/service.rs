@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
-use chrono::{NaiveTime, Utc};
+use chrono::{NaiveTime, TimeZone, Utc};
+use chrono_tz::Tz;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use uuid::Uuid;
@@ -729,32 +730,53 @@ impl OrderService {
         user_id: Uuid,
     ) -> Result<OrderSession> {
         let now = Utc::now();
-        let today = now.date_naive();
 
-        // Build start and end DateTimes for today
-        let start_dt = today
-            .and_time(settings.default_start_time)
-            .and_utc();
-        let end_dt = today
-            .and_time(settings.default_end_time)
-            .and_utc();
+        // Parse the restaurant's IANA timezone; fall back to UTC if invalid.
+        let tz: Tz = settings.timezone.parse().unwrap_or(chrono_tz::UTC);
 
-        // If the end time has already passed, schedule for tomorrow
+        // "Today" in the restaurant's local timezone.
+        let now_local = now.with_timezone(&tz);
+        let today_local = now_local.date_naive();
+
+        // Build start/end as local naive datetimes, then convert to UTC.
+        let naive_start = today_local.and_time(settings.default_start_time);
+        let naive_end   = today_local.and_time(settings.default_end_time);
+
+        let start_dt = tz.from_local_datetime(&naive_start)
+            .single()
+            .ok_or_else(|| anyhow!("Ambiguous or invalid local start time"))?
+            .with_timezone(&Utc);
+        let end_dt = tz.from_local_datetime(&naive_end)
+            .single()
+            .ok_or_else(|| anyhow!("Ambiguous or invalid local end time"))?
+            .with_timezone(&Utc);
+
+        // If the end time has already passed, schedule for tomorrow.
         let (start_dt, end_dt) = if end_dt <= now {
-            let tomorrow = today.succ_opt().ok_or_else(|| anyhow!("Date overflow"))?;
-            (
-                tomorrow.and_time(settings.default_start_time).and_utc(),
-                tomorrow.and_time(settings.default_end_time).and_utc(),
-            )
+            let tomorrow = today_local.succ_opt().ok_or_else(|| anyhow!("Date overflow"))?;
+            let s = tz.from_local_datetime(&tomorrow.and_time(settings.default_start_time))
+                .single()
+                .ok_or_else(|| anyhow!("Ambiguous or invalid local start time (tomorrow)"))?
+                .with_timezone(&Utc);
+            let e = tz.from_local_datetime(&tomorrow.and_time(settings.default_end_time))
+                .single()
+                .ok_or_else(|| anyhow!("Ambiguous or invalid local end time (tomorrow)"))?
+                .with_timezone(&Utc);
+            (s, e)
         } else {
             (start_dt, end_dt)
         };
 
-        // Default pickup time: 12:15 on the same day as the session end date.
-        let default_pickup = end_dt
-            .date_naive()
-            .and_time(NaiveTime::from_hms_opt(12, 15, 0).expect("valid time"))
-            .and_utc();
+        // Default pickup time: use `default_pickup_time` setting if configured,
+        // otherwise fall back to 12:15 local time on the session day.
+        let pickup_naive_time = settings.default_pickup_time
+            .unwrap_or_else(|| NaiveTime::from_hms_opt(12, 15, 0).expect("valid time"));
+        let pickup_day = end_dt.with_timezone(&tz).date_naive();
+        let default_pickup = tz
+            .from_local_datetime(&pickup_day.and_time(pickup_naive_time))
+            .single()
+            .ok_or_else(|| anyhow!("Ambiguous or invalid pickup time"))?
+            .with_timezone(&Utc);
 
         let create_request = CreateOrderSession {
             restaurant_id,

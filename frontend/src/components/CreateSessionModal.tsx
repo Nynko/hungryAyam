@@ -35,8 +35,9 @@ function toDatetimeLocal(date: Date): string {
 
 /**
  * Given a time string like "11:30:00" or "11:30" and a base Date,
- * return a Date object on the same day with that time.
+ * return a Date on the same calendar day in browser-local time.
  * If the resulting time is in the past, bump to tomorrow.
+ * The browser is assumed to be in the restaurant's timezone.
  */
 function timeStringToDate(timeStr: string, base: Date): Date {
   const parts = timeStr.split(":");
@@ -46,7 +47,6 @@ function timeStringToDate(timeStr: string, base: Date): Date {
   const result = new Date(base);
   result.setHours(hours, minutes, 0, 0);
 
-  // If the resulting time is in the past, move to tomorrow
   if (result.getTime() < base.getTime()) {
     result.setDate(result.getDate() + 1);
   }
@@ -71,6 +71,7 @@ export default function CreateSessionModal(props: CreateSessionModalProps) {
 
     if (settings) {
       setSettingsLoaded(true);
+
       const start = timeStringToDate(settings.default_start_time, now);
       const end = timeStringToDate(settings.default_end_time, start);
 
@@ -81,6 +82,12 @@ export default function CreateSessionModal(props: CreateSessionModalProps) {
 
       setStartDate(toDatetimeLocal(start));
       setEndDate(toDatetimeLocal(end));
+
+      // Pre-fill pickup time if a default is configured
+      if (settings.default_pickup_time) {
+        const pickup = timeStringToDate(settings.default_pickup_time, now);
+        setPickupTime(toDatetimeLocal(pickup));
+      }
     } else {
       // Fallback: start now, end in 2 hours
       setStartDate(toDatetimeLocal(now));

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE restaurant_order_settings\n            SET default_start_time  = COALESCE($1, default_start_time),\n                default_end_time    = COALESCE($2, default_end_time),\n                sending_method      = COALESCE($3, sending_method),\n                timezone            = COALESCE($4, timezone),\n                auto_create_session = COALESCE($5, auto_create_session),\n                menu_reset_time          = CASE WHEN $7 THEN $6 ELSE menu_reset_time END,\n                auto_close_session       = COALESCE($8, auto_close_session),\n                notify_on_session_close  = COALESCE($10, notify_on_session_close),\n                updated_at               = NOW()\n            WHERE id = $9\n            RETURNING\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                notify_on_session_close,\n                created_at,\n                updated_at\n            ",
+  "query": "\n            UPDATE restaurant_order_settings\n            SET default_start_time      = COALESCE($1, default_start_time),\n                default_end_time        = COALESCE($2, default_end_time),\n                sending_method          = COALESCE($3, sending_method),\n                timezone                = COALESCE($4, timezone),\n                auto_create_session     = COALESCE($5, auto_create_session),\n                menu_reset_time         = CASE WHEN $7 THEN $6 ELSE menu_reset_time END,\n                auto_close_session      = COALESCE($8, auto_close_session),\n                notify_on_session_close = COALESCE($10, notify_on_session_close),\n                default_pickup_time     = CASE WHEN $11 THEN $12 ELSE default_pickup_time END,\n                updated_at              = NOW()\n            WHERE id = $9\n            RETURNING\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                notify_on_session_close,\n                default_pickup_time,\n                created_at,\n                updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -55,11 +55,16 @@
       },
       {
         "ordinal": 10,
+        "name": "default_pickup_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -75,7 +80,9 @@
         "Bool",
         "Bool",
         "Uuid",
-        "Bool"
+        "Bool",
+        "Bool",
+        "Time"
       ]
     },
     "nullable": [
@@ -89,9 +96,10 @@
       true,
       false,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "c5c7379601913e6fc17ce39391099101f372bc2be87140bd81a2063f813e4b96"
+  "hash": "7759ff1613adf68faffa12deb0bf41d87bcb0876295f8c43f1be4e07ba67a5d4"
 }

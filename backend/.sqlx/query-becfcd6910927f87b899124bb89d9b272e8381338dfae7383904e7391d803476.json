@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO restaurant_order_settings (restaurant_id, default_start_time, default_end_time, sending_method, timezone, auto_create_session, menu_reset_time, auto_close_session)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n            RETURNING\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                notify_on_session_close,\n                created_at,\n                updated_at\n            ",
+  "query": "\n            INSERT INTO restaurant_order_settings (restaurant_id)\n            VALUES ($1)\n            ON CONFLICT (restaurant_id) DO UPDATE SET restaurant_id = EXCLUDED.restaurant_id\n            RETURNING\n                id,\n                restaurant_id,\n                default_start_time,\n                default_end_time,\n                sending_method as \"sending_method: SendingMethod\",\n                timezone,\n                auto_create_session,\n                menu_reset_time,\n                auto_close_session,\n                notify_on_session_close,\n                default_pickup_time,\n                created_at,\n                updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -55,25 +55,23 @@
       },
       {
         "ordinal": 10,
+        "name": "default_pickup_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Time",
-        "Time",
-        "Int2",
-        "Text",
-        "Bool",
-        "Time",
-        "Bool"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -87,9 +85,10 @@
       true,
       false,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "abe3d277d9d427d7519c7fa3e162293eae81467f13ad8690211f1f25d9841840"
+  "hash": "becfcd6910927f87b899124bb89d9b272e8381338dfae7383904e7391d803476"
 }

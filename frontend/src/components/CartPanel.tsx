@@ -1,4 +1,4 @@
-import { Show, For, createSignal, createMemo, createEffect } from "solid-js";
+import { Show, For, createSignal, createMemo, createEffect, onMount } from "solid-js";
 import { isImageSrc } from "@/lib/imageUrl";
 import type { MenuSectionItem } from "@bindings/MenuSectionItem";
 import type { OrderSession } from "@bindings/OrderSession";
@@ -17,6 +17,7 @@ import {
   clearOrderError,
   createSession,
   sessionLoading,
+  fetchOrderSettings,
   type CartItem,
 } from "@/stores/orderStore";
 import {
@@ -41,6 +42,17 @@ import type { CreateOrderSession } from "@bindings/CreateOrderSession";
 function sessionLabel(session: OrderSession): string {
   const dt = session.pickup_time ?? session.end_date;
   return new Date(dt).toLocaleString(undefined, { timeStyle: "short", dateStyle: "short" });
+}
+
+/** Given "HH:MM:SS" or "HH:MM", return a Date on the same calendar day as base (browser-local). */
+function timeStringToDate(timeStr: string, base: Date): Date {
+  const parts = timeStr.split(":");
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1] ?? "0", 10);
+  const result = new Date(base);
+  result.setHours(hours, minutes, 0, 0);
+  if (result.getTime() < base.getTime()) result.setDate(result.getDate() + 1);
+  return result;
 }
 
 /** Round a Date up to the nearest 5 minutes and format as datetime-local string. */
@@ -91,18 +103,32 @@ export default function CartPanel(props: CartPanelProps) {
   const [selectedSessionId, setSelectedSessionId] = createSignal<string | null>(null);
   // For "new slot" creation
   const [showNewSlot, setShowNewSlot] = createSignal(false);
-  const [newSlotEnd, setNewSlotEnd] = createSignal(() => {
-    const d = new Date();
-    d.setHours(d.getHours() + 1, 0, 0, 0);
-    return toDatetimeLocal(d);
-  });
-  const [newSlotPickup, setNewSlotPickup] = createSignal(() => {
-    const d = new Date();
-    d.setHours(d.getHours() + 1, 30, 0, 0);
-    return toDatetimeLocal(d);
-  });
+  const [newSlotEnd, setNewSlotEnd] = createSignal("");
+  const [newSlotPickup, setNewSlotPickup] = createSignal("");
   const [creatingSession, setCreatingSession] = createSignal(false);
   const [newSlotError, setNewSlotError] = createSignal<string | null>(null);
+
+  // Load restaurant settings to pre-fill the new slot defaults
+  onMount(async () => {
+    const settings = await fetchOrderSettings(props.restaurantId);
+    const now = new Date();
+    if (settings) {
+      const end = timeStringToDate(settings.default_end_time, now);
+      setNewSlotEnd(toDatetimeLocal(end));
+      if (settings.default_pickup_time) {
+        const pickup = timeStringToDate(settings.default_pickup_time, now);
+        setNewSlotPickup(toDatetimeLocal(pickup));
+      } else {
+        // Fallback: end + 1h
+        setNewSlotPickup(toDatetimeLocal(new Date(end.getTime() + 60 * 60 * 1000)));
+      }
+    } else {
+      const d = new Date(now);
+      d.setHours(d.getHours() + 1, 0, 0, 0);
+      setNewSlotEnd(toDatetimeLocal(d));
+      setNewSlotPickup(toDatetimeLocal(new Date(d.getTime() + 30 * 60 * 1000)));
+    }
+  });
 
   // Auto-select the only session when there's exactly one
   createEffect(() => {
@@ -178,7 +204,26 @@ export default function CartPanel(props: CartPanelProps) {
       return;
     }
 
-    const sessionId = selectedSessionId();
+    // If no session exists, create one from the frontend with the correct local times
+    // (avoids the backend interpreting NaiveTime as UTC).
+    let sessionId = selectedSessionId();
+    if (props.openSessions.length === 0 && !sessionId) {
+      const endStr = newSlotEnd();
+      const pickupStr = newSlotPickup();
+      const now = new Date();
+      setCreatingSession(true);
+      const session = await createSession({
+        restaurant_id: props.restaurantId,
+        start_date: now.toISOString(),
+        end_date: endStr ? new Date(endStr).toISOString() : new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+        pickup_time: pickupStr ? new Date(pickupStr).toISOString() : null,
+        allow_late: false,
+      });
+      setCreatingSession(false);
+      if (!session) return;
+      sessionId = session.id;
+      props.onOrderPlaced?.(); // refresh sessions in parent
+    }
     let totalPlaced = 0;
     let lastTotalCents = 0;
 
@@ -781,7 +826,7 @@ export default function CartPanel(props: CartPanelProps) {
           {/* No session at all */}
           <Show when={props.openSessions.length === 0}>
             <div class="notification is-info is-light is-size-7 py-2 px-3">
-              No pickup session open yet — one will be created automatically (default pickup: 12:15).
+              No pickup session open yet — one will be created automatically.
             </div>
           </Show>
 

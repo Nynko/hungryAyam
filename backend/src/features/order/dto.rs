@@ -99,4 +99,11 @@ pub struct UpdateOrderSettingsRequest {
     pub update_menu_reset_time: bool,
     pub auto_close_session: Option<bool>,
     pub notify_on_session_close: Option<bool>,
+    /// The new value for `default_pickup_time`. Only written when
+    /// `update_default_pickup_time` is `true`.
+    #[ts(type = "string | null")]
+    pub default_pickup_time: Option<NaiveTime>,
+    /// When `true`, `default_pickup_time` is applied (even if `null`, which clears it).
+    #[serde(default)]
+    pub update_default_pickup_time: bool,
 }

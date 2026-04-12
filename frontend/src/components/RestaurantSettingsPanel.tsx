@@ -58,6 +58,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
   // ── Form state ──────────────────────────────────────────────
   const [defaultStartTime, setDefaultStartTime] = createSignal("");
   const [defaultEndTime, setDefaultEndTime] = createSignal("");
+  const [defaultPickupTime, setDefaultPickupTime] = createSignal("");
   const [autoCreateSession, setAutoCreateSession] = createSignal(true);
   const [autoCloseSession, setAutoCloseSession] = createSignal(true);
   const [notifyOnSessionClose, setNotifyOnSessionClose] = createSignal(false);
@@ -93,6 +94,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
   const populateForm = (s: RestaurantOrderSettings) => {
     setDefaultStartTime(formatTimeForInput(s.default_start_time));
     setDefaultEndTime(formatTimeForInput(s.default_end_time));
+    setDefaultPickupTime(formatTimeForInput(s.default_pickup_time));
     setAutoCreateSession(s.auto_create_session);
     setAutoCloseSession(s.auto_close_session);
     setNotifyOnSessionClose(s.notify_on_session_close);
@@ -195,6 +197,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
 
     setSaving(true);
 
+    const pickupTimeStr = defaultPickupTime().trim();
     const request: UpdateOrderSettingsRequest = {
       id: s.id,
       default_start_time: formatTimeForBackend(start),
@@ -206,6 +209,8 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       update_menu_reset_time: true,
       auto_close_session: autoCloseSession(),
       notify_on_session_close: notifyOnSessionClose(),
+      default_pickup_time: pickupTimeStr ? formatTimeForBackend(pickupTimeStr) : null,
+      update_default_pickup_time: true,
     };
 
     const result = await updateOrderSettings(request);
@@ -430,6 +435,25 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
               </div>
             </div>
 
+            {/* ── Default pickup time ────────────────────── */}
+            <div class="column is-6">
+              <div class="field">
+                <label class="label">Default Pickup Time <span class="has-text-grey has-text-weight-normal is-size-7">(optional)</span></label>
+                <div class="control">
+                  <input
+                    class="input"
+                    type="time"
+                    value={defaultPickupTime()}
+                    onInput={(e) => setDefaultPickupTime(e.currentTarget.value)}
+                    disabled={saving()}
+                  />
+                </div>
+                <p class="help">
+                  Pre-filled pickup time when creating a new session. Interpreted in the restaurant's timezone.
+                </p>
+              </div>
+            </div>
+
             {/* ── Timezone ──────────────────────────────────── */}
             <div class="column is-6">
               <div class="field">
@@ -601,6 +625,10 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
                       {defaultStartTime() || "—"} → {defaultEndTime() || "—"}
                     </strong>{" "}
                     ({timezone() || "no timezone"})
+                  </li>
+                  <li>
+                    Default pickup time:{" "}
+                    <strong>{defaultPickupTime() || "—"}</strong>
                   </li>
                   <li>
                     Auto-create session:{" "}

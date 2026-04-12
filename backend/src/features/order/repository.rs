@@ -640,6 +640,7 @@ impl OrderRepository {
                 menu_reset_time,
                 auto_close_session,
                 notify_on_session_close,
+                default_pickup_time,
                 created_at,
                 updated_at
             FROM restaurant_order_settings
@@ -675,6 +676,7 @@ impl OrderRepository {
                 menu_reset_time,
                 auto_close_session,
                 notify_on_session_close,
+                default_pickup_time,
                 created_at,
                 updated_at
             "#,
@@ -707,6 +709,7 @@ impl OrderRepository {
                 menu_reset_time,
                 auto_close_session,
                 notify_on_session_close,
+                default_pickup_time,
                 created_at,
                 updated_at
             "#,
@@ -734,15 +737,16 @@ impl OrderRepository {
             RestaurantOrderSettingsRow,
             r#"
             UPDATE restaurant_order_settings
-            SET default_start_time  = COALESCE($1, default_start_time),
-                default_end_time    = COALESCE($2, default_end_time),
-                sending_method      = COALESCE($3, sending_method),
-                timezone            = COALESCE($4, timezone),
-                auto_create_session = COALESCE($5, auto_create_session),
-                menu_reset_time          = CASE WHEN $7 THEN $6 ELSE menu_reset_time END,
-                auto_close_session       = COALESCE($8, auto_close_session),
-                notify_on_session_close  = COALESCE($10, notify_on_session_close),
-                updated_at               = NOW()
+            SET default_start_time      = COALESCE($1, default_start_time),
+                default_end_time        = COALESCE($2, default_end_time),
+                sending_method          = COALESCE($3, sending_method),
+                timezone                = COALESCE($4, timezone),
+                auto_create_session     = COALESCE($5, auto_create_session),
+                menu_reset_time         = CASE WHEN $7 THEN $6 ELSE menu_reset_time END,
+                auto_close_session      = COALESCE($8, auto_close_session),
+                notify_on_session_close = COALESCE($10, notify_on_session_close),
+                default_pickup_time     = CASE WHEN $11 THEN $12 ELSE default_pickup_time END,
+                updated_at              = NOW()
             WHERE id = $9
             RETURNING
                 id,
@@ -755,6 +759,7 @@ impl OrderRepository {
                 menu_reset_time,
                 auto_close_session,
                 notify_on_session_close,
+                default_pickup_time,
                 created_at,
                 updated_at
             "#,
@@ -768,6 +773,8 @@ impl OrderRepository {
             request.auto_close_session,
             request.id,
             request.notify_on_session_close,
+            request.update_default_pickup_time,
+            request.default_pickup_time,
         )
         .fetch_optional(&self.pool)
         .await?;

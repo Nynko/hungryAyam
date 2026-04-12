@@ -139,6 +139,10 @@ pub struct RestaurantOrderSettings {
     /// (in app_settings) each time a session closes, containing the order summary
     /// and the restaurant's phone number (for SMS forwarding via iPhone Shortcuts).
     pub notify_on_session_close: bool,
+    /// Default pickup time (in the restaurant's timezone) pre-filled in the
+    /// Create Session modal. NULL means no default.
+    #[ts(type = "string | null")]
+    pub default_pickup_time: Option<NaiveTime>,
     #[derived_domain_ignore]
     pub created_at: DateTime<Utc>,
     #[derived_domain_ignore]

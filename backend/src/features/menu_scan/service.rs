@@ -345,36 +345,11 @@ impl MenuScanService {
         Ok(scan_result)
     }
 
-    /// Scan menu images and return structured menu data.
-    pub async fn scan_menu_images(
-        &self,
-        images: Vec<(String, Vec<u8>)>,
-        user_id: Uuid,
-    ) -> Result<MenuScanResponse, ApiError> {
-        self.check_preconditions(user_id)?;
-
-        let mut content: Vec<ContentBlock> = images
-            .into_iter()
-            .map(|(mime, bytes)| ContentBlock::Image {
-                source: ImageSource {
-                    source_type: "base64",
-                    media_type: mime,
-                    data: base64::engine::general_purpose::STANDARD.encode(&bytes),
-                },
-            })
-            .collect();
-
-        content.push(ContentBlock::Text {
-            text: "Please extract the menu from these images.".into(),
-        });
-
-        self.call_anthropic(SYSTEM_PROMPT, content).await
-    }
 
     /// Scan a menu from a URL: fetch the page (following pagination and
     /// internal links to category/product detail pages), extract images,
     /// and send everything to AI.
-    async fn execute_url_scan(&self, url: &str) -> Result<MenuScanResponse, ApiError> {
+    async fn execute_url_scan(&self, url: &str, extra_images: Vec<(String, Vec<u8>)>) -> Result<MenuScanResponse, ApiError> {
         let base_url = url::Url::parse(url).map_err(|e| {
             ApiError::BadRequest(format!("Invalid URL: {e}"))
         })?;
@@ -514,8 +489,11 @@ impl MenuScanService {
         );
 
         // ── Phase 4: Build prompt and call AI ────────────────────
-        let mut content: Vec<ContentBlock> = images
+        // Start with user-uploaded images (they take priority), then URL-fetched
+        let has_extra = !extra_images.is_empty();
+        let mut content: Vec<ContentBlock> = extra_images
             .into_iter()
+            .chain(images)
             .map(|(mime, bytes)| ContentBlock::Image {
                 source: ImageSource {
                     source_type: "base64",
@@ -536,11 +514,17 @@ impl MenuScanService {
             combined_html
         };
 
+        let extra_note = if has_extra {
+            " The first images were uploaded directly by the user and may show prices or other details not visible on the webpage."
+        } else {
+            ""
+        };
+
         content.push(ContentBlock::Text {
             text: format!(
                 "Please extract the menu from this restaurant website.\n\
                  I fetched {listing_pages} listing page(s) and {detail_fetched} \
-                 detail page(s) from: {url}\n\n\
+                 detail page(s) from: {url}{extra_note}\n\n\
                  The HTML includes both the listing/category pages and individual \
                  product detail pages. Use the detail pages to get full descriptions \
                  and image URLs for each item.\n\n\
@@ -551,15 +535,47 @@ impl MenuScanService {
         self.call_anthropic(URL_SYSTEM_PROMPT, content).await
     }
 
-    /// Create an async URL scan job, spawn it in the background, and return the job ID.
-    pub async fn create_url_job(&self, url: String, user_id: Uuid) -> Result<MenuScanJobCreated, ApiError> {
+    /// Run the combined scan (uploaded images + optional URL) and return the menu.
+    async fn execute_combined_scan(
+        &self,
+        images: Vec<(String, Vec<u8>)>,
+        url: Option<String>,
+    ) -> Result<MenuScanResponse, ApiError> {
+        match url {
+            Some(url) => self.execute_url_scan(&url, images).await,
+            None => {
+                let mut content: Vec<ContentBlock> = images
+                    .into_iter()
+                    .map(|(mime, bytes)| ContentBlock::Image {
+                        source: ImageSource {
+                            source_type: "base64",
+                            media_type: mime,
+                            data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                        },
+                    })
+                    .collect();
+                content.push(ContentBlock::Text {
+                    text: "Please extract the menu from these images.".into(),
+                });
+                self.call_anthropic(SYSTEM_PROMPT, content).await
+            }
+        }
+    }
+
+    /// Create an async scan job from images and/or a URL, spawn it in the background.
+    pub async fn create_combined_job(
+        &self,
+        images: Vec<(String, Vec<u8>)>,
+        url: Option<String>,
+        user_id: Uuid,
+    ) -> Result<MenuScanJobCreated, ApiError> {
         self.check_preconditions(user_id)?;
 
         let row = sqlx::query(
             "INSERT INTO menu_scan_jobs (user_id, url) VALUES ($1, $2) RETURNING id"
         )
         .bind(user_id)
-        .bind(&url)
+        .bind(url.as_deref())
         .fetch_one(&self.db)
         .await
         .map_err(|e| {
@@ -578,7 +594,7 @@ impl MenuScanService {
             .await
             .ok();
 
-            match service.execute_url_scan(&url).await {
+            match service.execute_combined_scan(images, url).await {
                 Ok(result) => {
                     let json = serde_json::to_value(&result).unwrap_or_default();
                     sqlx::query(

@@ -10,11 +10,8 @@ interface MenuScanUploadProps {
 const MAX_FILES = 5;
 const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,image/gif,image/heic,.heic";
 
-type ScanMode = "images" | "url";
-
 export default function MenuScanUpload(props: MenuScanUploadProps) {
   let inputRef!: HTMLInputElement;
-  const [mode, setMode] = createSignal<ScanMode>("images");
   const [files, setFiles] = createSignal<File[]>([]);
   const [previews, setPreviews] = createSignal<string[]>([]);
   const [url, setUrl] = createSignal("");
@@ -22,7 +19,6 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
   const [error, setError] = createSignal<string | null>(null);
   const [progress, setProgress] = createSignal("");
 
-  // Clean up object URLs on unmount
   onCleanup(() => {
     for (const u of previews()) {
       URL.revokeObjectURL(u);
@@ -82,62 +78,32 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
     );
   };
 
-  const handleScanImages = async () => {
-    const currentFiles = files();
-    if (currentFiles.length === 0) return;
+  const canScan = () => files().length > 0 || url().trim().length > 0;
 
+  const handleScan = async () => {
     setScanning(true);
     setError(null);
 
     try {
-      setProgress("Preparing images...");
-      const prepared = await Promise.all(currentFiles.map(convertHeicIfNeeded));
+      setProgress("Preparing scan...");
 
-      setProgress("Scanning menu (this may take 15–30 seconds)...");
       const form = new FormData();
-      for (const f of prepared) {
-        form.append("images", f);
+
+      if (files().length > 0) {
+        const prepared = await Promise.all(files().map(convertHeicIfNeeded));
+        for (const f of prepared) {
+          form.append("images", f);
+        }
       }
 
-      const res = await fetch("/api/menu-scan", { method: "POST", body: form });
-
-      const text = await res.text();
-      let json: ApiResponse<MenuScanResponse>;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        throw new Error(`Server returned an unexpected response (${res.status}). Please try again.`);
+      const trimmedUrl = url().trim();
+      if (trimmedUrl) {
+        form.append("url", trimmedUrl);
       }
 
-      if (!res.ok || !json.success || json.data == null) {
-        throw new Error(json.error ?? `Scan failed (${res.status})`);
-      }
-
-      props.onScanComplete(json.data);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-    } finally {
-      setScanning(false);
-      setProgress("");
-    }
-  };
-
-  const handleScanUrl = async () => {
-    const menuUrl = url().trim();
-    if (!menuUrl) return;
-
-    setScanning(true);
-    setError(null);
-
-    try {
       setProgress("Submitting scan request...");
 
-      const res = await fetch("/api/menu-scan-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: menuUrl }),
-      });
+      const res = await fetch("/api/menu-scan", { method: "POST", body: form });
 
       const text = await res.text();
       let json: ApiResponse<{ job_id: string }>;
@@ -187,7 +153,7 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
         }
       }
 
-      throw new Error("Scan timed out. Please try again with a more specific URL.");
+      throw new Error("Scan timed out. Please try again.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -197,47 +163,15 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
     }
   };
 
-  const handleScan = () => {
-    if (mode() === "url") {
-      handleScanUrl();
-    } else {
-      handleScanImages();
-    }
-  };
-
-  const canScan = () => {
-    if (mode() === "url") return url().trim().length > 0;
-    return files().length > 0;
-  };
-
   return (
     <div class="container" style={{ "max-width": "700px" }}>
       <div class="has-text-centered mb-5">
         <h2 class="title is-4">Automatic menu creation</h2>
         <p class="subtitle is-6 has-text-grey">
-          Upload photos of a menu or paste a link to a menu page.
+          Add photos, a URL, or both — they'll be combined for the best result.
         </p>
       </div>
 
-      {/* Mode tabs */}
-      <div class="tabs is-centered is-boxed mb-4">
-        <ul>
-          <li classList={{ "is-active": mode() === "images" }}>
-            <a onClick={() => setMode("images")}>
-              <span class="icon is-small"><span>📸</span></span>
-              <span>Upload Photos</span>
-            </a>
-          </li>
-          <li classList={{ "is-active": mode() === "url" }}>
-            <a onClick={() => setMode("url")}>
-              <span class="icon is-small"><span>🔗</span></span>
-              <span>Paste a Link</span>
-            </a>
-          </li>
-        </ul>
-      </div>
-
-      {/* Error display */}
       <Show when={error()}>
         <div class="notification is-danger is-light mb-4">
           <button class="delete" onClick={() => setError(null)} />
@@ -245,14 +179,14 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
         </div>
       </Show>
 
-      {/* ── Image upload mode ──────────────────────────────── */}
-      <Show when={mode() === "images" && !scanning()}>
+      <Show when={!scanning()}>
+        {/* Image upload */}
         <div
-          class="box has-text-centered"
+          class="box has-text-centered mb-4"
           style={{
             border: "2px dashed hsl(0, 0%, 71%)",
             cursor: "pointer",
-            "min-height": "150px",
+            "min-height": "130px",
             display: "flex",
             "flex-direction": "column",
             "align-items": "center",
@@ -262,12 +196,12 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
           onDragOver={handleDragOver}
           onClick={() => inputRef.click()}
         >
-          <span style={{ "font-size": "2.5rem" }}>📸</span>
+          <span style={{ "font-size": "2rem" }}>📸</span>
           <p class="mt-2">
             <strong>Drop images here</strong> or click to browse
           </p>
           <p class="has-text-grey is-size-7 mt-1">
-            JPEG, PNG, WebP, or HEIC — max {MAX_FILES} images, 10 MB each
+            JPEG, PNG, WebP, or HEIC — up to {MAX_FILES} images, 10 MB each
           </p>
           <input
             ref={inputRef!}
@@ -276,17 +210,14 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
             multiple
             style={{ display: "none" }}
             onChange={(e) => {
-              if (e.currentTarget.files) {
-                addFiles(e.currentTarget.files);
-              }
+              if (e.currentTarget.files) addFiles(e.currentTarget.files);
               e.currentTarget.value = "";
             }}
           />
         </div>
 
-        {/* Thumbnail grid */}
         <Show when={files().length > 0}>
-          <div class="mt-4 mb-4">
+          <div class="mb-4">
             <p class="is-size-7 has-text-grey mb-2">
               {files().length}/{MAX_FILES} images selected
             </p>
@@ -322,13 +253,11 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
             </div>
           </div>
         </Show>
-      </Show>
 
-      {/* ── URL mode ───────────────────────────────────────── */}
-      <Show when={mode() === "url" && !scanning()}>
+        {/* URL input */}
         <div class="box">
           <div class="field">
-            <label class="label">Menu page URL</label>
+            <label class="label">Menu page URL (optional)</label>
             <div class="control has-icons-left">
               <input
                 class="input"
@@ -343,10 +272,10 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
                   if (e.key === "Enter" && canScan()) handleScan();
                 }}
               />
-              <span class="icon is-left"><span>🔗</span></span>
+              <span class="icon is-left">🔗</span>
             </div>
             <p class="help">
-              Paste a link to a restaurant's online menu. The page will be fetched and analyzed, including any food images.
+              The page will be fetched and its images and text analyzed alongside any photos you uploaded.
             </p>
           </div>
         </div>
@@ -360,7 +289,6 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
         </div>
       </Show>
 
-      {/* Action buttons */}
       <div class="buttons is-centered mt-5">
         <button
           class="button is-primary"
@@ -368,7 +296,7 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
           disabled={scanning() || !canScan()}
           onClick={handleScan}
         >
-          {mode() === "url" ? "Scan from URL" : "Scan Menu"}
+          Scan Menu
         </button>
         <button
           class="button is-light"

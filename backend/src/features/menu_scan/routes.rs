@@ -1,11 +1,11 @@
 use axum::{
-    extract::{Multipart, State},
+    extract::{Multipart, Path, State},
     http::StatusCode,
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use serde::Deserialize;
-use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::{
     auth::middleware::EditorUser,
@@ -14,7 +14,7 @@ use crate::{
     types::response::ApiResponse,
 };
 
-use super::dto::MenuScanResponse;
+use super::dto::{MenuScanJobCreated, MenuScanJobStatus, MenuScanResponse};
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024; // 10 MB per image
 const MAX_IMAGES: usize = 5;
@@ -29,6 +29,7 @@ pub fn menu_scan_routes() -> Router<AppState> {
     Router::new()
         .route("/api/menu-scan", post(scan_menu))
         .route("/api/menu-scan-url", post(scan_menu_url))
+        .route("/api/menu-scan-jobs/:id", get(get_scan_job))
 }
 
 async fn scan_menu(
@@ -98,7 +99,7 @@ async fn scan_menu_url(
     EditorUser(user): EditorUser,
     State(state): State<AppState>,
     ApiJson(body): ApiJson<ScanUrlRequest>,
-) -> Result<(StatusCode, ApiJson<ApiResponse<MenuScanResponse>>), ApiError> {
+) -> Result<(StatusCode, ApiJson<ApiResponse<MenuScanJobCreated>>), ApiError> {
     let url = body.url.trim().to_string();
 
     if url.is_empty() {
@@ -111,25 +112,23 @@ async fn scan_menu_url(
         ));
     }
 
-    // Create a cancellation token that fires when the client disconnects
-    let cancel = CancellationToken::new();
-    let cancel_clone = cancel.clone();
+    let job = state
+        .menu_scan_service
+        .create_url_job(url, user.id)
+        .await?;
 
-    // Spawn the scan task so we can race it against client disconnect
-    let service = state.menu_scan_service.clone();
-    let scan_handle = tokio::spawn(async move {
-        service.scan_menu_url(&url, user.id, cancel_clone).await
-    });
+    Ok((StatusCode::ACCEPTED, ApiJson(ApiResponse::success(job))))
+}
 
-    // Wait for either the scan to complete or the response to be dropped
-    // (which happens on client disconnect / nginx timeout).
-    // We use a drop guard to cancel when this handler returns early.
-    let _cancel_guard = cancel.drop_guard();
+async fn get_scan_job(
+    EditorUser(user): EditorUser,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<(StatusCode, ApiJson<ApiResponse<MenuScanJobStatus>>), ApiError> {
+    let status = state
+        .menu_scan_service
+        .get_job(id, user.id)
+        .await?;
 
-    let result = scan_handle.await.map_err(|e| {
-        tracing::error!("Scan task panicked: {e}");
-        ApiError::Internal("Scan task failed unexpectedly.".into())
-    })??;
-
-    Ok((StatusCode::OK, ApiJson(ApiResponse::success(result))))
+    Ok((StatusCode::OK, ApiJson(ApiResponse::success(status))))
 }

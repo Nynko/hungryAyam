@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use uuid::Uuid;
 
 /// A tag inferred by the AI from the menu image (e.g. "spicy", "vegetarian").
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -49,4 +50,22 @@ pub struct MenuScanResponse {
     pub name: String,
     pub description: Option<String>,
     pub sections: Vec<ScannedSection>,
+}
+
+/// Returned immediately after creating an async URL scan job.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct MenuScanJobCreated {
+    pub job_id: Uuid,
+}
+
+/// Returned by the polling endpoint.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct MenuScanJobStatus {
+    pub job_id: Uuid,
+    /// One of: "pending", "processing", "completed", "failed"
+    pub status: String,
+    pub result: Option<MenuScanResponse>,
+    pub error: Option<String>,
 }

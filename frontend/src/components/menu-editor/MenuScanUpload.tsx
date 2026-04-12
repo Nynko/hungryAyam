@@ -131,7 +131,7 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
     setError(null);
 
     try {
-      setProgress("Fetching page and extracting menu (this may take 30–60 seconds)...");
+      setProgress("Submitting scan request...");
 
       const res = await fetch("/api/menu-scan-url", {
         method: "POST",
@@ -139,12 +139,8 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
         body: JSON.stringify({ url: menuUrl }),
       });
 
-      if (res.status === 504) {
-        throw new Error("The scan timed out — the page may have too many sub-pages. Try a more specific URL (e.g. a single category page).");
-      }
-
       const text = await res.text();
-      let json: ApiResponse<MenuScanResponse>;
+      let json: ApiResponse<{ job_id: string }>;
       try {
         json = JSON.parse(text);
       } catch {
@@ -152,10 +148,46 @@ export default function MenuScanUpload(props: MenuScanUploadProps) {
       }
 
       if (!res.ok || !json.success || json.data == null) {
-        throw new Error(json.error ?? `Scan failed (${res.status})`);
+        throw new Error(json.error ?? `Failed to start scan (${res.status})`);
       }
 
-      props.onScanComplete(json.data);
+      const { job_id } = json.data;
+
+      // Poll until the job completes (max 10 minutes)
+      const POLL_INTERVAL_MS = 3000;
+      const MAX_POLLS = 200;
+
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        const elapsed = Math.round(((i + 1) * POLL_INTERVAL_MS) / 1000);
+        setProgress(`Analyzing menu... (${elapsed}s elapsed)`);
+
+        const pollRes = await fetch(`/api/menu-scan-jobs/${job_id}`);
+        const pollText = await pollRes.text();
+        let pollJson: ApiResponse<{ status: string; result?: MenuScanResponse; error?: string }>;
+        try {
+          pollJson = JSON.parse(pollText);
+        } catch {
+          throw new Error("Failed to check scan status. Please try again.");
+        }
+
+        if (!pollRes.ok || !pollJson.success || pollJson.data == null) {
+          throw new Error(pollJson.error ?? "Failed to check scan status.");
+        }
+
+        const { status, result, error: jobError } = pollJson.data;
+
+        if (status === "completed" && result != null) {
+          props.onScanComplete(result);
+          return;
+        }
+
+        if (status === "failed") {
+          throw new Error(jobError ?? "Scan failed. Please try again.");
+        }
+      }
+
+      throw new Error("Scan timed out. Please try again with a more specific URL.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);

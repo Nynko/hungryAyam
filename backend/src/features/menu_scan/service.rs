@@ -6,11 +6,11 @@ use base64::Engine;
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tokio_util::sync::CancellationToken;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::errors::api_errors::ApiError;
-use super::dto::MenuScanResponse;
+use super::dto::{MenuScanJobCreated, MenuScanJobStatus, MenuScanResponse};
 
 // ── Constants ────────────────────────────────────────────────────
 
@@ -222,22 +222,32 @@ struct AnthropicErrorDetail {
 
 #[derive(Clone)]
 pub struct MenuScanService {
+    db: PgPool,
     http_client: Client,
+    anthropic_client: Client,
     api_key: String,
     rate_limit: Arc<Mutex<RateLimitState>>,
 }
 
 impl MenuScanService {
-    pub fn new() -> Self {
+    pub fn new(db: PgPool) -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
 
         let http_client = Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_secs(30))
             .build()
             .expect("failed to build HTTP client");
 
+        // Anthropic calls can take several minutes with many images.
+        let anthropic_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .expect("failed to build Anthropic HTTP client");
+
         Self {
+            db,
             http_client,
+            anthropic_client,
             api_key,
             rate_limit: Arc::new(Mutex::new(RateLimitState::new())),
         }
@@ -271,7 +281,7 @@ impl MenuScanService {
         };
 
         let response = self
-            .http_client
+            .anthropic_client
             .post(ANTHROPIC_API_URL)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
@@ -364,14 +374,7 @@ impl MenuScanService {
     /// Scan a menu from a URL: fetch the page (following pagination and
     /// internal links to category/product detail pages), extract images,
     /// and send everything to AI.
-    pub async fn scan_menu_url(
-        &self,
-        url: &str,
-        user_id: Uuid,
-        cancel: CancellationToken,
-    ) -> Result<MenuScanResponse, ApiError> {
-        self.check_preconditions(user_id)?;
-
+    async fn execute_url_scan(&self, url: &str) -> Result<MenuScanResponse, ApiError> {
         let base_url = url::Url::parse(url).map_err(|e| {
             ApiError::BadRequest(format!("Invalid URL: {e}"))
         })?;
@@ -389,9 +392,6 @@ impl MenuScanService {
         let mut listing_pages = 0u32;
 
         loop {
-            if cancel.is_cancelled() {
-                return Err(ApiError::BadRequest("Request cancelled by client.".into()));
-            }
             if listing_pages >= MAX_PAGES || total_requests >= MAX_TOTAL_REQUESTS {
                 break;
             }
@@ -434,10 +434,6 @@ impl MenuScanService {
             "Phase 1: {listing_pages} listing page(s), {} internal links found from {url}",
             detail_links.len()
         );
-
-        if cancel.is_cancelled() {
-            return Err(ApiError::BadRequest("Request cancelled by client.".into()));
-        }
 
         // ── Phase 2: Fetch detail pages concurrently ────────────
         let links_to_fetch: Vec<_> = detail_links
@@ -491,10 +487,6 @@ impl MenuScanService {
             all_image_urls.len()
         );
 
-        if cancel.is_cancelled() {
-            return Err(ApiError::BadRequest("Request cancelled by client.".into()));
-        }
-
         // ── Phase 3: Download images concurrently ────────────────
         let urls_to_fetch: Vec<_> = all_image_urls.into_iter().take(MAX_URL_IMAGES).collect();
 
@@ -520,11 +512,6 @@ impl MenuScanService {
             "Downloaded {} images from {url}",
             images.len()
         );
-
-        if cancel.is_cancelled() {
-            tracing::info!("URL scan cancelled before calling AI for {url}");
-            return Err(ApiError::BadRequest("Request cancelled by client.".into()));
-        }
 
         // ── Phase 4: Build prompt and call AI ────────────────────
         let mut content: Vec<ContentBlock> = images
@@ -562,6 +549,92 @@ impl MenuScanService {
         });
 
         self.call_anthropic(URL_SYSTEM_PROMPT, content).await
+    }
+
+    /// Create an async URL scan job, spawn it in the background, and return the job ID.
+    pub async fn create_url_job(&self, url: String, user_id: Uuid) -> Result<MenuScanJobCreated, ApiError> {
+        self.check_preconditions(user_id)?;
+
+        let row = sqlx::query(
+            "INSERT INTO menu_scan_jobs (user_id, url) VALUES ($1, $2) RETURNING id"
+        )
+        .bind(user_id)
+        .bind(&url)
+        .fetch_one(&self.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to create scan job: {e}");
+            ApiError::Internal("Failed to create scan job.".into())
+        })?;
+        let job_id: Uuid = row.get("id");
+
+        let service = self.clone();
+        tokio::spawn(async move {
+            sqlx::query(
+                "UPDATE menu_scan_jobs SET status = 'processing', updated_at = now() WHERE id = $1"
+            )
+            .bind(job_id)
+            .execute(&service.db)
+            .await
+            .ok();
+
+            match service.execute_url_scan(&url).await {
+                Ok(result) => {
+                    let json = serde_json::to_value(&result).unwrap_or_default();
+                    sqlx::query(
+                        "UPDATE menu_scan_jobs SET status = 'completed', result = $2, updated_at = now() WHERE id = $1"
+                    )
+                    .bind(job_id)
+                    .bind(sqlx::types::Json(json))
+                    .execute(&service.db)
+                    .await
+                    .ok();
+                }
+                Err(e) => {
+                    sqlx::query(
+                        "UPDATE menu_scan_jobs SET status = 'failed', error = $2, updated_at = now() WHERE id = $1"
+                    )
+                    .bind(job_id)
+                    .bind(e.to_string())
+                    .execute(&service.db)
+                    .await
+                    .ok();
+                }
+            }
+        });
+
+        Ok(MenuScanJobCreated { job_id })
+    }
+
+    /// Poll the status of an async URL scan job.
+    pub async fn get_job(&self, job_id: Uuid, user_id: Uuid) -> Result<MenuScanJobStatus, ApiError> {
+        let row = sqlx::query(
+            "SELECT id, status, result, error FROM menu_scan_jobs WHERE id = $1 AND user_id = $2"
+        )
+        .bind(job_id)
+        .bind(user_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch scan job: {e}");
+            ApiError::Internal("Failed to fetch scan job.".into())
+        })?
+        .ok_or(ApiError::NotFound)?;
+
+        let status: String = row.get("status");
+        let result_val: Option<serde_json::Value> = row.get("result");
+        let result = if status == "completed" {
+            result_val.and_then(|v| serde_json::from_value::<MenuScanResponse>(v).ok())
+        } else {
+            None
+        };
+
+        Ok(MenuScanJobStatus {
+            job_id: row.get("id"),
+            status,
+            result,
+            error: row.get("error"),
+        })
     }
 
     /// Fetch a single page and return its HTML body.

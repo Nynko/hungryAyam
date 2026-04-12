@@ -94,7 +94,7 @@ pub fn build_state(
     let offer_service = OfferService::new(offer_repository);
     let availability_service = AvailabilityService::new(availability_repository);
     let order_service = OrderService::new(order_repository, offer_service.clone(), scheduler_notify.clone());
-    let menu_scan_service = MenuScanService::new();
+    let menu_scan_service = MenuScanService::new(db.clone());
 
     AppState {
         setup_completed,

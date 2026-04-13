@@ -526,13 +526,14 @@ async fn close_session(
             }
 
             let body = format!(
-                "PHONE:{phone}\nTIME:{pickup}\nORDERS:\n{order_lines}",
+                "RESTAURANT:{restaurant}\nPHONE:{phone}\nTIME:{pickup}\nORDERS:\n{order_lines}",
+                restaurant = candidate.restaurant_name,
                 phone = phone,
                 pickup = pickup,
                 order_lines = order_lines.trim_end(),
             );
 
-            if let Err(e) = svc.send_plain(to, &format!("Order ready — {}", candidate.restaurant_name), body).await {
+            if let Err(e) = svc.send_plain(to, "HungryAyam Order", body).await {
                 warn!("Scheduler: failed to send session-close notification: {e}");
             }
         }

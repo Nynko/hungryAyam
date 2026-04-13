@@ -28,6 +28,11 @@ services:
       BIND_ADDR: 0.0.0.0:3000
       UPLOAD_DIR: /data/uploads
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      NOTIFICATION_SECRET: ${NOTIFICATION_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     depends_on:
       db:
         condition: service_healthy

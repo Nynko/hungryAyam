@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE notification_events\n        SET email_received_at = NOW()\n        WHERE sig = $1\n          AND email_received_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "17d8636623f4cd540bed6e7f5c80954c1f1bb9818dc3d80cd08ce7d18bff6bd2"
+}

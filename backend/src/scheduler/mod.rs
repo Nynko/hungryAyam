@@ -52,7 +52,7 @@ async fn resolve_system_user(pool: &PgPool) -> Option<Uuid> {
 ///
 /// The scheduler runs indefinitely until the process exits. It uses the
 /// provided `Notify` handle to wake early when relevant data changes.
-pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>, email_service: Option<EmailService>) {
+pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>, email_service: Option<EmailService>, notification_secret: Option<String>) {
     tokio::spawn(async move {
         info!("Scheduler started (sleep_until + Notify pattern)");
 
@@ -70,10 +70,11 @@ pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>, email_service: Option<
 
         loop {
             // 1. Run any tasks that are currently due
-            let (reset_result, close_result, finish_result) = tokio::join!(
+            let (reset_result, close_result, finish_result, fallback_result) = tokio::join!(
                 run_menu_auto_reset(&pool, system_user),
-                run_session_auto_close(&pool, system_user, email_service.as_ref()),
+                run_session_auto_close(&pool, system_user, email_service.as_ref(), notification_secret.as_deref()),
                 run_session_auto_finish(&pool, system_user),
+                run_sms_fallback(&pool, system_user),
             );
 
             if let Err(e) = reset_result {
@@ -84,6 +85,9 @@ pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>, email_service: Option<
             }
             if let Err(e) = finish_result {
                 error!("Scheduler: session auto-finish failed: {e:#}");
+            }
+            if let Err(e) = fallback_result {
+                error!("Scheduler: SMS fallback check failed: {e:#}");
             }
 
             // 2. Compute how long to sleep until the next event
@@ -406,6 +410,7 @@ async fn run_session_auto_close(
     pool: &PgPool,
     system_user: Uuid,
     email_service: Option<&EmailService>,
+    notification_secret: Option<&str>,
 ) -> anyhow::Result<()> {
     let candidates = sqlx::query_as!(
         CloseCandidate,
@@ -448,7 +453,7 @@ async fn run_session_auto_close(
     };
 
     for candidate in candidates {
-        if let Err(e) = close_session(pool, &candidate, system_user, email_service, notification_email.as_deref()).await {
+        if let Err(e) = close_session(pool, &candidate, system_user, email_service, notification_email.as_deref(), notification_secret).await {
             error!(
                 "Scheduler: auto-close failed for session {}: {e:#}",
                 candidate.session_id
@@ -465,6 +470,7 @@ async fn close_session(
     system_user: Uuid,
     email_service: Option<&EmailService>,
     notification_email: Option<&str>,
+    notification_secret: Option<&str>,
 ) -> anyhow::Result<()> {
     let result = sqlx::query!(
         r#"
@@ -525,18 +531,117 @@ async fn close_session(
                 order_lines.push_str(&format!("{} {}\n", row.qty, row.item_name));
             }
 
+            let orders_text = order_lines.trim_end().to_string();
+
+            // Build signed body if secret is configured
+            let (ts, sig_line) = if let Some(secret) = notification_secret {
+                let ts = chrono::Utc::now().timestamp();
+                let sig = crate::features::notification::sign(secret, ts, phone, &pickup);
+                (ts, format!("TS:{ts}\nSIG:{sig}\n"))
+            } else {
+                (0, String::new())
+            };
+
             let body = format!(
-                "RESTAURANT:{restaurant}\nPHONE:{phone}\nTIME:{pickup}\nORDERS:\n{order_lines}",
+                "{sig_line}RESTAURANT:{restaurant}\nPHONE:{phone}\nTIME:{pickup}\nORDERS:\n{orders_text}",
+                sig_line = sig_line,
                 restaurant = candidate.restaurant_name,
                 phone = phone,
                 pickup = pickup,
-                order_lines = order_lines.trim_end(),
+                orders_text = orders_text,
             );
 
             if let Err(e) = svc.send_plain(to, "HungryAyam Order", body).await {
                 warn!("Scheduler: failed to send session-close notification: {e}");
+            } else if notification_secret.is_some() {
+                // Insert notification event for tracking
+                let sig = crate::features::notification::sign(
+                    notification_secret.unwrap(), ts, phone, &pickup
+                );
+                if let Err(e) = sqlx::query!(
+                    r#"
+                    INSERT INTO notification_events
+                        (sig, session_id, ts, phone, time_str, orders, restaurant)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    ON CONFLICT (sig) DO NOTHING
+                    "#,
+                    sig,
+                    candidate.session_id,
+                    ts,
+                    phone,
+                    pickup,
+                    orders_text,
+                    candidate.restaurant_name,
+                )
+                .execute(pool)
+                .await
+                {
+                    warn!("Scheduler: failed to insert notification_event: {e}");
+                }
             }
         }
+    }
+
+    Ok(())
+}
+
+// ─── SMS Fallback ─────────────────────────────────────────────────────────
+
+/// For notification events where the email was received but the SMS was not
+/// confirmed within 5 minutes, trigger the OVH SMS fallback and transition
+/// the session to Requested.
+async fn run_sms_fallback(pool: &PgPool, system_user: Uuid) -> anyhow::Result<()> {
+    let overdue = sqlx::query!(
+        r#"
+        SELECT sig, session_id, phone, time_str, orders, restaurant
+        FROM notification_events
+        WHERE email_received_at IS NOT NULL
+          AND sms_sent_at IS NULL
+          AND fallback_sent_at IS NULL
+          AND email_received_at < NOW() - INTERVAL '5 minutes'
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for row in overdue {
+        warn!(
+            "Scheduler: SMS not confirmed after 5 min for session {} — triggering OVH fallback",
+            row.session_id
+        );
+
+        // TODO: send OVH SMS here
+        // The message to send: row.phone, row.time_str, row.orders, row.restaurant
+        info!(
+            "Scheduler: [OVH STUB] would send SMS to {} — TIME:{} ORDERS:{}",
+            row.phone, row.time_str, row.orders
+        );
+
+        // Mark fallback as sent
+        let _ = sqlx::query!(
+            "UPDATE notification_events SET fallback_sent_at = NOW() WHERE sig = $1",
+            row.sig,
+        )
+        .execute(pool)
+        .await;
+
+        // Transition session Closed → Requested
+        let _ = sqlx::query!(
+            r#"
+            UPDATE order_sessions
+            SET status     = $1,
+                updated_at = NOW(),
+                updated_by = $3
+            WHERE id = $2
+              AND status = $4
+            "#,
+            OrderSessionStatus::Requested.as_i16(),
+            row.session_id,
+            system_user,
+            OrderSessionStatus::Closed.as_i16(),
+        )
+        .execute(pool)
+        .await;
     }
 
     Ok(())

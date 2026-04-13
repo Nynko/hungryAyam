@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE notification_events SET sms_sent_at = NOW() WHERE sig = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "27191f3756104b473ba12238bc26bb490d9ce2f2c61ad80b26e938e3f279573f"
+}

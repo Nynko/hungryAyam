@@ -18,6 +18,7 @@ use crate::{
         availability::routes::availability_routes,
         upload::routes::upload_routes,
         menu_scan::routes::menu_scan_routes,
+        notification::routes::notification_routes,
     },
     state::AppState
 };
@@ -57,6 +58,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(availability_routes())
         .merge(auth_routes())
         .merge(admin_auth_routes())
+        .merge(notification_routes())
         .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024));
 
     let upload_router = upload_routes()

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE notification_events SET fallback_sent_at = NOW() WHERE sig = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "828b953de553df7760d0800003e3276718dd2d5cc00716ccaabf7c9219c8a56f"
+}

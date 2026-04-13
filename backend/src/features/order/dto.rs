@@ -122,11 +122,10 @@ impl SessionOrderSummary {
         for group in &self.offer_groups {
             parts.push(format!("{} x{}", group.offer_title, group.count));
             for slot in &group.slots {
-                let items_str = slot.items.iter()
-                    .map(|i| format!("{}x {}", i.qty, i.name))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                parts.push(format!("  {}: {}", slot.label, items_str));
+                parts.push(format!("  {}:", slot.label));
+                for item in &slot.items {
+                    parts.push(format!("    {}x {}", item.qty, item.name));
+                }
             }
         }
 

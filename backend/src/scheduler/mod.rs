@@ -583,20 +583,20 @@ async fn run_sms_fallback(pool: &PgPool, system_user: Uuid) -> anyhow::Result<()
         .execute(pool)
         .await;
 
-        // Transition session Closed → Requested
+        // Transition Closed or Requested → SmsSent
         let _ = sqlx::query!(
             r#"
             UPDATE order_sessions
             SET status     = $1,
                 updated_at = NOW(),
-                updated_by = $3
-            WHERE id = $2
-              AND status = $4
+                updated_by = $2
+            WHERE id = $3
+              AND status = ANY($4)
             "#,
-            OrderSessionStatus::Requested.as_i16(),
-            row.session_id,
+            OrderSessionStatus::SmsSent.as_i16(),
             system_user,
-            OrderSessionStatus::Closed.as_i16(),
+            row.session_id,
+            &[OrderSessionStatus::Closed.as_i16(), OrderSessionStatus::Requested.as_i16()],
         )
         .execute(pool)
         .await;

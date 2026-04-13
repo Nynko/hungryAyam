@@ -378,6 +378,7 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
       Open: 0,
       Closed: 0,
       Requested: 0,
+      SmsSent: 0,
       Confirmed: 0,
       Finished: 0,
       Cancelled: 0,
@@ -478,6 +479,7 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                         { key: "Open" as StatusFilter, label: "🟢 Open" },
                         { key: "Closed" as StatusFilter, label: "🟡 Closed" },
                         { key: "Requested" as StatusFilter, label: "📨 Requested" },
+                        { key: "SmsSent" as StatusFilter, label: "📱 SMS Sent" },
                         { key: "Confirmed" as StatusFilter, label: "✅ Confirmed" },
                         { key: "Finished" as StatusFilter, label: "🏁 Finished" },
                         { key: "Cancelled" as StatusFilter, label: "❌ Cancelled" },
@@ -582,11 +584,13 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                                 ? "hsl(48, 100%, 67%)" // yellow
                                 : session.status === "Requested"
                                   ? "hsl(204, 86%, 53%)" // blue
-                                  : session.status === "Confirmed"
-                                    ? "hsl(171, 100%, 41%)" // teal/primary
-                                    : session.status === "Finished"
-                                      ? "hsl(0, 0%, 71%)"   // grey
-                                      : "hsl(348, 100%, 61%)", // red (Cancelled)
+                                  : session.status === "SmsSent"
+                                    ? "hsl(217, 71%, 53%)" // darker blue/link
+                                    : session.status === "Confirmed"
+                                      ? "hsl(171, 100%, 41%)" // teal/primary
+                                      : session.status === "Finished"
+                                        ? "hsl(0, 0%, 71%)"   // grey
+                                        : "hsl(348, 100%, 61%)", // red (Cancelled)
                         }}
                       >
                         {/* Session header row */}

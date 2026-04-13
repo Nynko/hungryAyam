@@ -182,6 +182,8 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
         return "🟡";
       case "Requested":
         return "📨";
+      case "SmsSent":
+        return "📱";
       case "Confirmed":
         return "✅";
       case "Finished":
@@ -372,6 +374,28 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
 
             {/* Requested session actions */}
             <Show when={props.session.status === "Requested"}>
+              <button
+                class="button is-primary is-small"
+                classList={{ "is-loading": actionLoading() === "confirm" }}
+                disabled={sessionLoading() || actionLoading() !== null}
+                onClick={handleConfirm}
+              >
+                <span class="icon is-small"><span>✅</span></span>
+                <span>Confirm</span>
+              </button>
+              <button
+                class="button is-danger is-small is-outlined"
+                classList={{ "is-loading": actionLoading() === "cancel" }}
+                disabled={sessionLoading() || actionLoading() !== null}
+                onClick={handleCancel}
+              >
+                <span class="icon is-small"><span>✕</span></span>
+                <span>Cancel</span>
+              </button>
+            </Show>
+
+            {/* SmsSent session actions */}
+            <Show when={props.session.status === "SmsSent"}>
               <button
                 class="button is-primary is-small"
                 classList={{ "is-loading": actionLoading() === "confirm" }}

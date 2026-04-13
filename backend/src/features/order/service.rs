@@ -501,9 +501,9 @@ impl OrderService {
 
     /// Confirm that the restaurant will fulfil the order.
     ///
-    /// Transitions from Closed or Requested → Confirmed.
+    /// Transitions from Closed, Requested, or SmsSent → Confirmed.
     /// Manual flow: Closed → Confirmed (skipping the SMS step).
-    /// Automatic flow: Requested → Confirmed (restaurant acknowledged).
+    /// SMS flow: Requested or SmsSent → Confirmed (restaurant acknowledged).
     pub async fn confirm_session(
         &self,
         session_id: Uuid,
@@ -515,9 +515,13 @@ impl OrderService {
             .await?
             .ok_or_else(|| anyhow!("Session not found"))?;
 
-        if !matches!(session.status, OrderSessionStatus::Closed | OrderSessionStatus::Requested) {
+        if !matches!(session.status,
+            OrderSessionStatus::Closed |
+            OrderSessionStatus::Requested |
+            OrderSessionStatus::SmsSent
+        ) {
             return Err(anyhow!(
-                "Can only confirm a session that is Closed or Requested. Current status: '{}'.",
+                "Can only confirm a session that is Closed, Requested, or SmsSent. Current status: '{}'.",
                 session.status
             ));
         }

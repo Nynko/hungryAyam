@@ -831,6 +831,8 @@ function sessionStatusColor(status: OrderSessionStatus): string {
       return "is-warning";
     case "Requested":
       return "is-info";
+    case "SmsSent":
+      return "is-link";
     case "Confirmed":
       return "is-primary";
     case "Finished":

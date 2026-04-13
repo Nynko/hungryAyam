@@ -136,7 +136,7 @@ async fn confirm_sms(
         return Json(ApiResponse::error("Database error".to_string()));
     }
 
-    // Transition session Closed → Requested
+    // Transition Closed or Requested → SmsSent
     let system_user = sqlx::query_scalar!(
         "SELECT id FROM users ORDER BY created_at ASC LIMIT 1"
     )
@@ -146,19 +146,20 @@ async fn confirm_sms(
     .flatten();
 
     if let Some(uid) = system_user {
+        // Accept both Closed (auto-close path) and Requested (manual Send Request path)
         let _ = sqlx::query!(
             r#"
             UPDATE order_sessions
             SET status     = $1,
                 updated_at = NOW(),
-                updated_by = $3
-            WHERE id = $2
-              AND status = $4
+                updated_by = $2
+            WHERE id = $3
+              AND status = ANY($4)
             "#,
-            OrderSessionStatus::Requested.as_i16(),
-            event.session_id,
+            OrderSessionStatus::SmsSent.as_i16(),
             uid,
-            OrderSessionStatus::Closed.as_i16(),
+            event.session_id,
+            &[OrderSessionStatus::Closed.as_i16(), OrderSessionStatus::Requested.as_i16()],
         )
         .execute(&state.db)
         .await;

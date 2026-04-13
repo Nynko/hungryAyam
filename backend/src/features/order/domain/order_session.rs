@@ -11,8 +11,9 @@ use super::order::Order;
 /// Status of an order session, stored as smallint in the database.
 ///
 /// Lifecycle:
-///   Open → Closed → Confirmed → Finished          (manual, no SMS)
-///   Open → Closed → Requested → Confirmed → Finished  (automatic / SMS flow)
+///   Open → Closed → Confirmed → Finished               (manual, no SMS)
+///   Open → Closed → Requested → Confirmed → Finished   (manual Send Request)
+///   Open → Closed → SmsSent  → Confirmed → Finished   (SMS confirmed by Shortcut / fallback)
 ///
 /// Cancellation is allowed from any non-terminal state.
 /// Terminal states: Cancelled, Finished.
@@ -25,13 +26,16 @@ pub enum OrderSessionStatus {
     Closed,
     /// Session was cancelled; all orders voided.
     Cancelled,
-    /// Order request sent to the restaurant (SMS / WhatsApp / email).
+    /// Order request sent manually by admin (email notification sent, SMS not confirmed).
     /// Integer value 3 is preserved from the old `Sent` variant.
     Requested,
     /// Restaurant has confirmed they will fulfil the order.
     Confirmed,
     /// Food has been picked up / delivered — session is fully done.
     Finished,
+    /// SMS was confirmed sent to the restaurant (Shortcut called /confirm-sms
+    /// or the scheduler fallback fired). Distinct from Requested (manual).
+    SmsSent,
 }
 
 impl OrderSessionStatus {
@@ -43,6 +47,7 @@ impl OrderSessionStatus {
             Self::Requested => 3, // same integer as old `Sent`
             Self::Confirmed => 4,
             Self::Finished  => 5,
+            Self::SmsSent   => 6,
         }
     }
 
@@ -54,6 +59,7 @@ impl OrderSessionStatus {
             3 => Ok(Self::Requested),
             4 => Ok(Self::Confirmed),
             5 => Ok(Self::Finished),
+            6 => Ok(Self::SmsSent),
             _ => anyhow::bail!("Invalid OrderSessionStatus value: {}", value),
         }
     }
@@ -78,6 +84,7 @@ impl std::fmt::Display for OrderSessionStatus {
             Self::Requested => write!(f, "Requested"),
             Self::Confirmed => write!(f, "Confirmed"),
             Self::Finished  => write!(f, "Finished"),
+            Self::SmsSent   => write!(f, "SmsSent"),
         }
     }
 }

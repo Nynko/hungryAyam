@@ -122,7 +122,7 @@ impl SessionOrderSummary {
         for group in &self.offer_groups {
             parts.push(format!("{} x{}", group.offer_title, group.count));
             for slot in &group.slots {
-                parts.push(format!("  {}:", slot.label));
+                parts.push(format!("\n  {}:", slot.label));
                 for item in &slot.items {
                     parts.push(format!("    {}x {}", item.qty, item.name));
                 }

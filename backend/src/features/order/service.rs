@@ -499,6 +499,33 @@ impl OrderService {
             .await
     }
 
+    /// Manually mark a session as SMS-sent (admin UI fallback).
+    ///
+    /// Transitions from Closed or Requested → SmsSent.
+    /// Used when the automatic Shortcut confirmation isn't set up yet.
+    pub async fn mark_sms_sent(
+        &self,
+        session_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<OrderSession>> {
+        let session = self
+            .repository
+            .get_session_by_id(session_id)
+            .await?
+            .ok_or_else(|| anyhow!("Session not found"))?;
+
+        if !matches!(session.status, OrderSessionStatus::Closed | OrderSessionStatus::Requested) {
+            return Err(anyhow!(
+                "Can only mark as SMS sent from Closed or Requested. Current status: '{}'.",
+                session.status
+            ));
+        }
+
+        self.repository
+            .set_session_status(session_id, OrderSessionStatus::SmsSent, user_id)
+            .await
+    }
+
     /// Confirm that the restaurant will fulfil the order.
     ///
     /// Transitions from Closed, Requested, or SmsSent → Confirmed.

@@ -1,6 +1,7 @@
 use axum::{
-    Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, post}
+    Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, post, put}
 };
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -22,6 +23,40 @@ pub fn restaurant_routes() -> Router<AppState> {
         .route("/api/restaurants/:id", get(get_restaurant))
         .route("/api/restaurants/:id", delete(delete_restaurant))
         .route("/api/update-restaurant", post(update_restaurant))
+        .route("/api/admin/restaurants/:id/sms-phone", get(get_sms_phone))
+        .route("/api/admin/restaurants/:id/sms-phone", put(set_sms_phone))
+}
+
+#[derive(Serialize)]
+struct SmsPhoneResponse {
+    sms_phone_number: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SetSmsPhoneRequest {
+    sms_phone_number: Option<String>,
+}
+
+/// Get the SMS phone number for a restaurant (admin only).
+pub async fn get_sms_phone(
+    EditorUser(_user): EditorUser,
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<SmsPhoneResponse>>, ApiError> {
+    let sms_phone_number = app_state.restaurant_service.get_sms_phone(id).await?;
+    Ok(ApiJson(ApiResponse::success(SmsPhoneResponse { sms_phone_number })))
+}
+
+/// Set or clear the SMS phone number for a restaurant (admin only).
+pub async fn set_sms_phone(
+    EditorUser(user): EditorUser,
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+    ApiJson(body): ApiJson<SetSmsPhoneRequest>,
+) -> Result<ApiJson<ApiResponse<SmsPhoneResponse>>, ApiError> {
+    let sms_phone = body.sms_phone_number.and_then(|s| if s.trim().is_empty() { None } else { Some(s.trim().to_string()) });
+    app_state.restaurant_service.update_sms_phone(id, sms_phone.clone(), user.id).await?;
+    Ok(ApiJson(ApiResponse::success(SmsPhoneResponse { sms_phone_number: sms_phone })))
 }
 
 /// Create a new restaurant (requires editor user)

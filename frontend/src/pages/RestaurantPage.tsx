@@ -402,7 +402,7 @@ export default function RestaurantPage() {
                   <ActiveSessionBanner
                     session={session}
                     restaurantId={r().id}
-                    smsPhoneNumber={r().sms_phone_number}
+                    smsEnabled={r().sms_enabled}
                     onSessionChanged={refreshSession}
                   />
                 )}

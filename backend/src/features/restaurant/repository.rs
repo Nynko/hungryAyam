@@ -31,8 +31,8 @@ impl RestaurantRepository {
         let row = sqlx::query_as!(
             RestaurantRow,
             r#"
-            INSERT INTO restaurants (name, image_url, phone_number, sms_phone_number, address, created_by, updated_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO restaurants (name, image_url, phone_number, address, created_by, updated_by)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING
                 id,
                 name as "name: Name",
@@ -49,7 +49,6 @@ impl RestaurantRepository {
             request.name.as_ref(),
             request.image_url.as_ref().map(|u| u.to_string()),
             request.phone_number.as_deref(),
-            request.sms_phone_number.as_deref(),
             request.address.as_deref(),
             operator_id,
             operator_id
@@ -132,11 +131,10 @@ impl RestaurantRepository {
             SET name = COALESCE($1, name),
                 image_url = COALESCE($2, image_url),
                 phone_number = COALESCE($3, phone_number),
-                sms_phone_number = $4,
-                address = COALESCE($5, address),
+                address = COALESCE($4, address),
                 updated_at = NOW(),
-                updated_by = $7
-            WHERE id = $6
+                updated_by = $6
+            WHERE id = $5
             RETURNING
                 id,
                 name as "name: Name",
@@ -153,7 +151,6 @@ impl RestaurantRepository {
             request.name.as_ref().map(|n| n.as_ref()),
             request.image_url.as_ref().map(|u| u.to_string()),
             request.phone_number.as_deref(),
-            request.sms_phone_number.as_deref(),
             request.address.as_deref(),
             request.id,
             operator_id
@@ -217,6 +214,35 @@ impl RestaurantRepository {
         .await?;
 
         Ok(result)
+    }
+
+    /// Get the SMS phone number for a restaurant (admin only).
+    pub async fn get_sms_phone(&self, id: Uuid) -> Result<Option<String>> {
+        let row = sqlx::query!(
+            r#"SELECT sms_phone_number FROM restaurants WHERE id = $1"#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.and_then(|r| r.sms_phone_number))
+    }
+
+    /// Set (or clear) the SMS phone number for a restaurant (admin only).
+    pub async fn update_sms_phone(
+        &self,
+        id: Uuid,
+        sms_phone: Option<&str>,
+        operator_id: Uuid,
+    ) -> Result<bool> {
+        let result = sqlx::query!(
+            r#"UPDATE restaurants SET sms_phone_number = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3"#,
+            sms_phone,
+            operator_id,
+            id
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     /// Delete a restaurant
@@ -335,6 +361,7 @@ impl RestaurantRepository {
             name: row.name,
             image_url: row.image_url,
             phone_number: row.phone_number,
+            sms_enabled: row.sms_phone_number.is_some(),
             sms_phone_number: row.sms_phone_number,
             address: row.address,
             created_by: row.created_by,

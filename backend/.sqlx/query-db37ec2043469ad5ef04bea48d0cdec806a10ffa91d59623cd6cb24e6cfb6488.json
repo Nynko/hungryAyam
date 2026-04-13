@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO restaurants (name, image_url, phone_number, sms_phone_number, address, created_by, updated_by)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                phone_number,\n                sms_phone_number,\n                address,\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
+  "query": "\n            INSERT INTO restaurants (name, image_url, phone_number, address, created_by, updated_by)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                phone_number,\n                sms_phone_number,\n                address,\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
   "describe": {
     "columns": [
       {
@@ -65,7 +65,6 @@
         "Text",
         "Text",
         "Text",
-        "Text",
         "Uuid",
         "Uuid"
       ]
@@ -84,5 +83,5 @@
       true
     ]
   },
-  "hash": "ca7aabcdd45a77fa54f24ee2e4614865f405c0bfc805eade461a49e72bebc0ce"
+  "hash": "db37ec2043469ad5ef04bea48d0cdec806a10ffa91d59623cd6cb24e6cfb6488"
 }

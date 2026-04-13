@@ -6,6 +6,7 @@ import {
   cancelSession,
   closeSession,
   requestSession,
+  markSmsSent,
   confirmSession,
   finishSession,
   reopenSession,
@@ -18,8 +19,8 @@ import { showConfirm } from "@/stores/confirmStore";
 interface ActiveSessionBannerProps {
   session: OrderSession;
   restaurantId: string;
-  /** If set, SMS sending is enabled and "Send Request" button is shown. */
-  smsPhoneNumber?: string | null;
+  /** If true, SMS sending is enabled and "Send Request" / "Mark SMS Sent" buttons are shown. */
+  smsEnabled?: boolean;
   /** Called when the session state changes (so parent can refetch). */
   onSessionChanged?: () => void;
 }
@@ -121,7 +122,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
   // ── Session actions ─────────────────────────────────────────────
 
   const doAction = async (
-    action: "cancel" | "close" | "request" | "confirm" | "finish" | "reopen",
+    action: "cancel" | "close" | "request" | "markSms" | "confirm" | "finish" | "reopen",
     fn: (id: string) => Promise<OrderSession | null>,
     confirmOpts?: { title: string; message: string; danger?: boolean },
   ) => {
@@ -160,6 +161,12 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
       title: "Send Order Request?",
       message:
         "This will send the order to the restaurant (SMS/WhatsApp). You can still confirm once they accept.",
+    });
+
+  const handleMarkSmsSent = () =>
+    doAction("markSms", markSmsSent, {
+      title: "Mark as SMS Sent?",
+      message: "Manually mark this session as SMS sent — use this if the automatic confirmation isn't set up yet.",
     });
 
   const handleConfirm = () =>
@@ -345,7 +352,7 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
                 <span class="icon is-small"><span>✅</span></span>
                 <span>Confirm</span>
               </button>
-              <Show when={props.smsPhoneNumber}>
+              <Show when={props.smsEnabled}>
                 <button
                   class="button is-info is-small is-outlined"
                   classList={{ "is-loading": actionLoading() === "request" }}
@@ -387,6 +394,17 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
                 <span class="icon is-small"><span>✅</span></span>
                 <span>Confirm</span>
               </button>
+              <Show when={props.smsEnabled}>
+                <button
+                  class="button is-link is-small is-outlined"
+                  classList={{ "is-loading": actionLoading() === "markSms" }}
+                  disabled={sessionLoading() || actionLoading() !== null}
+                  onClick={handleMarkSmsSent}
+                >
+                  <span class="icon is-small"><span>📱</span></span>
+                  <span>Mark SMS Sent</span>
+                </button>
+              </Show>
               <button
                 class="button is-danger is-small is-outlined"
                 classList={{ "is-loading": actionLoading() === "cancel" }}

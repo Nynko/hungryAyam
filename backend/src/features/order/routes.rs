@@ -37,6 +37,7 @@ pub fn order_routes() -> Router<AppState> {
         .route("/api/order-sessions/:id/cancel", post(cancel_session))
         .route("/api/order-sessions/:id/close", post(close_session))
         .route("/api/order-sessions/:id/request", post(request_session))
+        .route("/api/order-sessions/:id/mark-sms-sent", post(mark_sms_sent_session))
         .route("/api/order-sessions/:id/confirm", post(confirm_session))
         .route("/api/order-sessions/:id/finish", post(finish_session))
         .route("/api/order-sessions/:id/reopen", post(reopen_session))
@@ -247,6 +248,22 @@ pub async fn request_session(
         }
     }
 
+    Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
+        session,
+    })))
+}
+
+/// Manually mark a session as SMS-sent — transitions Closed/Requested → SmsSent
+pub async fn mark_sms_sent_session(
+    AuthUser(user): AuthUser,
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let session = app_state
+        .order_service
+        .mark_sms_sent(id, user.id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
         session,
     })))

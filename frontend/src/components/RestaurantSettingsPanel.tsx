@@ -71,6 +71,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
   const [restaurantImageUrl, setRestaurantImageUrl] = createSignal("");
   const [restaurantPhoneNumber, setRestaurantPhoneNumber] = createSignal("");
   const [restaurantSmsPhone, setRestaurantSmsPhone] = createSignal("");
+  const [smsPhoneLoaded, setSmsPhoneLoaded] = createSignal(false);
   const [restaurantAddress, setRestaurantAddress] = createSignal("");
   const [restaurantSaving, setRestaurantSaving] = createSignal(false);
   const [restaurantSuccess, setRestaurantSuccess] = createSignal<string | null>(null);
@@ -115,8 +116,17 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       setRestaurantName(r.name);
       setRestaurantImageUrl(r.image_url ?? "");
       setRestaurantPhoneNumber(r.phone_number ?? "");
-      setRestaurantSmsPhone(r.sms_phone_number ?? "");
       setRestaurantAddress(r.address ?? "");
+      // Load SMS phone from admin-only endpoint (not in public Restaurant response)
+      if (!smsPhoneLoaded()) {
+        fetch(`/api/admin/restaurants/${r.id}/sms-phone`)
+          .then((res) => res.json())
+          .then((json) => {
+            setRestaurantSmsPhone(json.data?.sms_phone_number ?? "");
+            setSmsPhoneLoaded(true);
+          })
+          .catch(() => {});
+      }
     }
   });
 
@@ -155,9 +165,16 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       name: trimmedName,
       image_url: restaurantImageUrl().trim() || null,
       phone_number: restaurantPhoneNumber().trim() || null,
-      sms_phone_number: restaurantSmsPhone().trim() || null,
       address: restaurantAddress().trim() || null,
     };
+
+    // Save SMS phone via admin-only endpoint
+    const smsPhone = restaurantSmsPhone().trim() || null;
+    await fetch(`/api/admin/restaurants/${r.id}/sms-phone`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sms_phone_number: smsPhone }),
+    });
 
     const result = await updateRestaurantApi(request);
     setRestaurantSaving(false);

@@ -21,7 +21,14 @@ pub struct Restaurant {
     pub name: Name,
     pub image_url: Option<ImageSource>,
     pub phone_number: Option<String>,
+    /// Never serialised in public responses — use sms_enabled instead.
+    #[serde(skip_serializing)]
+    #[ts(skip)]
+    #[derived_domain_ignore]
     pub sms_phone_number: Option<String>,
+    /// True if an SMS phone number has been configured for this restaurant.
+    #[derived_domain_ignore]
+    pub sms_enabled: bool,
     pub address: Option<String>,
     #[derived_domain_ignore]
     pub created_by: Uuid,

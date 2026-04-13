@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                start_date,\n                end_date,\n                pickup_time,\n                allow_late,\n                status as \"status: OrderSessionStatus\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by\n            FROM order_sessions\n            WHERE restaurant_id = $1\n              AND status = ANY(ARRAY[0, 1, 3, 4]::smallint[])\n            ORDER BY end_date ASC\n            ",
+  "query": "\n            SELECT\n                id,\n                restaurant_id,\n                start_date,\n                end_date,\n                pickup_time,\n                allow_late,\n                status as \"status: OrderSessionStatus\",\n                created_at,\n                created_by,\n                updated_at,\n                updated_by\n            FROM order_sessions\n            WHERE restaurant_id = $1\n              AND status = ANY(ARRAY[0, 1, 3, 4, 6]::smallint[])\n            ORDER BY end_date ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -78,5 +78,5 @@
       false
     ]
   },
-  "hash": "ec7edc4575c7273f3f788a2a418ab487c4aeb02faecb4849ab19253ebc4efad7"
+  "hash": "aca379ee1606c9c34847280fb4800175f268bb296398a2a675d7ca838228295e"
 }

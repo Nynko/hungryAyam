@@ -427,6 +427,10 @@ async function requestSession(sessionId: string): Promise<OrderSession | null> {
   return transitionSession(sessionId, "request");
 }
 
+async function markSmsSent(sessionId: string): Promise<OrderSession | null> {
+  return transitionSession(sessionId, "mark-sms-sent");
+}
+
 async function confirmSession(sessionId: string): Promise<OrderSession | null> {
   return transitionSession(sessionId, "confirm");
 }
@@ -877,6 +881,7 @@ export {
   cancelSession,
   closeSession,
   requestSession,
+  markSmsSent,
   confirmSession,
   finishSession,
   reopenSession,

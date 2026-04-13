@@ -505,84 +505,18 @@ async fn close_session(
     // Send notification email if configured
     if candidate.notify_on_session_close {
         if let (Some(svc), Some(to)) = (email_service, notification_email) {
-            // Fetch order summary for this session
-            // Fetch aggregated order: total quantity per item across all users
-            let rows = sqlx::query!(
-                r#"
-                SELECT i.name as item_name,
-                       COUNT(oi.id) as "qty!: i64"
-                FROM orders o
-                JOIN order_items oi ON oi.order_id = o.id
-                JOIN items i ON i.id = oi.item_id
-                WHERE o.session_id = $1
-                GROUP BY i.name
-                ORDER BY i.name
-                "#,
+            if let Err(e) = crate::features::notification::send_order_notification(
+                pool,
                 candidate.session_id,
-            )
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
-
-            let pickup = candidate.pickup_time
-                .map(|t| t.format("%H:%M").to_string())
-                .unwrap_or_else(|| "not set".to_string());
-
-            let phone = candidate.restaurant_phone.as_deref().unwrap_or("—");
-
-            let mut order_lines = String::new();
-            for row in &rows {
-                order_lines.push_str(&format!("{} {}\n", row.qty, row.item_name));
-            }
-
-            let orders_text = order_lines.trim_end().to_string();
-
-            // Build signed body if secret is configured
-            let (ts, sig_line) = if let Some(secret) = notification_secret {
-                let ts = chrono::Utc::now().timestamp();
-                let sig = crate::features::notification::sign(secret, ts, phone, &pickup);
-                (ts, format!("TS:{ts}\nSIG:{sig}\n"))
-            } else {
-                (0, String::new())
-            };
-
-            let msg = crate::features::notification::render_sms_message(sms_template, &pickup, &orders_text);
-            let body = format!(
-                "{sig_line}RESTAURANT:{restaurant}\nPHONE:{phone}\nTIME:{pickup}\nBODY:{msg}",
-                sig_line = sig_line,
-                restaurant = candidate.restaurant_name,
-                phone = phone,
-                pickup = pickup,
-                msg = msg,
-            );
-
-            if let Err(e) = svc.send_plain(to, "HungryAyam Order", body).await {
+                candidate.pickup_time,
+                &candidate.restaurant_name,
+                candidate.restaurant_phone.as_deref(),
+                svc,
+                to,
+                notification_secret,
+                sms_template,
+            ).await {
                 warn!("Scheduler: failed to send session-close notification: {e}");
-            } else if notification_secret.is_some() {
-                // Insert notification event for tracking
-                let sig = crate::features::notification::sign(
-                    notification_secret.unwrap(), ts, phone, &pickup
-                );
-                if let Err(e) = sqlx::query!(
-                    r#"
-                    INSERT INTO notification_events
-                        (sig, session_id, ts, phone, time_str, orders, restaurant)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    ON CONFLICT (sig) DO NOTHING
-                    "#,
-                    sig,
-                    candidate.session_id,
-                    ts,
-                    phone,
-                    pickup,
-                    orders_text,
-                    candidate.restaurant_name,
-                )
-                .execute(pool)
-                .await
-                {
-                    warn!("Scheduler: failed to insert notification_event: {e}");
-                }
             }
         }
     }

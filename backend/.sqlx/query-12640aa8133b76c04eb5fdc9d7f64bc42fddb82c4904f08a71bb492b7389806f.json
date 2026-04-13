@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO notification_events\n                (sig, session_id, ts, phone, time_str, orders, restaurant)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            ON CONFLICT (sig) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Int8",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "12640aa8133b76c04eb5fdc9d7f64bc42fddb82c4904f08a71bb492b7389806f"
+}

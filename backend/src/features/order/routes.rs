@@ -173,6 +173,8 @@ pub async fn close_session(
 }
 
 /// Send an order request to the restaurant — transitions Closed → Requested
+/// and sends the notification email (HMAC-signed) so the iPhone Shortcut
+/// can forward it as an SMS.
 pub async fn request_session(
     AuthUser(user): AuthUser,
     State(app_state): State<AppState>,
@@ -183,6 +185,50 @@ pub async fn request_session(
         .request_session(id, user.id)
         .await?
         .ok_or(ApiError::NotFound)?;
+
+    // Send notification email if SMTP and a notification address are configured.
+    // This is the manual equivalent of the scheduler's auto-close notification.
+    if let Some(svc) = &app_state.email_service {
+        // Fetch notification email + sms template in one query
+        let settings = sqlx::query!(
+            r#"SELECT notification_email, sms_message_template FROM app_settings WHERE id = 1"#
+        )
+        .fetch_optional(&app_state.db)
+        .await
+        .ok()
+        .flatten();
+
+        if let Some(to) = settings.as_ref().and_then(|s| s.notification_email.as_deref()) {
+            // Fetch restaurant info
+            let restaurant = sqlx::query!(
+                r#"SELECT name, phone_number FROM restaurants WHERE id = $1"#,
+                session.restaurant_id,
+            )
+            .fetch_optional(&app_state.db)
+            .await
+            .ok()
+            .flatten();
+
+            if let Some(r) = restaurant {
+                let sms_template = settings.as_ref().and_then(|s| s.sms_message_template.as_deref());
+                if let Err(e) = crate::features::notification::send_order_notification(
+                    &app_state.db,
+                    session.id,
+                    session.pickup_time,
+                    &r.name,
+                    r.phone_number.as_deref(),
+                    svc,
+                    to,
+                    app_state.notification_secret.as_deref(),
+                    sms_template,
+                ).await {
+                    tracing::warn!("request_session: notification failed: {e}");
+                    // Don't fail the request — status was already updated
+                }
+            }
+        }
+    }
+
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
         session,
     })))

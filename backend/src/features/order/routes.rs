@@ -17,9 +17,10 @@ use crate::{
         },
         dto::{
             CreateOrderRequest, CreateOrderSessionRequest, MoveOrderToSessionRequest,
-            OrderSessionStatusResponse, OrderSummary, UpdateOrderSessionRequest,
-            UpdateOrderSettingsRequest,
+            OrderSessionStatusResponse, OrderSummary, SessionOrderSummary,
+            UpdateOrderSessionRequest, UpdateOrderSettingsRequest,
         },
+        service::aggregate_session_summary,
     },
     state::AppState,
     types::response::ApiResponse,
@@ -39,6 +40,7 @@ pub fn order_routes() -> Router<AppState> {
         .route("/api/order-sessions/:id/confirm", post(confirm_session))
         .route("/api/order-sessions/:id/finish", post(finish_session))
         .route("/api/order-sessions/:id/reopen", post(reopen_session))
+        .route("/api/order-sessions/:id/summary", get(get_session_summary))
         // Session listing
         .route(
             "/api/restaurants/:restaurant_id/order-sessions",
@@ -170,6 +172,22 @@ pub async fn close_session(
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
         session,
     })))
+}
+
+/// `GET /api/order-sessions/:id/summary`
+///
+/// Returns the aggregated order summary for a session: regular items grouped
+/// by (item + note) and offer groups with slot combos. Matches the frontend
+/// display logic exactly.
+pub async fn get_session_summary(
+    _auth: AuthUser,
+    State(app_state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<ApiJson<ApiResponse<SessionOrderSummary>>, ApiError> {
+    let summary = aggregate_session_summary(&app_state.db, id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    Ok(ApiJson(ApiResponse::success(summary)))
 }
 
 /// Send an order request to the restaurant — transitions Closed → Requested

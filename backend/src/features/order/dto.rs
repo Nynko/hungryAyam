@@ -62,6 +62,78 @@ pub struct OrderSummary {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+// ==================== Session Order Summary DTOs ====================
+
+/// One regular (non-offer) item line in the aggregated summary.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RegularItemSummary {
+    pub item_name: String,
+    pub quantity: i64,
+    pub note: Option<String>,
+}
+
+/// A single item/combo entry inside an offer slot.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct OfferItemCount {
+    pub name: String,
+    pub qty: i64,
+}
+
+/// One slot row inside an offer group.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct OfferSlotSummary {
+    pub label: String,
+    pub items: Vec<OfferItemCount>,
+}
+
+/// All orders for one offer in the aggregated summary.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct OfferGroupSummary {
+    pub offer_title: String,
+    pub count: i64,
+    pub slots: Vec<OfferSlotSummary>,
+}
+
+/// Full aggregated summary for a session, matching the frontend display logic.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SessionOrderSummary {
+    pub regular_items: Vec<RegularItemSummary>,
+    pub offer_groups: Vec<OfferGroupSummary>,
+}
+
+impl SessionOrderSummary {
+    /// Render a compact plain-text representation suitable for SMS / email.
+    pub fn to_text(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+
+        for item in &self.regular_items {
+            let line = match &item.note {
+                Some(n) => format!("{}x {} ({})", item.quantity, item.item_name, n),
+                None => format!("{}x {}", item.quantity, item.item_name),
+            };
+            parts.push(line);
+        }
+
+        for group in &self.offer_groups {
+            parts.push(format!("{} x{}", group.offer_title, group.count));
+            for slot in &group.slots {
+                let items_str = slot.items.iter()
+                    .map(|i| format!("{}x {}", i.qty, i.name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                parts.push(format!("  {}: {}", slot.label, items_str));
+            }
+        }
+
+        parts.join("\n")
+    }
+}
+
 // ==================== Order Settings DTOs ====================
 
 pub type CreateOrderSettingsRequest = CreateRestaurantOrderSettings;

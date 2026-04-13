@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            o.id         AS order_id,\n            o.offer_id   AS \"offer_id?: Uuid\",\n            off.title    AS \"offer_title?: String\",\n            i.id         AS item_id,\n            i.name       AS item_name,\n            ofs.label    AS \"slot_label?: String\",\n            ofs.slot_group AS \"slot_group?: String\",\n            oi.notes     AS \"notes?: String\"\n        FROM orders o\n        JOIN order_items oi ON oi.order_id = o.id\n        JOIN items i ON i.id = oi.item_id\n        LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id\n        LEFT JOIN offers off ON off.id = o.offer_id\n        WHERE o.session_id = $1\n        ORDER BY o.created_at, o.id, oi.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "order_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "offer_id?: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "offer_title?: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "item_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "slot_label?: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "slot_group?: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "notes?: String",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "6686eafa97c35ea81a24beaeff7b2fa4ff3b9f9761c189e97305a0f79cc79e02"
+}

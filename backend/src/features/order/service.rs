@@ -1,9 +1,11 @@
 use anyhow::{anyhow, Result};
 use chrono::{NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use uuid::Uuid;
+use sqlx::PgPool;
 
 use crate::types::role::UserRole;
 use crate::features::offer::service::OfferService;
@@ -15,9 +17,171 @@ use crate::features::order::{
         },
         order_settings::RestaurantOrderSettings,
     },
-    dto::{OrderSummary, UpdateOrderSessionRequest, UpdateOrderSettingsRequest},
+    dto::{
+        OrderSummary, RegularItemSummary, OfferItemCount, OfferSlotSummary,
+        OfferGroupSummary, SessionOrderSummary, UpdateOrderSessionRequest,
+        UpdateOrderSettingsRequest,
+    },
     repository::OrderRepository,
 };
+
+/// Aggregate all orders for a session into a structured summary.
+///
+/// Mirrors the frontend's `aggregatedRegularItems` + `aggregatedOfferGroups`
+/// logic exactly so that the UI, email, and SMS all show the same data.
+pub async fn aggregate_session_summary(
+    pool: &PgPool,
+    session_id: Uuid,
+) -> Result<SessionOrderSummary> {
+    // Fetch all order items in one query
+    let rows = sqlx::query!(
+        r#"
+        SELECT
+            o.id         AS order_id,
+            o.offer_id   AS "offer_id?: Uuid",
+            off.title    AS "offer_title?: String",
+            i.id         AS item_id,
+            i.name       AS item_name,
+            ofs.label    AS "slot_label?: String",
+            ofs.slot_group AS "slot_group?: String",
+            oi.notes     AS "notes?: String"
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        JOIN items i ON i.id = oi.item_id
+        LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id
+        LEFT JOIN offers off ON off.id = o.offer_id
+        WHERE o.session_id = $1
+        ORDER BY o.created_at, o.id, oi.id
+        "#,
+        session_id,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    // ── Regular items (no offer) ──────────────────────────────────
+    // key: (item_id, note)
+    let mut regular_map: HashMap<(Uuid, String), RegularItemSummary> = HashMap::new();
+
+    for row in rows.iter().filter(|r| r.offer_id.is_none()) {
+        let note = row.notes.clone();
+        let key = (row.item_id, note.clone().unwrap_or_default());
+        let entry = regular_map.entry(key).or_insert(RegularItemSummary {
+            item_name: row.item_name.clone(),
+            quantity: 0,
+            note: note.clone(),
+        });
+        entry.quantity += 1;
+    }
+
+    // Sort: plain items first, then by name
+    let mut regular_items: Vec<RegularItemSummary> = regular_map.into_values().collect();
+    regular_items.sort_by(|a, b| {
+        match (&a.note, &b.note) {
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            _ => a.item_name.cmp(&b.item_name),
+        }
+    });
+
+    // ── Offer groups ──────────────────────────────────────────────
+    // Group rows by order_id first, then aggregate per offer
+    struct SlotAgg {
+        label: String,
+        grouped: bool,
+        combos: HashMap<String, i64>,   // combo string → count (grouped slots)
+        items: HashMap<String, i64>,    // item name → count (ungrouped slots)
+    }
+    struct OfferAgg {
+        title: String,
+        count: i64,
+        slots: HashMap<String, SlotAgg>, // slot_key → agg
+    }
+
+    let mut offer_map: HashMap<Uuid, OfferAgg> = HashMap::new();
+
+    // Collect all offer rows grouped by order_id
+    let mut order_rows: HashMap<Uuid, Vec<_>> = HashMap::new();
+    for row in rows.iter().filter(|r| r.offer_id.is_some()) {
+        order_rows.entry(row.order_id).or_default().push(row);
+    }
+
+    for (_, items) in &order_rows {
+        let first = &items[0];
+        let offer_id = first.offer_id.unwrap();
+        let title = first.offer_title.clone().unwrap_or_else(|| format!("Offer ({})", &offer_id.to_string()[..8]));
+
+        let agg = offer_map.entry(offer_id).or_insert(OfferAgg {
+            title,
+            count: 0,
+            slots: HashMap::new(),
+        });
+        agg.count += 1;
+
+        // Partition this order's items by slot_key → slot_label → item names
+        let mut order_slots: HashMap<String, (bool, HashMap<String, Vec<String>>)> = HashMap::new();
+        for row in items.iter() {
+            let slot_key = row.slot_group.clone()
+                .or_else(|| row.slot_label.clone())
+                .unwrap_or_else(|| "—".to_string());
+            let is_grouped = row.slot_group.is_some();
+            let slot_label = row.slot_label.clone().unwrap_or_else(|| "—".to_string());
+
+            let entry = order_slots.entry(slot_key).or_insert((is_grouped, HashMap::new()));
+            entry.1.entry(slot_label).or_default().push(row.item_name.clone());
+        }
+
+        // Merge into the offer aggregate
+        for (slot_key, (is_grouped, by_label)) in order_slots {
+            // Build display label from unique slot labels in this group
+            let label: String = {
+                let mut labels: Vec<String> = by_label.keys().cloned().collect();
+                labels.sort();
+                labels.join(" + ")
+            };
+
+            let slot_agg = agg.slots.entry(slot_key).or_insert(SlotAgg {
+                label,
+                grouped: is_grouped,
+                combos: HashMap::new(),
+                items: HashMap::new(),
+            });
+
+            if is_grouped {
+                // Build combo string: one part per slot_label, joined with " + "
+                let mut parts: Vec<String> = by_label.into_iter()
+                    .map(|(_, names)| names.join(" & "))
+                    .collect();
+                parts.sort();
+                let combo = parts.join(" + ");
+                *slot_agg.combos.entry(combo).or_insert(0) += 1;
+            } else {
+                for names in by_label.into_values() {
+                    for name in names {
+                        *slot_agg.items.entry(name).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // Convert to output DTOs
+    let mut offer_groups: Vec<OfferGroupSummary> = offer_map.into_values().map(|agg| {
+        let mut slots: Vec<OfferSlotSummary> = agg.slots.into_values().map(|s| {
+            let mut items: Vec<OfferItemCount> = if s.grouped {
+                s.combos.into_iter().map(|(name, qty)| OfferItemCount { name, qty }).collect()
+            } else {
+                s.items.into_iter().map(|(name, qty)| OfferItemCount { name, qty }).collect()
+            };
+            items.sort_by(|a, b| a.name.cmp(&b.name));
+            OfferSlotSummary { label: s.label, items }
+        }).collect();
+        slots.sort_by(|a, b| a.label.cmp(&b.label));
+        OfferGroupSummary { offer_title: agg.title, count: agg.count, slots }
+    }).collect();
+    offer_groups.sort_by(|a, b| a.offer_title.cmp(&b.offer_title));
+
+    Ok(SessionOrderSummary { regular_items, offer_groups })
+}
 
 #[derive(Clone)]
 pub struct OrderService {

@@ -27,7 +27,23 @@ import {
   updateSession,
 } from "@/stores/orderStore";
 
+// ── Types ─────────────────────────────────────────────────────────
+
+interface RegularItemSummary { item_name: string; quantity: number; note: string | null; }
+interface OfferItemCount { name: string; qty: number; }
+interface OfferSlotSummary { label: string; items: OfferItemCount[]; }
+interface OfferGroupSummary { offer_title: string; count: number; slots: OfferSlotSummary[]; }
+interface SessionOrderSummary { regular_items: RegularItemSummary[]; offer_groups: OfferGroupSummary[]; }
+
 // ── Data fetchers ─────────────────────────────────────────────────
+
+async function fetchSessionSummary(sessionId: string): Promise<SessionOrderSummary> {
+  const res = await fetch(`/api/order-sessions/${sessionId}/summary`);
+  if (!res.ok) throw new Error(`Failed to load summary (${res.status})`);
+  const json: ApiResponse<SessionOrderSummary> = await res.json();
+  if (!json.success || json.data == null) throw new Error(json.error ?? "Unexpected response");
+  return json.data;
+}
 
 async function fetchRestaurants(): Promise<Restaurant[]> {
   const res = await fetch("/api/restaurants");
@@ -62,127 +78,14 @@ function SessionOrderList(props: { session: OrderSession }) {
     orders().reduce((sum, o) => sum + o.total_price_cents, 0),
   );
 
-  /** Aggregate regular (non-offer) items across all orders in the session.
-   * Groups by (item_id + note) — plain items first, then variants with notes. */
-  const aggregatedRegularItems = createMemo(() => {
-    const map = new Map<string, { itemName: string; quantity: number; note: string | null }>();
-    for (const order of orders().filter((o) => !o.offer_id)) {
-      for (const item of order.items) {
-        const note = item.notes ?? null;
-        const key = `${item.item_id}::${note ?? ""}`;
-        const existing = map.get(key);
-        if (existing) {
-          existing.quantity += 1;
-        } else {
-          map.set(key, { itemName: item.item_name, quantity: 1, note });
-        }
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => {
-      if (!a.note && b.note) return -1;
-      if (a.note && !b.note) return 1;
-      return a.itemName.localeCompare(b.itemName);
-    });
-  });
+  // Refetch summary whenever order count changes (new order placed / removed)
+  const [summary] = createResource(
+    () => `${props.session.id}:${orders().length}`,
+    () => fetchSessionSummary(props.session.id),
+  );
 
-  /**
-   * Group offer orders by offer, then aggregate items by slot/slot-group.
-   *
-   * For grouped slots (sharing a slot_group), items are combined per-order into
-   * combo strings (e.g. "Kofte + Boulghour") and identical combos are counted.
-   * For ungrouped slots, items are counted individually as before.
-   */
-  const aggregatedOfferGroups = createMemo(() => {
-    const offerMap = new Map<string, {
-      title: string;
-      count: number;
-      // slotKey → { label, combos: Map<comboString, qty> } for grouped slots
-      //            { label, items: Map<itemName, qty> }       for ungrouped slots
-      slots: Map<string, {
-        label: string;
-        grouped: boolean;
-        combos: Map<string, number>;  // combo string → count (grouped)
-        items: Map<string, number>;   // item name → count (ungrouped)
-      }>;
-    }>();
-
-    for (const order of orders().filter((o) => !!o.offer_id)) {
-      const offerId = order.offer_id!;
-      const title = order.offer_title ?? `Offer (${offerId.slice(0, 8)})`;
-
-      if (!offerMap.has(offerId)) {
-        offerMap.set(offerId, { title, count: 0, slots: new Map() });
-      }
-
-      const group = offerMap.get(offerId)!;
-      group.count += 1;
-
-      // Partition this order's items by slot key (slot_group or slot_label).
-      const orderSlots = new Map<string, {
-        labels: Set<string>;
-        grouped: boolean;
-        itemsBySlotLabel: Map<string, string[]>; // slot_label → item names (preserves slot order)
-      }>();
-
-      for (const item of order.items) {
-        const slotKey = item.slot_group ?? item.slot_label ?? "—";
-        const isGrouped = !!item.slot_group;
-        if (!orderSlots.has(slotKey)) {
-          orderSlots.set(slotKey, { labels: new Set(), grouped: isGrouped, itemsBySlotLabel: new Map() });
-        }
-        const entry = orderSlots.get(slotKey)!;
-        if (item.slot_label) entry.labels.add(item.slot_label);
-        // Collect items per slot_label within the group to preserve slot ordering.
-        const slotLabel = item.slot_label ?? "—";
-        if (!entry.itemsBySlotLabel.has(slotLabel)) {
-          entry.itemsBySlotLabel.set(slotLabel, []);
-        }
-        entry.itemsBySlotLabel.get(slotLabel)!.push(item.item_name);
-      }
-
-      // Merge this order's slots into the aggregate.
-      for (const [slotKey, entry] of orderSlots) {
-        if (!group.slots.has(slotKey)) {
-          group.slots.set(slotKey, {
-            label: Array.from(entry.labels).join(" + ") || "—",
-            grouped: entry.grouped,
-            combos: new Map(),
-            items: new Map(),
-          });
-        }
-        const agg = group.slots.get(slotKey)!;
-
-        if (entry.grouped) {
-          // Build combo string: join one item per slot label with " + ".
-          // Each slot_label contributes its items joined by " & " if multiple.
-          const parts: string[] = [];
-          for (const items of entry.itemsBySlotLabel.values()) {
-            parts.push(items.join(" & "));
-          }
-          const combo = parts.join(" + ");
-          agg.combos.set(combo, (agg.combos.get(combo) ?? 0) + 1);
-        } else {
-          // Ungrouped: count individual items.
-          for (const items of entry.itemsBySlotLabel.values()) {
-            for (const name of items) {
-              agg.items.set(name, (agg.items.get(name) ?? 0) + 1);
-            }
-          }
-        }
-      }
-    }
-
-    return Array.from(offerMap.values()).map((g) => ({
-      title: g.title,
-      count: g.count,
-      slots: Array.from(g.slots.values()).map((s) => ({
-        label: s.label,
-        items: s.grouped
-          ? Array.from(s.combos.entries()).map(([name, qty]) => ({ name, qty }))
-          : Array.from(s.items.entries()).map(([name, qty]) => ({ name, qty })),
-      })),
-    }));
-  });
+  const regularItems = () => summary()?.regular_items ?? [];
+  const offerGroups = () => summary()?.offer_groups ?? [];
 
   return (
     <div class="mt-3">
@@ -205,7 +108,7 @@ function SessionOrderList(props: { session: OrderSession }) {
         </div>
 
         {/* ── Aggregated command for the restaurant ────────────── */}
-        <Show when={aggregatedRegularItems().length > 0 || aggregatedOfferGroups().length > 0}>
+        <Show when={regularItems().length > 0 || offerGroups().length > 0}>
           <div
             class="box mb-4 p-3"
             style={{
@@ -218,17 +121,17 @@ function SessionOrderList(props: { session: OrderSession }) {
             </p>
 
             {/* Regular items */}
-            <Show when={aggregatedRegularItems().length > 0}>
+            <Show when={regularItems().length > 0}>
               <ul class="ml-4 mb-2" style={{ "list-style": "disc" }}>
-                <For each={aggregatedRegularItems()}>
-                  {(group) => (
+                <For each={regularItems()}>
+                  {(item) => (
                     <li>
-                      <span class="has-text-weight-bold">{group.quantity}x</span>
+                      <span class="has-text-weight-bold">{item.quantity}x</span>
                       {" "}
-                      <span>{group.itemName}</span>
-                      <Show when={group.note}>
+                      <span>{item.item_name}</span>
+                      <Show when={item.note}>
                         <span class="has-text-grey is-italic is-size-7 ml-1">
-                          ({group.note})
+                          ({item.note})
                         </span>
                       </Show>
                     </li>
@@ -238,15 +141,15 @@ function SessionOrderList(props: { session: OrderSession }) {
             </Show>
 
             {/* Offer groups */}
-            <Show when={aggregatedOfferGroups().length > 0}>
-              <Show when={aggregatedRegularItems().length > 0}>
+            <Show when={offerGroups().length > 0}>
+              <Show when={regularItems().length > 0}>
                 <hr class="my-2" style={{ "border-color": "hsl(204, 86%, 80%)" }} />
               </Show>
-              <For each={aggregatedOfferGroups()}>
+              <For each={offerGroups()}>
                 {(group) => (
                   <div class="mb-3">
                     <p class="has-text-weight-bold is-size-7 mb-1">
-                      🍽️ {group.title} ×{group.count}
+                      🍽️ {group.offer_title} ×{group.count}
                     </p>
                     <For each={group.slots}>
                       {(slot) => (
@@ -255,7 +158,7 @@ function SessionOrderList(props: { session: OrderSession }) {
                           <For each={slot.items}>
                             {(item) => (
                               <div class="ml-4 is-size-7">
-                                ×{item.qty} {item.name}
+                                {item.qty}x {item.name}
                               </div>
                             )}
                           </For>

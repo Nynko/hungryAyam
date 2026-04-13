@@ -82,23 +82,9 @@ pub async fn send_order_notification(
     notification_secret: Option<&str>,
     sms_template: Option<&str>,
 ) -> anyhow::Result<()> {
-    // Fetch aggregated order summary for the session
-    let rows = sqlx::query!(
-        r#"
-        SELECT i.name as item_name,
-               COUNT(oi.id) as "qty!: i64"
-        FROM orders o
-        JOIN order_items oi ON oi.order_id = o.id
-        JOIN items i ON i.id = oi.item_id
-        WHERE o.session_id = $1
-        GROUP BY i.name
-        ORDER BY i.name
-        "#,
-        session_id,
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    let summary = crate::features::order::service::aggregate_session_summary(pool, session_id)
+        .await
+        .unwrap_or_default();
 
     let pickup = pickup_time
         .map(|t| t.format("%H:%M").to_string())
@@ -106,11 +92,7 @@ pub async fn send_order_notification(
 
     let phone = restaurant_phone.unwrap_or("—");
 
-    let mut order_lines = String::new();
-    for row in &rows {
-        order_lines.push_str(&format!("{}x {}\n", row.qty, row.item_name));
-    }
-    let orders_text = order_lines.trim_end().to_string();
+    let orders_text = summary.to_text();
 
     // Sign if secret is configured
     let (ts, sig_line) = if let Some(secret) = notification_secret {

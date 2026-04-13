@@ -50,6 +50,7 @@ pub fn admin_auth_routes() -> Router<AppState> {
         .route("/api/admin/settings/editor-domain", get(get_editor_domain).put(set_editor_domain))
         .route("/api/admin/settings/notification-email", get(get_notification_email).put(set_notification_email))
         .route("/api/admin/settings/test-notification-email", post(test_notification_email))
+        .route("/api/admin/settings/sms-message-template", get(get_sms_message_template).put(set_sms_message_template))
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -636,6 +637,51 @@ pub async fn test_notification_email(
     .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(ApiJson(ApiResponse::success(format!("Test email sent to {to}"))))
+}
+
+/// `GET /api/admin/settings/sms-message-template`
+///
+/// Get the SMS message template used in notification emails and OVH SMS fallback.
+pub async fn get_sms_message_template(
+    AdminUser(_admin): AdminUser,
+    State(state): State<AppState>,
+) -> Result<ApiJson<ApiResponse<Option<String>>>, ApiError> {
+    let template = state
+        .setup_repository
+        .get_sms_message_template()
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(ApiJson(ApiResponse::success(template)))
+}
+
+/// Request body for setting the SMS message template.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct SetSmsMessageTemplateRequest {
+    /// The message template with `{PickupTime}` and `{Orders}` placeholders.
+    /// `null` to clear (falls back to a default format).
+    pub template: Option<String>,
+}
+
+/// `PUT /api/admin/settings/sms-message-template`
+///
+/// Set or clear the SMS message template.
+/// Placeholders: `{PickupTime}` → pickup time, `{Orders}` → ordered items.
+pub async fn set_sms_message_template(
+    AdminUser(_admin): AdminUser,
+    State(state): State<AppState>,
+    ApiJson(request): ApiJson<SetSmsMessageTemplateRequest>,
+) -> Result<ApiJson<ApiResponse<Option<String>>>, ApiError> {
+    let template = request.template.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+
+    state
+        .setup_repository
+        .set_sms_message_template(template.as_deref())
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    Ok(ApiJson(ApiResponse::success(template)))
 }
 
 /// `PUT /api/admin/settings/editor-domain`

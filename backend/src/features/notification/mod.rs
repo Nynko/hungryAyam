@@ -38,6 +38,22 @@ pub fn verify(
     Ok(())
 }
 
+/// Render an SMS message template by substituting placeholders.
+///
+/// Supported placeholders:
+/// - `{PickupTime}` → the pickup time string (e.g. "12:15")
+/// - `{Orders}` → the orders summary (e.g. "2 Ayam Goreng\n1 Nasi")
+///
+/// Falls back to a plain text format when `template` is `None`.
+pub fn render_sms_message(template: Option<&str>, pickup_time: &str, orders: &str) -> String {
+    match template {
+        Some(t) => t
+            .replace("{PickupTime}", pickup_time)
+            .replace("{Orders}", orders),
+        None => format!("TIME:{pickup_time}\nORDERS:\n{orders}"),
+    }
+}
+
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;

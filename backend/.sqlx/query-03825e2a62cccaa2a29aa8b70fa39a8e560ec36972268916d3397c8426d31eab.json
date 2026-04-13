@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT notification_email FROM app_settings WHERE id = 1",
+  "query": "SELECT sms_message_template FROM app_settings WHERE id = 1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "notification_email",
+        "name": "sms_message_template",
         "type_info": "Text"
       }
     ],
@@ -16,5 +16,5 @@
       true
     ]
   },
-  "hash": "e3fc2366ae444ed18a1fce65e318abd2123745b231e1d0d96ede43c548354a54"
+  "hash": "03825e2a62cccaa2a29aa8b70fa39a8e560ec36972268916d3397c8426d31eab"
 }

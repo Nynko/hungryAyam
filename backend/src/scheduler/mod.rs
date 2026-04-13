@@ -438,22 +438,25 @@ async fn run_session_auto_close(
         return Ok(());
     }
 
-    // Fetch notification email once (global setting)
-    let notification_email: Option<String> = if email_service.is_some() {
-        sqlx::query_scalar!(
-            r#"SELECT notification_email FROM app_settings WHERE id = 1"#
+    // Fetch notification settings once (global settings)
+    let (notification_email, sms_template): (Option<String>, Option<String>) = if email_service.is_some() {
+        let row = sqlx::query!(
+            r#"SELECT notification_email, sms_message_template FROM app_settings WHERE id = 1"#
         )
         .fetch_optional(pool)
         .await
         .ok()
-        .flatten()
-        .flatten()
+        .flatten();
+        match row {
+            Some(r) => (r.notification_email, r.sms_message_template),
+            None => (None, None),
+        }
     } else {
-        None
+        (None, None)
     };
 
     for candidate in candidates {
-        if let Err(e) = close_session(pool, &candidate, system_user, email_service, notification_email.as_deref(), notification_secret).await {
+        if let Err(e) = close_session(pool, &candidate, system_user, email_service, notification_email.as_deref(), notification_secret, sms_template.as_deref()).await {
             error!(
                 "Scheduler: auto-close failed for session {}: {e:#}",
                 candidate.session_id
@@ -471,6 +474,7 @@ async fn close_session(
     email_service: Option<&EmailService>,
     notification_email: Option<&str>,
     notification_secret: Option<&str>,
+    sms_template: Option<&str>,
 ) -> anyhow::Result<()> {
     let result = sqlx::query!(
         r#"
@@ -542,13 +546,14 @@ async fn close_session(
                 (0, String::new())
             };
 
+            let msg = crate::features::notification::render_sms_message(sms_template, &pickup, &orders_text);
             let body = format!(
-                "{sig_line}RESTAURANT:{restaurant}\nPHONE:{phone}\nTIME:{pickup}\nORDERS:\n{orders_text}",
+                "{sig_line}RESTAURANT:{restaurant}\nPHONE:{phone}\nTIME:{pickup}\nBODY:{msg}",
                 sig_line = sig_line,
                 restaurant = candidate.restaurant_name,
                 phone = phone,
                 pickup = pickup,
-                orders_text = orders_text,
+                msg = msg,
             );
 
             if let Err(e) = svc.send_plain(to, "HungryAyam Order", body).await {
@@ -604,17 +609,36 @@ async fn run_sms_fallback(pool: &PgPool, system_user: Uuid) -> anyhow::Result<()
     .fetch_all(pool)
     .await?;
 
+    if overdue.is_empty() {
+        return Ok(());
+    }
+
+    // Fetch SMS template once for all overdue events
+    let sms_template: Option<String> = sqlx::query_scalar!(
+        r#"SELECT sms_message_template FROM app_settings WHERE id = 1"#
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .flatten();
+
     for row in overdue {
         warn!(
             "Scheduler: SMS not confirmed after 5 min for session {} — triggering OVH fallback",
             row.session_id
         );
 
+        let msg = crate::features::notification::render_sms_message(
+            sms_template.as_deref(),
+            &row.time_str,
+            &row.orders,
+        );
+
         // TODO: send OVH SMS here
-        // The message to send: row.phone, row.time_str, row.orders, row.restaurant
         info!(
-            "Scheduler: [OVH STUB] would send SMS to {} — TIME:{} ORDERS:{}",
-            row.phone, row.time_str, row.orders
+            "Scheduler: [OVH STUB] would send SMS to {} — MSG: {}",
+            row.phone, msg
         );
 
         // Mark fallback as sent

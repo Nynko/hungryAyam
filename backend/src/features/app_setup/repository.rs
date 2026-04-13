@@ -176,6 +176,38 @@ impl AppSetupRepository {
         Ok(())
     }
 
+    /// Get the SMS message template (None if not set).
+    pub async fn get_sms_message_template(&self) -> Result<Option<String>> {
+        let result: Option<Option<String>> = sqlx::query_scalar!(
+            r#"
+            SELECT sms_message_template
+            FROM app_settings
+            WHERE id = 1
+            "#
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result.flatten())
+    }
+
+    /// Set or clear the SMS message template.
+    pub async fn set_sms_message_template(&self, template: Option<&str>) -> Result<()> {
+        sqlx::query!(
+            r#"
+            UPDATE app_settings
+            SET sms_message_template = $1,
+                updated_at = NOW()
+            WHERE id = 1
+            "#,
+            template
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     /// Get the access hash for site-access verification.
     ///
     /// This is the SHA-256 hex hash of the shared site access code.

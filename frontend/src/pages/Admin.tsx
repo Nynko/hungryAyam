@@ -24,6 +24,13 @@ export default function Admin() {
   const [notifError, setNotifError] = createSignal<string | null>(null);
   const [testLoading, setTestLoading] = createSignal(false);
 
+  // ── SMS message template ────────────────────────────────────────
+  const [smsTemplate, setSmsTemplate] = createSignal("");
+  const [smsTemplateSaved, setSmsTemplateSaved] = createSignal<string | null>(null);
+  const [smsLoading, setSmsLoading] = createSignal(false);
+  const [smsSaveMsg, setSmsSaveMsg] = createSignal<string | null>(null);
+  const [smsError, setSmsError] = createSignal<string | null>(null);
+
   onMount(async () => {
     if (!isAdmin()) return;
 
@@ -65,6 +72,20 @@ export default function Admin() {
         if (json.success) {
           setNotifEmail(json.data ?? "");
           setNotifEmailSaved(json.data ?? null);
+        }
+      }
+    } catch {
+      // silently ignore
+    }
+
+    // Fetch SMS message template
+    try {
+      const res = await fetch("/api/admin/settings/sms-message-template");
+      if (res.ok) {
+        const json: ApiResponse<string | null> = await res.json();
+        if (json.success) {
+          setSmsTemplate(json.data ?? "");
+          setSmsTemplateSaved(json.data ?? null);
         }
       }
     } catch {
@@ -159,6 +180,37 @@ export default function Admin() {
       setNotifError("Failed to save notification email.");
     } finally {
       setNotifLoading(false);
+    }
+  };
+
+  const handleSaveSmsTemplate = async () => {
+    setSmsLoading(true);
+    setSmsError(null);
+    setSmsSaveMsg(null);
+
+    const template = smsTemplate().trim() || null;
+
+    try {
+      const res = await fetch("/api/admin/settings/sms-message-template", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template }),
+      });
+
+      const json: ApiResponse<string | null> = await res.json();
+
+      if (res.ok && json.success) {
+        setSmsTemplateSaved(json.data ?? null);
+        setSmsTemplate(json.data ?? "");
+        setSmsSaveMsg(template ? "SMS template saved." : "SMS template cleared (using default format).");
+        setTimeout(() => setSmsSaveMsg(null), 3000);
+      } else {
+        setSmsError(json.error ?? "Failed to save.");
+      }
+    } catch {
+      setSmsError("Failed to save SMS template.");
+    } finally {
+      setSmsLoading(false);
     }
   };
 
@@ -310,6 +362,63 @@ export default function Admin() {
               <p class="help">
                 Currently set to: <strong>{notifEmailSaved()}</strong>
               </p>
+            </Show>
+          </div>
+          {/* ── SMS Message Template ─────────────────────────── */}
+          <div class="box">
+            <h2 class="title is-5">💬 SMS Message Template</h2>
+            <p class="mb-2">
+              Message sent via SMS when an order session closes. Use{" "}
+              <code>{"{PickupTime}"}</code> and <code>{"{Orders}"}</code> as
+              placeholders.
+            </p>
+            <p class="mb-3 is-size-7 has-text-grey">
+              Example:{" "}
+              <em>
+                Bonjour, est-il possible de commander à emporter pour{" "}
+                {"{PickupTime}"} ? Ce serait: {"{Orders}"} Merci !
+              </em>
+            </p>
+
+            <Show when={smsSaveMsg()}>
+              <div class="notification is-success is-light">{smsSaveMsg()}</div>
+            </Show>
+
+            <Show when={smsError()}>
+              <div class="notification is-danger is-light">{smsError()}</div>
+            </Show>
+
+            <div class="field">
+              <div class="control">
+                <textarea
+                  class="textarea"
+                  rows={4}
+                  placeholder={`Bonjour, est-il possible de commander à emporter pour {PickupTime} ? Ce serait: {Orders} Merci !`}
+                  value={smsTemplate()}
+                  onInput={(e) => setSmsTemplate(e.currentTarget.value)}
+                  disabled={smsLoading()}
+                />
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="control">
+                <button
+                  class="button is-primary"
+                  classList={{ "is-loading": smsLoading() }}
+                  onClick={handleSaveSmsTemplate}
+                  disabled={smsLoading()}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <Show when={smsTemplateSaved()}>
+              <p class="help has-text-grey">Template saved.</p>
+            </Show>
+            <Show when={!smsTemplateSaved()}>
+              <p class="help has-text-grey">No template set — using default plain format.</p>
             </Show>
           </div>
         </Show>

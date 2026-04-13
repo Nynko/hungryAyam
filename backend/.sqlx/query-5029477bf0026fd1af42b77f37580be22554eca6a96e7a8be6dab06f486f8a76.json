@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE app_settings\n            SET sms_message_template = $1,\n                updated_at = NOW()\n            WHERE id = 1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5029477bf0026fd1af42b77f37580be22554eca6a96e7a8be6dab06f486f8a76"
+}

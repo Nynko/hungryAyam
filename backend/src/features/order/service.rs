@@ -37,21 +37,22 @@ pub async fn aggregate_session_summary(
     let rows = sqlx::query!(
         r#"
         SELECT
-            o.id         AS order_id,
-            o.offer_id   AS "offer_id?: Uuid",
-            off.title    AS "offer_title?: String",
-            i.id         AS item_id,
-            i.name       AS item_name,
-            ofs.label    AS "slot_label?: String",
-            ofs.slot_group AS "slot_group?: String",
-            oi.notes     AS "notes?: String"
+            o.id              AS order_id,
+            o.offer_id        AS "offer_id?: Uuid",
+            off.title         AS "offer_title?: String",
+            i.id              AS item_id,
+            i.name            AS item_name,
+            ofs.label         AS "slot_label?: String",
+            ofs.slot_group    AS "slot_group?: String",
+            ofs.position      AS "slot_position?: i32",
+            oi.notes          AS "notes?: String"
         FROM orders o
         JOIN order_items oi ON oi.order_id = o.id
         JOIN items i ON i.id = oi.item_id
         LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id
         LEFT JOIN offers off ON off.id = o.offer_id
         WHERE o.session_id = $1
-        ORDER BY o.created_at, o.id, oi.id
+        ORDER BY o.created_at, o.id, ofs.position, oi.id
         "#,
         session_id,
     )
@@ -88,6 +89,7 @@ pub async fn aggregate_session_summary(
     struct SlotAgg {
         label: String,
         grouped: bool,
+        position: i32,                  // from offer_slots.position — used for display order
         combos: HashMap<String, i64>,   // combo string → count (grouped slots)
         items: HashMap<String, i64>,    // item name → count (ungrouped slots)
     }
@@ -117,45 +119,53 @@ pub async fn aggregate_session_summary(
         });
         agg.count += 1;
 
-        // Partition this order's items by slot_key → slot_label → item names
-        let mut order_slots: HashMap<String, (bool, HashMap<String, Vec<String>>)> = HashMap::new();
+        // Partition this order's items by slot_key → slot_label → (position, item names)
+        // Position is tracked per slot_label so combo parts and labels respect slot order.
+        let mut order_slots: HashMap<String, (bool, i32, HashMap<String, (i32, Vec<String>)>)> = HashMap::new();
         for row in items.iter() {
             let slot_key = row.slot_group.clone()
                 .or_else(|| row.slot_label.clone())
                 .unwrap_or_else(|| "—".to_string());
             let is_grouped = row.slot_group.is_some();
             let slot_label = row.slot_label.clone().unwrap_or_else(|| "—".to_string());
+            let position = row.slot_position.unwrap_or(0);
 
-            let entry = order_slots.entry(slot_key).or_insert((is_grouped, HashMap::new()));
-            entry.1.entry(slot_label).or_default().push(row.item_name.clone());
+            let entry = order_slots.entry(slot_key).or_insert((is_grouped, position, HashMap::new()));
+            // Slot key position = minimum position of its member slot labels
+            if position < entry.1 { entry.1 = position; }
+            entry.2.entry(slot_label).or_insert((position, Vec::new())).1.push(row.item_name.clone());
         }
 
         // Merge into the offer aggregate
-        for (slot_key, (is_grouped, by_label)) in order_slots {
-            // Build display label from unique slot labels in this group
+        for (slot_key, (is_grouped, position, by_label)) in order_slots {
+            // Build display label: slot labels sorted by their position
             let label: String = {
-                let mut labels: Vec<String> = by_label.keys().cloned().collect();
-                labels.sort();
-                labels.join(" + ")
+                let mut labels: Vec<(i32, String)> = by_label.iter()
+                    .map(|(lbl, (pos, _))| (*pos, lbl.clone()))
+                    .collect();
+                labels.sort_by_key(|(pos, _)| *pos);
+                labels.into_iter().map(|(_, lbl)| lbl).collect::<Vec<_>>().join(" + ")
             };
 
             let slot_agg = agg.slots.entry(slot_key).or_insert(SlotAgg {
                 label,
                 grouped: is_grouped,
+                position,
                 combos: HashMap::new(),
                 items: HashMap::new(),
             });
+            if position < slot_agg.position { slot_agg.position = position; }
 
             if is_grouped {
-                // Build combo string: one part per slot_label, joined with " + "
-                let mut parts: Vec<String> = by_label.into_iter()
-                    .map(|(_, names)| names.join(" & "))
+                // Build combo string: parts ordered by slot position, joined with " + "
+                let mut parts: Vec<(i32, String)> = by_label.into_iter()
+                    .map(|(_, (pos, names))| (pos, names.join(" & ")))
                     .collect();
-                parts.sort();
-                let combo = parts.join(" + ");
+                parts.sort_by_key(|(pos, _)| *pos);
+                let combo = parts.into_iter().map(|(_, s)| s).collect::<Vec<_>>().join(" + ");
                 *slot_agg.combos.entry(combo).or_insert(0) += 1;
             } else {
-                for names in by_label.into_values() {
+                for (_, (_, names)) in by_label {
                     for name in names {
                         *slot_agg.items.entry(name).or_insert(0) += 1;
                     }
@@ -166,7 +176,11 @@ pub async fn aggregate_session_summary(
 
     // Convert to output DTOs
     let mut offer_groups: Vec<OfferGroupSummary> = offer_map.into_values().map(|agg| {
-        let mut slots: Vec<OfferSlotSummary> = agg.slots.into_values().map(|s| {
+        // Sort slot aggregates by position before converting to DTOs
+        let mut slot_aggs: Vec<SlotAgg> = agg.slots.into_values().collect();
+        slot_aggs.sort_by_key(|s| s.position);
+
+        let slots: Vec<OfferSlotSummary> = slot_aggs.into_iter().map(|s| {
             let mut items: Vec<OfferItemCount> = if s.grouped {
                 s.combos.into_iter().map(|(name, qty)| OfferItemCount { name, qty }).collect()
             } else {
@@ -175,7 +189,6 @@ pub async fn aggregate_session_summary(
             items.sort_by(|a, b| a.name.cmp(&b.name));
             OfferSlotSummary { label: s.label, items }
         }).collect();
-        slots.sort_by(|a, b| a.label.cmp(&b.label));
         OfferGroupSummary { offer_title: agg.title, count: agg.count, slots }
     }).collect();
     offer_groups.sort_by(|a, b| a.offer_title.cmp(&b.offer_title));

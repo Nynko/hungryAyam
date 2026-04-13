@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            o.id         AS order_id,\n            o.offer_id   AS \"offer_id?: Uuid\",\n            off.title    AS \"offer_title?: String\",\n            i.id         AS item_id,\n            i.name       AS item_name,\n            ofs.label    AS \"slot_label?: String\",\n            ofs.slot_group AS \"slot_group?: String\",\n            oi.notes     AS \"notes?: String\"\n        FROM orders o\n        JOIN order_items oi ON oi.order_id = o.id\n        JOIN items i ON i.id = oi.item_id\n        LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id\n        LEFT JOIN offers off ON off.id = o.offer_id\n        WHERE o.session_id = $1\n        ORDER BY o.created_at, o.id, oi.id\n        ",
+  "query": "\n        SELECT\n            o.id              AS order_id,\n            o.offer_id        AS \"offer_id?: Uuid\",\n            off.title         AS \"offer_title?: String\",\n            i.id              AS item_id,\n            i.name            AS item_name,\n            ofs.label         AS \"slot_label?: String\",\n            ofs.slot_group    AS \"slot_group?: String\",\n            ofs.position      AS \"slot_position?: i32\",\n            oi.notes          AS \"notes?: String\"\n        FROM orders o\n        JOIN order_items oi ON oi.order_id = o.id\n        JOIN items i ON i.id = oi.item_id\n        LEFT JOIN offer_slots ofs ON ofs.id = oi.slot_id\n        LEFT JOIN offers off ON off.id = o.offer_id\n        WHERE o.session_id = $1\n        ORDER BY o.created_at, o.id, ofs.position, oi.id\n        ",
   "describe": {
     "columns": [
       {
@@ -40,6 +40,11 @@
       },
       {
         "ordinal": 7,
+        "name": "slot_position?: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
         "name": "notes?: String",
         "type_info": "Text"
       }
@@ -57,8 +62,9 @@
       false,
       false,
       true,
+      false,
       true
     ]
   },
-  "hash": "6686eafa97c35ea81a24beaeff7b2fa4ff3b9f9761c189e97305a0f79cc79e02"
+  "hash": "14f4fe5b5d95378e9b37c451a66bf12424c658ca0322c6bacf6871fbd494a6e7"
 }

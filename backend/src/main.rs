@@ -49,6 +49,10 @@ async fn main() -> anyhow::Result<()> {
     );
     let base_url = std::env::var("APP_BASE_URL")
         .unwrap_or_else(|_| "http://localhost:5173".to_string());
+    let notification_secret = std::env::var("NOTIFICATION_SECRET").ok().filter(|s| !s.is_empty());
+    if notification_secret.is_none() {
+        tracing::warn!("NOTIFICATION_SECRET not set — notification signing/verification disabled");
+    }
     let email_service = match (
         std::env::var("SMTP_HOST"),
         std::env::var("SMTP_USER"),
@@ -122,12 +126,13 @@ async fn main() -> anyhow::Result<()> {
     // App state
     // --------------------------------------------------
     let scheduler_email = email_service.clone();
-    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone(), upload_dir, email_service, base_url);
+    let scheduler_secret = notification_secret.clone();
+    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone(), upload_dir, email_service, base_url, notification_secret);
 
     // --------------------------------------------------
     // Background scheduler (menu auto-reset, session auto-close)
     // --------------------------------------------------
-    scheduler::spawn_scheduler(db, scheduler_notify, scheduler_email);
+    scheduler::spawn_scheduler(db, scheduler_notify, scheduler_email, scheduler_secret);
 
     // --------------------------------------------------
     // Router

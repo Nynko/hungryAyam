@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::Notify;
+
 use crate::{
     auth::{
         service::AuthService,
@@ -46,6 +47,9 @@ use crate::{
 
 #[derive(Clone)]
 pub struct AppState {
+    /// Raw database pool — used by handlers that run ad-hoc queries
+    /// (e.g. notification events).
+    pub db: PgPool,
     pub setup_completed: Arc<std::sync::atomic::AtomicBool>,
     pub restaurant_service: RestaurantService,
     pub setup_service: AppSetupService,
@@ -69,6 +73,9 @@ pub struct AppState {
     pub email_service: Option<EmailService>,
     /// Public base URL used in email links.
     pub base_url: String,
+    /// HMAC secret for signing/verifying notification payloads.
+    /// `None` if `NOTIFICATION_SECRET` is not set.
+    pub notification_secret: Option<String>,
 }
 
 pub fn build_state(
@@ -78,6 +85,7 @@ pub fn build_state(
     upload_dir: PathBuf,
     email_service: Option<EmailService>,
     base_url: String,
+    notification_secret: Option<String>,
 ) -> AppState {
 
     // Create repositories
@@ -105,6 +113,7 @@ pub fn build_state(
     let menu_scan_service = MenuScanService::new(db.clone());
 
     AppState {
+        db,
         setup_completed,
         restaurant_service,
         setup_service,
@@ -122,5 +131,6 @@ pub fn build_state(
         upload_dir,
         email_service,
         base_url,
+        notification_secret,
     }
 }

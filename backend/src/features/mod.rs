@@ -9,3 +9,4 @@ pub mod availability;
 pub mod upload;
 pub mod menu_scan;
 pub mod email;
+pub mod notification;

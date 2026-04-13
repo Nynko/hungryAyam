@@ -70,6 +70,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
   const [restaurantName, setRestaurantName] = createSignal("");
   const [restaurantImageUrl, setRestaurantImageUrl] = createSignal("");
   const [restaurantPhoneNumber, setRestaurantPhoneNumber] = createSignal("");
+  const [restaurantSmsPhone, setRestaurantSmsPhone] = createSignal("");
   const [restaurantAddress, setRestaurantAddress] = createSignal("");
   const [restaurantSaving, setRestaurantSaving] = createSignal(false);
   const [restaurantSuccess, setRestaurantSuccess] = createSignal<string | null>(null);
@@ -114,6 +115,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       setRestaurantName(r.name);
       setRestaurantImageUrl(r.image_url ?? "");
       setRestaurantPhoneNumber(r.phone_number ?? "");
+      setRestaurantSmsPhone(r.sms_phone_number ?? "");
       setRestaurantAddress(r.address ?? "");
     }
   });
@@ -153,6 +155,7 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       name: trimmedName,
       image_url: restaurantImageUrl().trim() || null,
       phone_number: restaurantPhoneNumber().trim() || null,
+      sms_phone_number: restaurantSmsPhone().trim() || null,
       address: restaurantAddress().trim() || null,
     };
 
@@ -359,6 +362,28 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
                       disabled={restaurantSaving()}
                     />
                   </div>
+                </div>
+              </div>
+
+              <div class="column is-6">
+                <div class="field">
+                  <label class="label">
+                    SMS Number{" "}
+                    <span class="has-text-grey has-text-weight-normal is-size-7">(enables SMS sending)</span>
+                  </label>
+                  <div class="control">
+                    <input
+                      class="input"
+                      type="tel"
+                      placeholder="e.g. +33612345678 — leave empty to disable SMS"
+                      value={restaurantSmsPhone()}
+                      onInput={(e) => setRestaurantSmsPhone(e.currentTarget.value)}
+                      disabled={restaurantSaving()}
+                    />
+                  </div>
+                  <p class="help">
+                    Number used for SMS orders. If set, the "Send Request" button appears. Can differ from the display phone number.
+                  </p>
                 </div>
               </div>
 

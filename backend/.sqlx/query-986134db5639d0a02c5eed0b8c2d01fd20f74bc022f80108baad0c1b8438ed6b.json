@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE restaurants\n            SET name = COALESCE($1, name),\n                image_url = COALESCE($2, image_url),\n                phone_number = COALESCE($3, phone_number),\n                address = COALESCE($4, address),\n                updated_at = NOW(),\n                updated_by = $6\n            WHERE id = $5\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                phone_number,\n                address,\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
+  "query": "\n            UPDATE restaurants\n            SET name = COALESCE($1, name),\n                image_url = COALESCE($2, image_url),\n                phone_number = COALESCE($3, phone_number),\n                sms_phone_number = $4,\n                address = COALESCE($5, address),\n                updated_at = NOW(),\n                updated_by = $7\n            WHERE id = $6\n            RETURNING\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                phone_number,\n                sms_phone_number,\n                address,\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            ",
   "describe": {
     "columns": [
       {
@@ -25,37 +25,43 @@
       },
       {
         "ordinal": 4,
-        "name": "address",
+        "name": "sms_phone_number",
         "type_info": "Text"
       },
       {
         "ordinal": 5,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "availability_rule_id",
         "type_info": "Uuid"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Text",
         "Text",
         "Text",
@@ -70,6 +76,7 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false,
@@ -77,5 +84,5 @@
       true
     ]
   },
-  "hash": "f132a1954623b299b20ed66c796a3bc9657af690013cc51d0291abaca9450285"
+  "hash": "986134db5639d0a02c5eed0b8c2d01fd20f74bc022f80108baad0c1b8438ed6b"
 }

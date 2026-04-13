@@ -11,6 +11,7 @@ pub struct RestaurantRow {
     pub name: Name,
     pub image_url: Option<ImageSource>,
     pub phone_number: Option<String>,
+    pub sms_phone_number: Option<String>,
     pub address: Option<String>,
     pub created_at: DateTime<Utc>,
     pub created_by: Uuid,

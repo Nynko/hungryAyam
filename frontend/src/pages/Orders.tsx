@@ -304,6 +304,7 @@ function ActiveSessionCard(props: {
         <ActiveSessionBanner
           session={props.session}
           restaurantId={props.restaurant.id}
+          smsPhoneNumber={props.restaurant.sms_phone_number}
           onSessionChanged={props.onChanged}
         />
 

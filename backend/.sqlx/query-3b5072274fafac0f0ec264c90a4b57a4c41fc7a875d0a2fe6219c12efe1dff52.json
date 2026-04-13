@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT os.id            as session_id,\n               os.restaurant_id as restaurant_id,\n               os.pickup_time   as \"pickup_time?: chrono::DateTime<Utc>\",\n               ros.notify_on_session_close,\n               r.name           as restaurant_name,\n               r.phone_number   as \"restaurant_phone?: String\"\n        FROM order_sessions os\n        JOIN restaurant_order_settings ros ON ros.restaurant_id = os.restaurant_id\n        JOIN restaurants r ON r.id = os.restaurant_id\n        WHERE os.status = $1\n          AND os.end_date <= NOW()\n          AND os.allow_late = false\n          AND ros.auto_close_session = true\n        ",
+  "query": "\n        SELECT os.id            as session_id,\n               os.restaurant_id as restaurant_id,\n               os.pickup_time   as \"pickup_time?: chrono::DateTime<Utc>\",\n               ros.notify_on_session_close,\n               r.name           as restaurant_name,\n               r.sms_phone_number as \"restaurant_phone?: String\"\n        FROM order_sessions os\n        JOIN restaurant_order_settings ros ON ros.restaurant_id = os.restaurant_id\n        JOIN restaurants r ON r.id = os.restaurant_id\n        WHERE os.status = $1\n          AND os.end_date <= NOW()\n          AND os.allow_late = false\n          AND ros.auto_close_session = true\n        ",
   "describe": {
     "columns": [
       {
@@ -48,5 +48,5 @@
       true
     ]
   },
-  "hash": "a7a8d9a3d46c7c54cd7b4aed09ecb7e86fc20736f986f5d9fd6673001b0ca658"
+  "hash": "3b5072274fafac0f0ec264c90a4b57a4c41fc7a875d0a2fe6219c12efe1dff52"
 }

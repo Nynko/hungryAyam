@@ -18,6 +18,8 @@ import { showConfirm } from "@/stores/confirmStore";
 interface ActiveSessionBannerProps {
   session: OrderSession;
   restaurantId: string;
+  /** If set, SMS sending is enabled and "Send Request" button is shown. */
+  smsPhoneNumber?: string | null;
   /** Called when the session state changes (so parent can refetch). */
   onSessionChanged?: () => void;
 }
@@ -343,15 +345,17 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
                 <span class="icon is-small"><span>✅</span></span>
                 <span>Confirm</span>
               </button>
-              <button
-                class="button is-info is-small is-outlined"
-                classList={{ "is-loading": actionLoading() === "request" }}
-                disabled={sessionLoading() || actionLoading() !== null}
-                onClick={handleRequest}
-              >
-                <span class="icon is-small"><span>📨</span></span>
-                <span>Send Request</span>
-              </button>
+              <Show when={props.smsPhoneNumber}>
+                <button
+                  class="button is-info is-small is-outlined"
+                  classList={{ "is-loading": actionLoading() === "request" }}
+                  disabled={sessionLoading() || actionLoading() !== null}
+                  onClick={handleRequest}
+                >
+                  <span class="icon is-small"><span>📨</span></span>
+                  <span>Send Request</span>
+                </button>
+              </Show>
               <button
                 class="button is-success is-small is-outlined"
                 classList={{ "is-loading": actionLoading() === "reopen" }}

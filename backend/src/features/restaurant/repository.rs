@@ -31,13 +31,14 @@ impl RestaurantRepository {
         let row = sqlx::query_as!(
             RestaurantRow,
             r#"
-            INSERT INTO restaurants (name, image_url, phone_number, address, created_by, updated_by)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO restaurants (name, image_url, phone_number, sms_phone_number, address, created_by, updated_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING
                 id,
                 name as "name: Name",
                 image_url as "image_url?: ImageSource",
                 phone_number,
+                sms_phone_number,
                 address,
                 created_at,
                 created_by,
@@ -48,6 +49,7 @@ impl RestaurantRepository {
             request.name.as_ref(),
             request.image_url.as_ref().map(|u| u.to_string()),
             request.phone_number.as_deref(),
+            request.sms_phone_number.as_deref(),
             request.address.as_deref(),
             operator_id,
             operator_id
@@ -67,6 +69,7 @@ impl RestaurantRepository {
                 name as "name: Name",
                 image_url as "image_url?: ImageSource",
                 phone_number,
+                sms_phone_number,
                 address,
                 created_at,
                 created_by,
@@ -99,6 +102,7 @@ impl RestaurantRepository {
                 name as "name: Name",
                 image_url as "image_url?: ImageSource",
                 phone_number,
+                sms_phone_number,
                 address,
                 created_at,
                 created_by,
@@ -128,15 +132,17 @@ impl RestaurantRepository {
             SET name = COALESCE($1, name),
                 image_url = COALESCE($2, image_url),
                 phone_number = COALESCE($3, phone_number),
-                address = COALESCE($4, address),
+                sms_phone_number = $4,
+                address = COALESCE($5, address),
                 updated_at = NOW(),
-                updated_by = $6
-            WHERE id = $5
+                updated_by = $7
+            WHERE id = $6
             RETURNING
                 id,
                 name as "name: Name",
                 image_url as "image_url?: ImageSource",
                 phone_number,
+                sms_phone_number,
                 address,
                 created_at,
                 created_by,
@@ -147,6 +153,7 @@ impl RestaurantRepository {
             request.name.as_ref().map(|n| n.as_ref()),
             request.image_url.as_ref().map(|u| u.to_string()),
             request.phone_number.as_deref(),
+            request.sms_phone_number.as_deref(),
             request.address.as_deref(),
             request.id,
             operator_id
@@ -174,6 +181,7 @@ impl RestaurantRepository {
                 r.name as "name: Name",
                 r.image_url as "image_url?: ImageSource",
                 r.phone_number,
+                r.sms_phone_number,
                 r.address,
                 r.created_at,
                 r.created_by,
@@ -327,6 +335,7 @@ impl RestaurantRepository {
             name: row.name,
             image_url: row.image_url,
             phone_number: row.phone_number,
+            sms_phone_number: row.sms_phone_number,
             address: row.address,
             created_by: row.created_by,
             updated_by: row.updated_by,

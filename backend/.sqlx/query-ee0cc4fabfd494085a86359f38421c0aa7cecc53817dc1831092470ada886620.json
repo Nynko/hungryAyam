@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                phone_number,\n                address,\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            FROM restaurants\n            ORDER BY created_at DESC\n            ",
+  "query": "\n            SELECT\n                id,\n                name as \"name: Name\",\n                image_url as \"image_url?: ImageSource\",\n                phone_number,\n                sms_phone_number,\n                address,\n                created_at,\n                created_by,\n                updated_at,\n                updated_by,\n                availability_rule_id\n            FROM restaurants\n            ORDER BY created_at DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -25,31 +25,36 @@
       },
       {
         "ordinal": 4,
-        "name": "address",
+        "name": "sms_phone_number",
         "type_info": "Text"
       },
       {
         "ordinal": 5,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "availability_rule_id",
         "type_info": "Uuid"
       }
@@ -63,6 +68,7 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false,
@@ -70,5 +76,5 @@
       true
     ]
   },
-  "hash": "4c53d72e018682c402fa0d8d6895d4f7a1761e726b8edd674c93dc65cfe4edb4"
+  "hash": "ee0cc4fabfd494085a86359f38421c0aa7cecc53817dc1831092470ada886620"
 }

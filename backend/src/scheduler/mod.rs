@@ -420,7 +420,7 @@ async fn run_session_auto_close(
                os.pickup_time   as "pickup_time?: chrono::DateTime<Utc>",
                ros.notify_on_session_close,
                r.name           as restaurant_name,
-               r.phone_number   as "restaurant_phone?: String"
+               r.sms_phone_number as "restaurant_phone?: String"
         FROM order_sessions os
         JOIN restaurant_order_settings ros ON ros.restaurant_id = os.restaurant_id
         JOIN restaurants r ON r.id = os.restaurant_id

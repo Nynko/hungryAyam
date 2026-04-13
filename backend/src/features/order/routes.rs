@@ -219,7 +219,7 @@ pub async fn request_session(
         if let Some(to) = settings.as_ref().and_then(|s| s.notification_email.as_deref()) {
             // Fetch restaurant info
             let restaurant = sqlx::query!(
-                r#"SELECT name, phone_number FROM restaurants WHERE id = $1"#,
+                r#"SELECT name, sms_phone_number FROM restaurants WHERE id = $1"#,
                 session.restaurant_id,
             )
             .fetch_optional(&app_state.db)
@@ -234,7 +234,7 @@ pub async fn request_session(
                     session.id,
                     session.pickup_time,
                     &r.name,
-                    r.phone_number.as_deref(),
+                    r.sms_phone_number.as_deref(),
                     svc,
                     to,
                     app_state.notification_secret.as_deref(),

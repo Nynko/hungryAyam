@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT DISTINCT\n                r.id,\n                r.name as \"name: Name\",\n                r.image_url as \"image_url?: ImageSource\",\n                r.phone_number,\n                r.address,\n                r.created_at,\n                r.created_by,\n                r.updated_at,\n                r.updated_by,\n                r.availability_rule_id\n            FROM restaurants r\n            INNER JOIN order_sessions os ON os.restaurant_id = r.id\n            WHERE os.end_date > NOW()\n            ORDER BY r.created_at DESC\n            ",
+  "query": "\n            SELECT DISTINCT\n                r.id,\n                r.name as \"name: Name\",\n                r.image_url as \"image_url?: ImageSource\",\n                r.phone_number,\n                r.sms_phone_number,\n                r.address,\n                r.created_at,\n                r.created_by,\n                r.updated_at,\n                r.updated_by,\n                r.availability_rule_id\n            FROM restaurants r\n            INNER JOIN order_sessions os ON os.restaurant_id = r.id\n            WHERE os.end_date > NOW()\n            ORDER BY r.created_at DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -25,31 +25,36 @@
       },
       {
         "ordinal": 4,
-        "name": "address",
+        "name": "sms_phone_number",
         "type_info": "Text"
       },
       {
         "ordinal": 5,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "updated_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "availability_rule_id",
         "type_info": "Uuid"
       }
@@ -63,6 +68,7 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false,
@@ -70,5 +76,5 @@
       true
     ]
   },
-  "hash": "6da62992aa82adcbf70c1b3020a8cd6e0885a97093dd9d724ede9540476591f0"
+  "hash": "d3e271f664308f017cc13b8331c5d2196e86fc80e32eef4a508507f263ee33b6"
 }

@@ -108,7 +108,7 @@ pub async fn send_order_notification(
 
     let mut order_lines = String::new();
     for row in &rows {
-        order_lines.push_str(&format!("{} {}\n", row.qty, row.item_name));
+        order_lines.push_str(&format!("{}x {}\n", row.qty, row.item_name));
     }
     let orders_text = order_lines.trim_end().to_string();
 

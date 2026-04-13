@@ -223,7 +223,7 @@ function SessionOrderList(props: { session: OrderSession }) {
                 <For each={aggregatedRegularItems()}>
                   {(group) => (
                     <li>
-                      <span class="has-text-weight-bold">{group.quantity}</span>
+                      <span class="has-text-weight-bold">{group.quantity}x</span>
                       {" "}
                       <span>{group.itemName}</span>
                       <Show when={group.note}>
@@ -303,7 +303,7 @@ function SessionOrderList(props: { session: OrderSession }) {
                                 <span class="has-text-grey mx-1">–</span>
                               </Show>
                               <span class="has-text-weight-medium">
-                                {group.quantity} {group.itemName}
+                                {group.quantity}x {group.itemName}
                               </span>
                               <Show when={group.notes.length > 0}>
                                 <span class="has-text-grey is-italic ml-1">

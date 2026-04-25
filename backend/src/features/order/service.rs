@@ -229,6 +229,15 @@ impl OrderService {
             ));
         }
 
+        // Validate: pickup_time (if set) must be at or after end_date
+        if let Some(pickup) = request.pickup_time {
+            if pickup < request.end_date {
+                return Err(anyhow!(
+                    "Pickup time must be at or after the closing time"
+                ));
+            }
+        }
+
         let session = self.repository.create_session(request, user_id).await?;
         // Wake the scheduler — a new session's end_date may be earlier than
         // the current sleep target.
@@ -394,13 +403,27 @@ impl OrderService {
             ));
         }
 
-        // If both start and end are provided, validate ordering
+        // Validate start/end ordering
         let effective_start = request.start_date.unwrap_or(session.start_date);
         let effective_end = request.end_date.unwrap_or(session.end_date);
         if effective_end <= effective_start {
             return Err(anyhow!(
                 "Session end_date must be after start_date"
             ));
+        }
+
+        // Validate: pickup_time (if set) must be at or after end_date
+        let effective_pickup = if request.update_pickup_time {
+            request.pickup_time
+        } else {
+            session.pickup_time
+        };
+        if let Some(pickup) = effective_pickup {
+            if pickup < effective_end {
+                return Err(anyhow!(
+                    "Pickup time must be at or after the closing time"
+                ));
+            }
         }
 
         let result = self.repository.update_session(request, user_id).await?;

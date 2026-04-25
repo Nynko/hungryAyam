@@ -83,9 +83,10 @@ export default function CreateSessionModal(props: CreateSessionModalProps) {
       setStartDate(toDatetimeLocal(start));
       setEndDate(toDatetimeLocal(end));
 
-      // Pre-fill pickup time if a default is configured
+      // Pre-fill pickup time if a default is configured.
+      // Use `end` as the base so the pickup falls on the same day as closing.
       if (settings.default_pickup_time) {
-        const pickup = timeStringToDate(settings.default_pickup_time, now);
+        const pickup = timeStringToDate(settings.default_pickup_time, end);
         setPickupTime(toDatetimeLocal(pickup));
       }
     } else {
@@ -158,6 +159,10 @@ export default function CreateSessionModal(props: CreateSessionModalProps) {
     const pickup = pickupStr ? new Date(pickupStr) : null;
     if (pickup && isNaN(pickup.getTime())) {
       setValidationError("Invalid pickup time format.");
+      return;
+    }
+    if (pickup && pickup.getTime() < endMs) {
+      setValidationError("Pickup time must be at or after the closing time.");
       return;
     }
 
@@ -274,6 +279,7 @@ export default function CreateSessionModal(props: CreateSessionModalProps) {
                   class="input"
                   type="datetime-local"
                   value={pickupTime()}
+                  min={endDate()}
                   onInput={(e) => setPickupTime(e.currentTarget.value)}
                   disabled={sessionLoading()}
                 />

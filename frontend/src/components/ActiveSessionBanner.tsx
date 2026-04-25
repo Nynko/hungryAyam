@@ -60,17 +60,28 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
   const [editingPickup, setEditingPickup] = createSignal(false);
   const [pickupInput, setPickupInput] = createSignal("");
   const [pickupSaving, setPickupSaving] = createSignal(false);
+  const [pickupError, setPickupError] = createSignal<string | null>(null);
 
   const startEditPickup = () => {
     setPickupInput(
       props.session.pickup_time ? toDatetimeLocal(props.session.pickup_time) : "",
     );
+    setPickupError(null);
     setEditingPickup(true);
   };
 
   const savePickup = async () => {
-    setPickupSaving(true);
+    setPickupError(null);
     const val = pickupInput().trim();
+    if (val) {
+      const pickupMs = new Date(val).getTime();
+      const endMs = new Date(props.session.end_date).getTime();
+      if (pickupMs < endMs) {
+        setPickupError("Pickup time must be at or after the closing time.");
+        return;
+      }
+    }
+    setPickupSaving(true);
     const result = await updateSession({
       id: props.session.id,
       start_date: null,
@@ -262,14 +273,16 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
             </span>
           }
         >
-          <span class="is-flex is-align-items-center is-size-7" style={{ gap: "0.35rem" }}>
+          <span class="is-flex is-align-items-center is-flex-wrap-wrap is-size-7" style={{ gap: "0.35rem" }}>
             <strong>Pickup:</strong>
             <input
               class="input is-small"
+              classList={{ "is-danger": !!pickupError() }}
               style={{ width: "13rem" }}
               type="datetime-local"
               value={pickupInput()}
-              onInput={(e) => setPickupInput(e.currentTarget.value)}
+              min={toDatetimeLocal(props.session.end_date)}
+              onInput={(e) => { setPickupInput(e.currentTarget.value); setPickupError(null); }}
             />
             <button
               class="button is-primary is-small"
@@ -286,6 +299,9 @@ export default function ActiveSessionBanner(props: ActiveSessionBannerProps) {
             >
               Cancel
             </button>
+            <Show when={pickupError()}>
+              <span class="has-text-danger">{pickupError()}</span>
+            </Show>
           </span>
         </Show>
         <span class="is-size-7">

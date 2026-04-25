@@ -68,6 +68,12 @@ function fmtDate(iso: string): string {
   });
 }
 
+function toDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // ══════════════════════════════════════════════════════════════════
 // Sub-component: expanded session detail (order table)
 // ══════════════════════════════════════════════════════════════════
@@ -535,6 +541,7 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                     const [editingPickup, setEditingPickup] = createSignal(false);
                     const [pickupInput, setPickupInput] = createSignal("");
                     const [pickupSaving, setPickupSaving] = createSignal(false);
+                    const [pickupError, setPickupError] = createSignal<string | null>(null);
                     const [localPickupTime, setLocalPickupTime] = createSignal(
                       session.pickup_time ?? null,
                     );
@@ -551,13 +558,23 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                       } else {
                         setPickupInput("");
                       }
+                      setPickupError(null);
                       setEditingPickup(true);
                     };
 
                     const savePickup = async (e: MouseEvent) => {
                       e.stopPropagation();
-                      setPickupSaving(true);
+                      setPickupError(null);
                       const val = pickupInput().trim();
+                      if (val) {
+                        const pickupMs = new Date(val).getTime();
+                        const endMs = new Date(session.end_date).getTime();
+                        if (pickupMs < endMs) {
+                          setPickupError("Pickup time must be at or after the closing time.");
+                          return;
+                        }
+                      }
+                      setPickupSaving(true);
                       const result = await updateSession({
                         id: session.id,
                         start_date: null,
@@ -678,10 +695,12 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                               >
                                 <input
                                   class="input is-small"
+                                  classList={{ "is-danger": !!pickupError() }}
                                   style={{ width: "13rem" }}
                                   type="datetime-local"
                                   value={pickupInput()}
-                                  onInput={(e) => setPickupInput(e.currentTarget.value)}
+                                  min={toDatetimeLocal(session.end_date)}
+                                  onInput={(e) => { setPickupInput(e.currentTarget.value); setPickupError(null); }}
                                   onClick={(e) => e.stopPropagation()}
                                 />
                                 <button
@@ -699,6 +718,9 @@ function RestaurantHistory(props: { restaurant: Restaurant }) {
                                 >
                                   Cancel
                                 </button>
+                                <Show when={pickupError()}>
+                                  <span class="is-size-7 has-text-danger" onClick={(e) => e.stopPropagation()}>{pickupError()}</span>
+                                </Show>
                               </Show>
                             </div>
                           </Show>

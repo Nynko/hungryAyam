@@ -7,7 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    auth::middleware::{AuthUser, EditorUser},
+    auth::middleware::{AuthUser, EditorUser, SiteAccess},
     errors::{api_errors::ApiError, json_extractor::ApiJson},
     features::order::{
         domain::{
@@ -143,15 +143,31 @@ pub async fn delete_session(
     }
 }
 
-/// Cancel an order session (requires editor user)
+/// Resolve a user ID for `updated_by` audit fields on session state transitions.
+/// Uses the authenticated user's ID when available; falls back to the first user
+/// in the database (same system-user fallback used by the scheduler).
+async fn resolve_user_id(auth: Option<AuthUser>, db: &sqlx::PgPool) -> Result<Uuid, ApiError> {
+    if let Some(AuthUser(user)) = auth {
+        return Ok(user.id);
+    }
+    sqlx::query_scalar!(r#"SELECT id FROM users ORDER BY created_at ASC LIMIT 1"#)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::Internal("No users in database".to_string()))
+}
+
+/// Cancel an order session
 pub async fn cancel_session(
-    AuthUser(user): AuthUser,
+    _site: SiteAccess,
+    auth: Option<AuthUser>,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let user_id = resolve_user_id(auth, &app_state.db).await?;
     let session = app_state
         .order_service
-        .cancel_session(id, user.id)
+        .cancel_session(id, user_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
@@ -161,13 +177,15 @@ pub async fn cancel_session(
 
 /// Close an order session — stop accepting new orders
 pub async fn close_session(
-    AuthUser(user): AuthUser,
+    _site: SiteAccess,
+    auth: Option<AuthUser>,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let user_id = resolve_user_id(auth, &app_state.db).await?;
     let session = app_state
         .order_service
-        .close_session(id, user.id)
+        .close_session(id, user_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
@@ -181,7 +199,7 @@ pub async fn close_session(
 /// by (item + note) and offer groups with slot combos. Matches the frontend
 /// display logic exactly.
 pub async fn get_session_summary(
-    _auth: AuthUser,
+    _site: SiteAccess,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<SessionOrderSummary>>, ApiError> {
@@ -195,13 +213,15 @@ pub async fn get_session_summary(
 /// and sends the notification email (HMAC-signed) so the iPhone Shortcut
 /// can forward it as an SMS.
 pub async fn request_session(
-    AuthUser(user): AuthUser,
+    _site: SiteAccess,
+    auth: Option<AuthUser>,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let user_id = resolve_user_id(auth, &app_state.db).await?;
     let session = app_state
         .order_service
-        .request_session(id, user.id)
+        .request_session(id, user_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -255,13 +275,15 @@ pub async fn request_session(
 
 /// Manually mark a session as SMS-sent — transitions Closed/Requested → SmsSent
 pub async fn mark_sms_sent_session(
-    AuthUser(user): AuthUser,
+    _site: SiteAccess,
+    auth: Option<AuthUser>,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let user_id = resolve_user_id(auth, &app_state.db).await?;
     let session = app_state
         .order_service
-        .mark_sms_sent(id, user.id)
+        .mark_sms_sent(id, user_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
@@ -271,13 +293,15 @@ pub async fn mark_sms_sent_session(
 
 /// Confirm the restaurant will fulfil the order — transitions Closed/Requested → Confirmed
 pub async fn confirm_session(
-    AuthUser(user): AuthUser,
+    _site: SiteAccess,
+    auth: Option<AuthUser>,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let user_id = resolve_user_id(auth, &app_state.db).await?;
     let session = app_state
         .order_service
-        .confirm_session(id, user.id)
+        .confirm_session(id, user_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
@@ -287,13 +311,15 @@ pub async fn confirm_session(
 
 /// Mark a session as finished — transitions Confirmed → Finished
 pub async fn finish_session(
-    AuthUser(user): AuthUser,
+    _site: SiteAccess,
+    auth: Option<AuthUser>,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let user_id = resolve_user_id(auth, &app_state.db).await?;
     let session = app_state
         .order_service
-        .finish_session(id, user.id)
+        .finish_session(id, user_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {
@@ -301,15 +327,17 @@ pub async fn finish_session(
     })))
 }
 
-/// Reopen a closed session — resume accepting orders (requires editor user)
+/// Reopen a closed session — resume accepting orders
 pub async fn reopen_session(
-    EditorUser(user): EditorUser,
+    _site: SiteAccess,
+    auth: Option<AuthUser>,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<ApiJson<ApiResponse<OrderSessionStatusResponse>>, ApiError> {
+    let user_id = resolve_user_id(auth, &app_state.db).await?;
     let session = app_state
         .order_service
-        .reopen_session(id, user.id)
+        .reopen_session(id, user_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(ApiJson(ApiResponse::success(OrderSessionStatusResponse {

@@ -238,8 +238,12 @@ pub struct MenuScanService {
 impl MenuScanService {
     pub fn new(db: PgPool) -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
-        let model =
-            std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+        // `docker-compose.yml` sets ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}, which yields
+        // Ok("") (not Err) when the host env var is unset — treat blank the same as unset.
+        let model = std::env::var("ANTHROPIC_MODEL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
         let http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))

@@ -16,7 +16,12 @@ use super::dto::{MenuScanJobCreated, MenuScanJobStatus, MenuScanResponse};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
-const MODEL: &str = "claude-sonnet-4-20250514";
+/// Default model, used when the `ANTHROPIC_MODEL` env var is unset.
+/// Anthropic periodically retires old model snapshots (see
+/// https://platform.claude.com/docs/en/about-claude/models/migration-guide),
+/// which surfaces as a 404 from the API. Overriding `ANTHROPIC_MODEL` lets
+/// ops swap models without a code change/rebuild when that happens.
+const DEFAULT_MODEL: &str = "claude-sonnet-5";
 const MAX_TOKENS: u32 = 16384;
 
 const GLOBAL_DAILY_LIMIT: u32 = 20;
@@ -165,7 +170,7 @@ impl RateLimitState {
 
 #[derive(Serialize)]
 struct AnthropicRequest {
-    model: &'static str,
+    model: String,
     max_tokens: u32,
     system: &'static str,
     messages: Vec<AnthropicMessage>,
@@ -226,12 +231,15 @@ pub struct MenuScanService {
     http_client: Client,
     anthropic_client: Client,
     api_key: String,
+    model: String,
     rate_limit: Arc<Mutex<RateLimitState>>,
 }
 
 impl MenuScanService {
     pub fn new(db: PgPool) -> Self {
         let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+        let model =
+            std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
 
         let http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -249,6 +257,7 @@ impl MenuScanService {
             http_client,
             anthropic_client,
             api_key,
+            model,
             rate_limit: Arc::new(Mutex::new(RateLimitState::new())),
         }
     }
@@ -271,7 +280,7 @@ impl MenuScanService {
         content: Vec<ContentBlock>,
     ) -> Result<MenuScanResponse, ApiError> {
         let request_body = AnthropicRequest {
-            model: MODEL,
+            model: self.model.clone(),
             max_tokens: MAX_TOKENS,
             system: system_prompt,
             messages: vec![AnthropicMessage {
@@ -303,7 +312,18 @@ impl MenuScanService {
             let msg = serde_json::from_str::<AnthropicError>(&body)
                 .map(|e| e.error.message)
                 .unwrap_or_else(|_| format!("AI service returned status {status}"));
-            tracing::error!("Anthropic API error ({}): {}", status, msg);
+            if status == reqwest::StatusCode::NOT_FOUND && msg.contains("model") {
+                tracing::error!(
+                    "Anthropic API error (404): {} — model \"{}\" is unavailable, likely \
+                     retired. Set ANTHROPIC_MODEL to a current model id (see \
+                     https://platform.claude.com/docs/en/about-claude/models/overview) and \
+                     restart the backend.",
+                    msg,
+                    self.model,
+                );
+            } else {
+                tracing::error!("Anthropic API error ({}): {}", status, msg);
+            }
             return Err(ApiError::Internal(format!("AI service error: {msg}")));
         }
 

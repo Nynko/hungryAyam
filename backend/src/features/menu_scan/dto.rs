@@ -69,7 +69,9 @@ pub struct ScannedSection {
     pub name: String,
     pub description: Option<String>,
     pub position: i32,
+    #[serde(default)]
     pub items: Vec<ScannedSectionItem>,
+    #[serde(default)]
     pub subsections: Vec<ScannedSection>,
 }
 

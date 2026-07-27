@@ -7,7 +7,7 @@ interface MenuScanUploadProps {
   onCancel: () => void;
 }
 
-const MAX_FILES = 5;
+const MAX_FILES = 10;
 const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,image/gif,image/heic,.heic";
 
 export default function MenuScanUpload(props: MenuScanUploadProps) {

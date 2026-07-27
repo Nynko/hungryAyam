@@ -16,7 +16,7 @@ use crate::{
 use super::dto::{MenuScanJobCreated, MenuScanJobStatus};
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024; // 10 MB per image
-const MAX_IMAGES: usize = 5;
+const MAX_IMAGES: usize = 10;
 
 const ALLOWED_CONTENT_TYPES: &[&str] = &[
     "image/jpeg",

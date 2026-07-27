@@ -1,5 +1,6 @@
 use axum::{
-    Router, middleware
+    Router, middleware,
+    extract::DefaultBodyLimit,
 };
 use tower_http::cors::{CorsLayer, AllowOrigin};
 use tower_http::limit::RequestBodyLimitLayer;
@@ -61,11 +62,17 @@ pub fn build_app(state: AppState) -> Router {
         .merge(notification_routes())
         .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024));
 
+    // Axum's own DefaultBodyLimit (2 MB) applies independently of the
+    // RequestBodyLimitLayer below and would otherwise truncate multipart
+    // bodies mid-stream, surfacing as a generic multer parse error instead
+    // of a clean 413. Disable it and rely solely on RequestBodyLimitLayer.
     let upload_router = upload_routes()
+        .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024));
 
     // Menu scan: up to 10 images × 10 MB each + overhead
     let menu_scan_router = menu_scan_routes()
+        .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(105 * 1024 * 1024));
 
     Router::new()

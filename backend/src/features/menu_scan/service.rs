@@ -6,6 +6,7 @@ use base64::Engine;
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -38,70 +39,19 @@ const MAX_DETAIL_PAGES: usize = 50;
 /// Maximum total HTTP requests per scan.
 const MAX_TOTAL_REQUESTS: usize = 60;
 
-const SYSTEM_PROMPT: &str = r#"You are a menu digitization assistant. You receive one or more photographs of a restaurant menu. Extract all menu items, organizing them into sections as they appear on the physical menu.
-
-Return ONLY a JSON object (no markdown fences, no explanation, no text before or after) with this exact structure:
-{
-  "name": "<inferred menu name or 'Menu'>",
-  "description": null,
-  "sections": [
-    {
-      "name": "<section name>",
-      "description": null,
-      "position": <1-based sequential>,
-      "items": [
-        {
-          "position": <1-based sequential within section>,
-          "item": {
-            "name": "<item name>",
-            "description": "<brief description if visible, null otherwise>",
-            "base_price_cents": <price in cents>,
-            "tags": [{"name": "<tag>"}]
-          }
-        }
-      ],
-      "subsections": []
-    }
-  ]
-}
+const SYSTEM_PROMPT: &str = r#"You are a menu digitization assistant. You receive one or more photographs of a restaurant menu. Extract all menu items using the `extract_menu` tool, organizing them into sections as they appear on the physical menu.
 
 Rules:
 - Convert prices to cents (integer). "12.50" → 1250. "12,50" (European comma) → 1250. "12,500" (thousands separator) → 1250000.
 - Infer tags from item names, descriptions, or symbols on the menu: "spicy", "very spicy", "vegetarian", "vegan", "gluten-free", "contains nuts", "seafood", "new", "popular", "chef's choice", "halal".
-- If a section has subsections (e.g., "Appetizers > Hot / Cold"), use the subsections array.
+- If a section has subsections (e.g., "Appetizers > Hot / Cold"), use the subsections array; otherwise leave it empty.
 - Keep the original language for names and descriptions — do NOT translate.
 - If multiple images show the same menu, merge them into one structure; do not duplicate items.
 - If a price is not visible for an item, set base_price_cents to 0.
 - Position values must be sequential starting from 1 within each section/subsection.
 - If no clear section structure exists, create a single section named "Menu"."#;
 
-const URL_SYSTEM_PROMPT: &str = r#"You are a menu digitization assistant. You receive the HTML content of a restaurant menu webpage, possibly accompanied by images from the page. Extract all menu items, organizing them into sections as they appear.
-
-Return ONLY a JSON object (no markdown fences, no explanation, no text before or after) with this exact structure:
-{
-  "name": "<inferred menu name or 'Menu'>",
-  "description": null,
-  "sections": [
-    {
-      "name": "<section name>",
-      "description": null,
-      "position": <1-based sequential>,
-      "items": [
-        {
-          "position": <1-based sequential within section>,
-          "item": {
-            "name": "<item name>",
-            "description": "<brief description if visible, null otherwise>",
-            "base_price_cents": <price in cents>,
-            "tags": [{"name": "<tag>"}],
-            "image_url": "<absolute URL of the item image if visible on the page, null otherwise>"
-          }
-        }
-      ],
-      "subsections": []
-    }
-  ]
-}
+const URL_SYSTEM_PROMPT: &str = r#"You are a menu digitization assistant. You receive the HTML content of a restaurant menu webpage, possibly accompanied by images from the page. Extract all menu items using the `extract_menu` tool, organizing them into sections as they appear.
 
 Rules:
 - Convert prices to cents (integer). "12.50" → 1250. "12,50" (European comma) → 1250. "12,500" (thousands separator) → 1250000.
@@ -174,6 +124,122 @@ struct AnthropicRequest {
     max_tokens: u32,
     system: &'static str,
     messages: Vec<AnthropicMessage>,
+    tools: Vec<Tool>,
+    tool_choice: ToolChoice,
+}
+
+#[derive(Serialize)]
+struct Tool {
+    name: &'static str,
+    description: &'static str,
+    input_schema: Value,
+}
+
+#[derive(Serialize)]
+struct ToolChoice {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    name: &'static str,
+}
+
+const EXTRACT_MENU_TOOL_NAME: &str = "extract_menu";
+
+/// JSON schema for the `extract_menu` tool input, forcing Claude to emit
+/// well-formed structured data instead of free-text JSON (which has been
+/// observed to occasionally include invalid syntax, e.g. stray JS-like
+/// expressions, or omit empty arrays at nesting depths the strict
+/// `MenuScanResponse` deserializer required). Subsections are modeled one
+/// level deep, matching how real menus are structured; the Rust side
+/// tolerates a missing `subsections` field via `#[serde(default)]` regardless.
+fn menu_extraction_tool(include_image_url: bool) -> Tool {
+    let mut item_properties = json!({
+        "name": {"type": "string"},
+        "description": {"type": ["string", "null"]},
+        "base_price_cents": {
+            "type": "integer",
+            "description": "Price in cents, e.g. 1250 for 12.50."
+        },
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"]
+            }
+        }
+    });
+    let mut item_required = vec!["name", "description", "base_price_cents", "tags"];
+    if include_image_url {
+        item_properties["image_url"] = json!({
+            "type": ["string", "null"],
+            "description": "Absolute URL of the item's image, if visible on the page."
+        });
+        item_required.push("image_url");
+    }
+    let item_schema = json!({
+        "type": "object",
+        "properties": item_properties,
+        "required": item_required
+    });
+
+    let section_item_schema = json!({
+        "type": "object",
+        "properties": {
+            "position": {"type": "integer"},
+            "item": item_schema
+        },
+        "required": ["position", "item"]
+    });
+
+    let subsection_schema = json!({
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "description": {"type": ["string", "null"]},
+            "position": {"type": "integer"},
+            "items": {
+                "type": "array",
+                "items": section_item_schema
+            }
+        },
+        "required": ["name", "description", "position", "items"]
+    });
+
+    let section_schema = json!({
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "description": {"type": ["string", "null"]},
+            "position": {"type": "integer"},
+            "items": {
+                "type": "array",
+                "items": section_item_schema
+            },
+            "subsections": {
+                "type": "array",
+                "description": "Nested subsections (e.g. 'Hot' / 'Cold' under 'Appetizers'). Empty array if the section has no subsections.",
+                "items": subsection_schema
+            }
+        },
+        "required": ["name", "description", "position", "items", "subsections"]
+    });
+
+    Tool {
+        name: EXTRACT_MENU_TOOL_NAME,
+        description: "Extract the structured menu (sections, subsections, items, prices, tags) from the provided content.",
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "description": {"type": ["string", "null"]},
+                "sections": {
+                    "type": "array",
+                    "items": section_schema
+                }
+            },
+            "required": ["name", "description", "sections"]
+        }),
+    }
 }
 
 #[derive(Serialize)]
@@ -207,8 +273,8 @@ struct AnthropicResponse {
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 enum AnthropicContentBlock {
-    #[serde(rename = "text")]
-    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse { input: Value },
     #[serde(other)]
     Other,
 }
@@ -278,10 +344,13 @@ impl MenuScanService {
     }
 
     /// Send content blocks to Anthropic and parse the menu JSON response.
+    /// `include_image_url` toggles the `image_url` item field in the tool
+    /// schema (only meaningful for URL-based scans).
     async fn call_anthropic(
         &self,
         system_prompt: &'static str,
         content: Vec<ContentBlock>,
+        include_image_url: bool,
     ) -> Result<MenuScanResponse, ApiError> {
         let request_body = AnthropicRequest {
             model: self.model.clone(),
@@ -291,6 +360,11 @@ impl MenuScanService {
                 role: "user",
                 content,
             }],
+            tools: vec![menu_extraction_tool(include_image_url)],
+            tool_choice: ToolChoice {
+                kind: "tool",
+                name: EXTRACT_MENU_TOOL_NAME,
+            },
         };
 
         let response = self
@@ -338,29 +412,20 @@ impl MenuScanService {
                 ApiError::Internal("Failed to parse AI service response.".into())
             })?;
 
-        let text = api_response
+        let input = api_response
             .content
             .into_iter()
             .find_map(|block| match block {
-                AnthropicContentBlock::Text { text } => Some(text),
+                AnthropicContentBlock::ToolUse { input } => Some(input),
                 _ => None,
             })
             .ok_or_else(|| {
-                ApiError::Internal("AI returned no text content.".into())
+                ApiError::Internal("AI did not return structured menu data.".into())
             })?;
 
-        // Extract JSON from response (handles markdown fences or surrounding text)
-        let trimmed = text.trim();
-        let json_text = if let Some(start) = trimmed.find('{') {
-            let end = trimmed.rfind('}').unwrap_or(trimmed.len() - 1);
-            &trimmed[start..=end]
-        } else {
-            trimmed
-        };
-
-        let scan_result: MenuScanResponse = serde_json::from_str(json_text)
+        let scan_result: MenuScanResponse = serde_json::from_value(input.clone())
             .map_err(|e| {
-                tracing::error!("Failed to parse menu JSON from AI: {e}\nRaw text: {json_text}");
+                tracing::error!("Failed to parse menu JSON from AI: {e}\nRaw input: {input}");
                 ApiError::Internal(format!(
                     "Could not parse menu from AI response: {e}"
                 ))
@@ -556,7 +621,7 @@ impl MenuScanService {
             ),
         });
 
-        self.call_anthropic(URL_SYSTEM_PROMPT, content).await
+        self.call_anthropic(URL_SYSTEM_PROMPT, content, true).await
     }
 
     /// Run the combined scan (uploaded images + optional URL) and return the menu.
@@ -581,7 +646,7 @@ impl MenuScanService {
                 content.push(ContentBlock::Text {
                     text: "Please extract the menu from these images.".into(),
                 });
-                self.call_anthropic(SYSTEM_PROMPT, content).await
+                self.call_anthropic(SYSTEM_PROMPT, content, false).await
             }
         }
     }
@@ -928,4 +993,58 @@ fn extract_next_page_url(html: &str, base_url: &url::Url) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A shape matching what the `extract_menu` tool schema requires, with a
+    /// nested subsection. Guards against the schema and the `MenuScanResponse`
+    /// deserializer drifting apart (previously caused a "missing field
+    /// `subsections`" failure on real AI output).
+    #[test]
+    fn tool_schema_output_shape_deserializes_into_menu_scan_response() {
+        for include_image_url in [false, true] {
+            let tool = menu_extraction_tool(include_image_url);
+            assert_eq!(tool.name, EXTRACT_MENU_TOOL_NAME);
+
+            let mut item = json!({
+                "name": "Naan",
+                "description": null,
+                "base_price_cents": 250,
+                "tags": [{"name": "vegetarian"}]
+            });
+            if include_image_url {
+                item["image_url"] = json!(null);
+            }
+
+            let sample = json!({
+                "name": "Menu",
+                "description": null,
+                "sections": [
+                    {
+                        "name": "Entrées",
+                        "description": null,
+                        "position": 1,
+                        "items": [],
+                        "subsections": [
+                            {
+                                "name": "Salades",
+                                "description": null,
+                                "position": 1,
+                                "items": [{"position": 1, "item": item}]
+                            }
+                        ]
+                    }
+                ]
+            });
+
+            let parsed: MenuScanResponse = serde_json::from_value(sample)
+                .expect("sample matching the tool schema must deserialize");
+            assert_eq!(parsed.sections.len(), 1);
+            assert_eq!(parsed.sections[0].subsections.len(), 1);
+            assert_eq!(parsed.sections[0].subsections[0].items.len(), 1);
+        }
+    }
 }

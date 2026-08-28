@@ -19,6 +19,8 @@ interface AuthPanelProps {
   onAuthenticated?: () => void;
   /** Called after a successful registration (guest → password). */
   onRegistered?: () => void;
+  /** Overrides the guest/login submit button label (e.g. "Order — €12.50") for a combined auth+action flow. */
+  submitLabel?: string;
 }
 
 export default function AuthPanel(props: AuthPanelProps) {
@@ -124,7 +126,7 @@ export default function AuthPanel(props: AuthPanelProps) {
             <li classList={{ "is-active": activeTab() === "guest" }}>
               <a onClick={() => { setActiveTab("guest"); clearAuthError(); }}>
                 <span class="icon is-small"><span>👤</span></span>
-                <span>Continue as Guest</span>
+                <span>Guest</span>
               </a>
             </li>
           </Show>
@@ -215,7 +217,7 @@ export default function AuthPanel(props: AuthPanelProps) {
                     classList={{ "is-loading": authLoading() }}
                     disabled={authLoading() || !canSubmitGuest()}
                   >
-                    Continue as Guest
+                    {props.submitLabel ?? "Continue as Guest"}
                   </button>
                 </div>
               </div>
@@ -265,7 +267,7 @@ export default function AuthPanel(props: AuthPanelProps) {
                     classList={{ "is-loading": authLoading() }}
                     disabled={authLoading() || !email().trim() || !password()}
                   >
-                    Log in
+                    {props.submitLabel ?? "Log in"}
                   </button>
                 </div>
               </div>

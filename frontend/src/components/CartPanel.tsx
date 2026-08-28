@@ -957,12 +957,10 @@ export default function CartPanel(props: CartPanelProps) {
           when={isAuthenticated()}
           fallback={
             <div>
-              <div class="notification is-warning is-light mb-3">
-                <p class="is-size-7">
-                  You need to be logged in to place an order.
-                </p>
-              </div>
-              <AuthPanel />
+              <AuthPanel
+                submitLabel={`Order — €${formatPrice(combinedTotal())}`}
+                onAuthenticated={handlePlaceOrder}
+              />
             </div>
           }
         >

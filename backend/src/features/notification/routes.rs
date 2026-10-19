@@ -59,7 +59,27 @@ async fn verify_notification(
         return Json(ApiResponse::success(NotificationVerifyResponse { valid: false }));
     }
 
-    // 2. Mark email_received_at — only if not already set (prevent double-trigger)
+    // 2. If the OVH fallback already took over, tell the Shortcut not to send
+    //    (otherwise the restaurant would get the SMS twice).
+    match sqlx::query_scalar!(
+        "SELECT fallback_attempts FROM notification_events WHERE sig = $1",
+        params.sig,
+    )
+    .fetch_optional(&state.db)
+    .await
+    {
+        Ok(Some(attempts)) if attempts > 0 => {
+            info!("verify-notification: sig={} already handled by OVH fallback", &params.sig[..8]);
+            return Json(ApiResponse::success(NotificationVerifyResponse { valid: false }));
+        }
+        Ok(_) => {}
+        Err(e) => {
+            warn!("verify-notification: DB error: {e}");
+            return Json(ApiResponse::error("Database error".to_string()));
+        }
+    }
+
+    // 3. Mark email_received_at — only if not already set (prevent double-trigger)
     let result = sqlx::query!(
         r#"
         UPDATE notification_events
@@ -166,6 +186,6 @@ async fn confirm_sms(
         state.scheduler_notify.notify_one();
     }
 
-    info!("confirm-sms: SMS confirmed, session {} → Requested", event.session_id);
+    info!("confirm-sms: SMS confirmed, session {} → SmsSent", event.session_id);
     Json(ApiResponse::success(NotificationVerifyResponse { valid: true }))
 }

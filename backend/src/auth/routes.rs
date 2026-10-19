@@ -50,7 +50,7 @@ pub fn admin_auth_routes() -> Router<AppState> {
         .route("/api/admin/settings/editor-domain", get(get_editor_domain).put(set_editor_domain))
         .route("/api/admin/settings/notification-email", get(get_notification_email).put(set_notification_email))
         .route("/api/admin/settings/test-notification-email", post(test_notification_email))
-        .route("/api/admin/settings/sms-message-template", get(get_sms_message_template).put(set_sms_message_template))
+        .route("/api/admin/settings/test-sms", post(test_sms))
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -639,49 +639,38 @@ pub async fn test_notification_email(
     Ok(ApiJson(ApiResponse::success(format!("Test email sent to {to}"))))
 }
 
-/// `GET /api/admin/settings/sms-message-template`
-///
-/// Get the SMS message template used in notification emails and OVH SMS fallback.
-pub async fn get_sms_message_template(
-    AdminUser(_admin): AdminUser,
-    State(state): State<AppState>,
-) -> Result<ApiJson<ApiResponse<Option<String>>>, ApiError> {
-    let template = state
-        .setup_repository
-        .get_sms_message_template()
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    Ok(ApiJson(ApiResponse::success(template)))
-}
-
-/// Request body for setting the SMS message template.
+/// Request body for sending a test SMS through OVH.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
-pub struct SetSmsMessageTemplateRequest {
-    /// The message template with `{PickupTime}` and `{Orders}` placeholders.
-    /// `null` to clear (falls back to a default format).
-    pub template: Option<String>,
+pub struct TestSmsRequest {
+    /// Receiver, e.g. `+33612345678` or `06 12 34 56 78`.
+    pub phone: String,
 }
 
-/// `PUT /api/admin/settings/sms-message-template`
+/// `POST /api/admin/settings/test-sms`
 ///
-/// Set or clear the SMS message template.
-/// Placeholders: `{PickupTime}` → pickup time, `{Orders}` → ordered items.
-pub async fn set_sms_message_template(
+/// Send a test SMS through the OVH fallback provider.
+/// Returns an error if OVH is not configured or sending fails.
+pub async fn test_sms(
     AdminUser(_admin): AdminUser,
     State(state): State<AppState>,
-    ApiJson(request): ApiJson<SetSmsMessageTemplateRequest>,
-) -> Result<ApiJson<ApiResponse<Option<String>>>, ApiError> {
-    let template = request.template.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    ApiJson(request): ApiJson<TestSmsRequest>,
+) -> Result<ApiJson<ApiResponse<String>>, ApiError> {
+    let client = state.sms_client.as_ref().ok_or_else(|| {
+        ApiError::BadRequest("OVH SMS is not configured on the server (OVH_* variables).".to_string())
+    })?;
+    let phone = crate::features::sms::normalize_phone(&request.phone)
+        .ok_or_else(|| ApiError::BadRequest(format!("Invalid phone number '{}'.", request.phone)))?;
 
-    state
-        .setup_repository
-        .set_sms_message_template(template.as_deref())
+    let job = client
+        .send(&phone, "Test SMS from HungryAyam. The OVH fallback is working.")
         .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .map_err(|e| ApiError::Internal(format!("{e:#}")))?;
 
-    Ok(ApiJson(ApiResponse::success(template)))
+    Ok(ApiJson(ApiResponse::success(format!(
+        "Test SMS sent to {phone} ({} credit(s) used)",
+        job.total_credits_removed
+    ))))
 }
 
 /// `PUT /api/admin/settings/editor-domain`

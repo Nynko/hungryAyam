@@ -71,7 +71,7 @@ async fn seed_second_user(pool: &PgPool) -> (Uuid, String) {
 /// Build a fully-wired Router backed by the given pool.
 fn app(pool: PgPool) -> Router {
     let setup_done = Arc::new(AtomicBool::new(true));
-    let state = build_state(setup_done, pool, Arc::new(Notify::new()), std::path::PathBuf::from("/tmp/test_uploads"), None, "http://localhost:5173".to_string(), None);
+    let state = build_state(setup_done, pool, Arc::new(Notify::new()), std::path::PathBuf::from("/tmp/test_uploads"), None, "http://localhost:5173".to_string(), None, None);
     build_app(state)
 }
 
@@ -898,4 +898,49 @@ async fn test_different_users_can_own_restaurants(pool: PgPool) {
     let (status, body) = get_auth(&router, "/api/restaurants", &token).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"].as_array().unwrap().len(), 2);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SMS settings
+// ═══════════════════════════════════════════════════════════════════
+
+#[sqlx::test]
+async fn test_sms_settings_roundtrip(pool: PgPool) {
+    let (_, token) = seed(&pool).await;
+    let router = app(pool);
+    let r = create_restaurant(&router, "Ayam", &token).await;
+    let uri = format!("/api/admin/restaurants/{}/sms-settings", r["id"].as_str().unwrap());
+
+    let (status, body) = send_with_auth(&router, Method::GET, &uri, None, Some(&token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"], json!({"sms_phone_number": null, "sms_message_template": null}));
+
+    let (status, _) = send_with_auth(
+        &router,
+        Method::PUT,
+        &uri,
+        Some(json!({"sms_phone_number": "not a phone", "sms_message_template": null})),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, body) = send_with_auth(
+        &router,
+        Method::PUT,
+        &uri,
+        Some(json!({"sms_phone_number": " 06 12 34 56 78 ", "sms_message_template": "Pour {PickupTime}:\n{Orders}"})),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (_, body) = send_with_auth(&router, Method::GET, &uri, None, Some(&token)).await;
+    assert_eq!(body["data"]["sms_phone_number"], "06 12 34 56 78");
+    assert_eq!(body["data"]["sms_message_template"], "Pour {PickupTime}:\n{Orders}");
+
+    // Public response only exposes whether SMS is enabled
+    let (_, body) = send_with_auth(&router, Method::GET, &format!("/api/restaurants/{}", r["id"].as_str().unwrap()), None, Some(&token)).await;
+    assert_eq!(body["data"]["sms_enabled"], true);
+    assert!(body["data"].get("sms_message_template").is_none());
 }

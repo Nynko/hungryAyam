@@ -66,8 +66,12 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// Build and send the order notification email for a session.
 ///
-/// Fetches the order summary from DB, builds the signed body, sends the email,
-/// and inserts a `notification_events` row for tracking.
+/// Fetches the order summary from DB, builds the signed body, records a
+/// `notification_events` row (used by the OVH SMS fallback) and sends the email.
+/// The row is written before sending so that an SMTP failure still ends up
+/// covered by the fallback.
+///
+/// `sms_template` is the restaurant's own message template.
 ///
 /// Callers must already have verified that email is configured and that the
 /// session should receive a notification.
@@ -93,17 +97,38 @@ pub async fn send_order_notification(
     let phone = restaurant_phone.unwrap_or("—");
 
     let orders_text = summary.to_text();
+    let msg = render_sms_message(sms_template, &pickup, &orders_text);
 
-    // Sign if secret is configured
-    let (ts, sig_line) = if let Some(secret) = notification_secret {
+    // Sign if secret is configured, and record the event for delivery tracking
+    let sig_line = if let Some(secret) = notification_secret {
         let ts = chrono::Utc::now().timestamp();
         let sig = sign(secret, ts, phone, &pickup);
-        (ts, format!("TS:{ts}\nSIG:{sig}\n"))
+        if let Err(e) = sqlx::query!(
+            r#"
+            INSERT INTO notification_events
+                (sig, session_id, ts, phone, time_str, orders, restaurant, message)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (sig) DO NOTHING
+            "#,
+            sig,
+            session_id,
+            ts,
+            phone,
+            pickup,
+            orders_text,
+            restaurant_name,
+            msg,
+        )
+        .execute(pool)
+        .await
+        {
+            warn!("send_order_notification: failed to insert notification_event: {e}");
+        }
+        format!("TS:{ts}\nSIG:{sig}\n")
     } else {
-        (0, String::new())
+        String::new()
     };
 
-    let msg = render_sms_message(sms_template, &pickup, &orders_text);
     let body = format!(
         "{sig_line}RESTAURANT:{restaurant}\nPHONE:{phone}\nTIME:{pickup}\nBODY:{msg}",
         sig_line = sig_line,
@@ -116,31 +141,6 @@ pub async fn send_order_notification(
     if let Err(e) = email_service.send_plain(notification_email, "HungryAyam Order", body).await {
         warn!("send_order_notification: failed to send email: {e}");
         return Err(anyhow::anyhow!("Failed to send notification email: {e}"));
-    }
-
-    // Insert notification_events row for delivery tracking (only when signed)
-    if let Some(secret) = notification_secret {
-        let sig = sign(secret, ts, phone, &pickup);
-        if let Err(e) = sqlx::query!(
-            r#"
-            INSERT INTO notification_events
-                (sig, session_id, ts, phone, time_str, orders, restaurant)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (sig) DO NOTHING
-            "#,
-            sig,
-            session_id,
-            ts,
-            phone,
-            pickup,
-            orders_text,
-            restaurant_name,
-        )
-        .execute(pool)
-        .await
-        {
-            warn!("send_order_notification: failed to insert notification_event: {e}");
-        }
     }
 
     Ok(())

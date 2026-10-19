@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT MIN(GREATEST(\n                   CASE WHEN ne.email_received_at IS NOT NULL\n                        THEN ne.email_received_at + make_interval(secs => $1)\n                        ELSE ne.email_sent_at + make_interval(secs => $2)\n                   END,\n                   COALESCE(ne.fallback_attempted_at + make_interval(secs => $3), '-infinity')\n               )) as \"due: chrono::DateTime<Utc>\"\n        FROM notification_events ne\n        JOIN order_sessions os ON os.id = ne.session_id\n        WHERE ne.sms_sent_at IS NULL\n          AND ne.fallback_sent_at IS NULL\n          AND ne.fallback_attempts < $4\n          AND ne.email_sent_at > NOW() - make_interval(secs => $5)\n          AND os.status = ANY($6)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "due: chrono::DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Float8",
+        "Float8",
+        "Float8",
+        "Int4",
+        "Float8",
+        "Int2Array"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "91db392290e451cdc598035f0c1471c91f08f068103e80fd26d086425a9b569c"
+}

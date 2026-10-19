@@ -34,6 +34,12 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      OVH_ENDPOINT: ${OVH_ENDPOINT:-}
+      OVH_APPLICATION_KEY: ${OVH_APPLICATION_KEY:-}
+      OVH_APPLICATION_SECRET: ${OVH_APPLICATION_SECRET:-}
+      OVH_CONSUMER_KEY: ${OVH_CONSUMER_KEY:-}
+      OVH_SMS_SERVICE_NAME: ${OVH_SMS_SERVICE_NAME:-}
+      OVH_SMS_SENDER: ${OVH_SMS_SENDER:-}
     depends_on:
       db:
         condition: service_healthy

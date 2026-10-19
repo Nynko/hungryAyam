@@ -42,6 +42,7 @@ use crate::{
         },
         menu_scan::service::MenuScanService,
         email::EmailService,
+        sms::OvhSmsClient,
     }
 };
 
@@ -76,6 +77,9 @@ pub struct AppState {
     /// HMAC secret for signing/verifying notification payloads.
     /// `None` if `NOTIFICATION_SECRET` is not set.
     pub notification_secret: Option<String>,
+    /// OVH SMS client used as fallback when the Shortcut doesn't confirm.
+    /// `None` if the `OVH_*` variables are not set.
+    pub sms_client: Option<OvhSmsClient>,
 }
 
 pub fn build_state(
@@ -86,6 +90,7 @@ pub fn build_state(
     email_service: Option<EmailService>,
     base_url: String,
     notification_secret: Option<String>,
+    sms_client: Option<OvhSmsClient>,
 ) -> AppState {
 
     // Create repositories
@@ -132,5 +137,6 @@ pub fn build_state(
         email_service,
         base_url,
         notification_secret,
+        sms_client,
     }
 }

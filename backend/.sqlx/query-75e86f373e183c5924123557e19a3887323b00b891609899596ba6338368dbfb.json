@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT fallback_attempts FROM notification_events WHERE sig = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fallback_attempts",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "75e86f373e183c5924123557e19a3887323b00b891609899596ba6338368dbfb"
+}

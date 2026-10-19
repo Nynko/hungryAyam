@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE notification_events\n            SET fallback_attempts = fallback_attempts + 1,\n                fallback_attempted_at = NOW()\n            WHERE sig = $1\n              AND sms_sent_at IS NULL\n              AND fallback_sent_at IS NULL\n            RETURNING fallback_attempts\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fallback_attempts",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e11cfce6ec93373eecb2843eb5aa7a1d788ed9b247e3a1b107dd8fe7e4fdcf0a"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO order_sessions (restaurant_id, start_date, end_date, status, created_by, updated_by) VALUES ($1, NOW(), NOW() + INTERVAL '1 day', 0, $2, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c538b5cd5e107897230efc9627d058abb305ee21b0713bc637e757cafa8e4780"
+}

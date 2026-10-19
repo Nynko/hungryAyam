@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT name, sms_phone_number FROM restaurants WHERE id = $1",
+  "query": "SELECT name, sms_phone_number, sms_message_template FROM restaurants WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -12,6 +12,11 @@
         "ordinal": 1,
         "name": "sms_phone_number",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "sms_message_template",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -21,8 +26,9 @@
     },
     "nullable": [
       false,
+      true,
       true
     ]
   },
-  "hash": "19321d0dcd0e3be358773f54c309e40318468f183474020d13eb717ff971d8d4"
+  "hash": "8a356365db88c7d452f9ace442a343f313b8cf96a7bf00f47a66f14e22b613a0"
 }

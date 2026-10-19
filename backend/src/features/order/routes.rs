@@ -228,19 +228,19 @@ pub async fn request_session(
     // Send notification email if SMTP and a notification address are configured.
     // This is the manual equivalent of the scheduler's auto-close notification.
     if let Some(svc) = &app_state.email_service {
-        // Fetch notification email + sms template in one query
-        let settings = sqlx::query!(
-            r#"SELECT notification_email, sms_message_template FROM app_settings WHERE id = 1"#
+        let notification_email: Option<String> = sqlx::query_scalar!(
+            r#"SELECT notification_email FROM app_settings WHERE id = 1"#
         )
         .fetch_optional(&app_state.db)
         .await
         .ok()
+        .flatten()
         .flatten();
 
-        if let Some(to) = settings.as_ref().and_then(|s| s.notification_email.as_deref()) {
+        if let Some(to) = notification_email.as_deref() {
             // Fetch restaurant info
             let restaurant = sqlx::query!(
-                r#"SELECT name, sms_phone_number FROM restaurants WHERE id = $1"#,
+                r#"SELECT name, sms_phone_number, sms_message_template FROM restaurants WHERE id = $1"#,
                 session.restaurant_id,
             )
             .fetch_optional(&app_state.db)
@@ -249,7 +249,6 @@ pub async fn request_session(
             .flatten();
 
             if let Some(r) = restaurant {
-                let sms_template = settings.as_ref().and_then(|s| s.sms_message_template.as_deref());
                 if let Err(e) = crate::features::notification::send_order_notification(
                     &app_state.db,
                     session.id,
@@ -259,7 +258,7 @@ pub async fn request_session(
                     svc,
                     to,
                     app_state.notification_secret.as_deref(),
-                    sms_template,
+                    r.sms_message_template.as_deref(),
                 ).await {
                     tracing::warn!("request_session: notification failed: {e}");
                     // Don't fail the request — status was already updated

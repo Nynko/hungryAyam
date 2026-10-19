@@ -1,0 +1,57 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT ne.sig, ne.session_id, ne.phone, ne.time_str, ne.orders, ne.message\n        FROM notification_events ne\n        JOIN order_sessions os ON os.id = ne.session_id\n        WHERE ne.sms_sent_at IS NULL\n          AND ne.fallback_sent_at IS NULL\n          AND ne.fallback_attempts < $4\n          AND ne.email_sent_at > NOW() - make_interval(secs => $5)\n          AND os.status = ANY($6)\n          AND (\n                (ne.email_received_at IS NOT NULL\n                 AND ne.email_received_at <= NOW() - make_interval(secs => $1))\n             OR (ne.email_received_at IS NULL\n                 AND ne.email_sent_at <= NOW() - make_interval(secs => $2))\n          )\n          AND (ne.fallback_attempted_at IS NULL\n               OR ne.fallback_attempted_at <= NOW() - make_interval(secs => $3))\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sig",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "phone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "time_str",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "orders",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "message",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Float8",
+        "Float8",
+        "Float8",
+        "Int4",
+        "Float8",
+        "Int2Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "c65adbe942b7fd0a213374393122577742c81299581acbb0116f0e9d809392bc"
+}

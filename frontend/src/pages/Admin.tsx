@@ -24,12 +24,11 @@ export default function Admin() {
   const [notifError, setNotifError] = createSignal<string | null>(null);
   const [testLoading, setTestLoading] = createSignal(false);
 
-  // ── SMS message template ────────────────────────────────────────
-  const [smsTemplate, setSmsTemplate] = createSignal("");
-  const [smsTemplateSaved, setSmsTemplateSaved] = createSignal<string | null>(null);
-  const [smsLoading, setSmsLoading] = createSignal(false);
-  const [smsSaveMsg, setSmsSaveMsg] = createSignal<string | null>(null);
-  const [smsError, setSmsError] = createSignal<string | null>(null);
+  // ── OVH SMS fallback test ───────────────────────────────────────
+  const [testSmsPhone, setTestSmsPhone] = createSignal("");
+  const [testSmsLoading, setTestSmsLoading] = createSignal(false);
+  const [testSmsMsg, setTestSmsMsg] = createSignal<string | null>(null);
+  const [testSmsError, setTestSmsError] = createSignal<string | null>(null);
 
   onMount(async () => {
     if (!isAdmin()) return;
@@ -72,20 +71,6 @@ export default function Admin() {
         if (json.success) {
           setNotifEmail(json.data ?? "");
           setNotifEmailSaved(json.data ?? null);
-        }
-      }
-    } catch {
-      // silently ignore
-    }
-
-    // Fetch SMS message template
-    try {
-      const res = await fetch("/api/admin/settings/sms-message-template");
-      if (res.ok) {
-        const json: ApiResponse<string | null> = await res.json();
-        if (json.success) {
-          setSmsTemplate(json.data ?? "");
-          setSmsTemplateSaved(json.data ?? null);
         }
       }
     } catch {
@@ -183,34 +168,29 @@ export default function Admin() {
     }
   };
 
-  const handleSaveSmsTemplate = async () => {
-    setSmsLoading(true);
-    setSmsError(null);
-    setSmsSaveMsg(null);
-
-    const template = smsTemplate().trim() || null;
+  const handleTestSms = async () => {
+    setTestSmsLoading(true);
+    setTestSmsError(null);
+    setTestSmsMsg(null);
 
     try {
-      const res = await fetch("/api/admin/settings/sms-message-template", {
-        method: "PUT",
+      const res = await fetch("/api/admin/settings/test-sms", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ template }),
+        body: JSON.stringify({ phone: testSmsPhone().trim() }),
       });
 
-      const json: ApiResponse<string | null> = await res.json();
+      const json: ApiResponse<string> = await res.json();
 
       if (res.ok && json.success) {
-        setSmsTemplateSaved(json.data ?? null);
-        setSmsTemplate(json.data ?? "");
-        setSmsSaveMsg(template ? "SMS template saved." : "SMS template cleared (using default format).");
-        setTimeout(() => setSmsSaveMsg(null), 3000);
+        setTestSmsMsg(json.data ?? "Test SMS sent.");
       } else {
-        setSmsError(json.error ?? "Failed to save.");
+        setTestSmsError(json.error ?? "Failed to send test SMS.");
       }
     } catch {
-      setSmsError("Failed to save SMS template.");
+      setTestSmsError("Failed to send test SMS.");
     } finally {
-      setSmsLoading(false);
+      setTestSmsLoading(false);
     }
   };
 
@@ -364,62 +344,47 @@ export default function Admin() {
               </p>
             </Show>
           </div>
-          {/* ── SMS Message Template ─────────────────────────── */}
+          {/* ── OVH SMS Fallback ─────────────────────────────── */}
           <div class="box">
-            <h2 class="title is-5">💬 SMS Message Template</h2>
-            <p class="mb-2">
-              Message sent via SMS when an order session closes. Use{" "}
-              <code>{"{PickupTime}"}</code> and <code>{"{Orders}"}</code> as
-              placeholders.
-            </p>
-            <p class="mb-3 is-size-7 has-text-grey">
-              Example:{" "}
-              <em>
-                Bonjour, est-il possible de commander à emporter pour{" "}
-                {"{PickupTime}"} ? Ce serait: {"{Orders}"} Merci !
-              </em>
+            <h2 class="title is-5">💬 SMS Fallback (OVH)</h2>
+            <p class="mb-3">
+              If the iPhone Shortcut doesn't confirm the SMS within 5 minutes,
+              the server sends it through OVH instead. Credentials are set with
+              the <code>OVH_*</code> server variables. The message itself is
+              configured per restaurant, in the restaurant settings.
             </p>
 
-            <Show when={smsSaveMsg()}>
-              <div class="notification is-success is-light">{smsSaveMsg()}</div>
+            <Show when={testSmsMsg()}>
+              <div class="notification is-success is-light">{testSmsMsg()}</div>
             </Show>
 
-            <Show when={smsError()}>
-              <div class="notification is-danger is-light">{smsError()}</div>
+            <Show when={testSmsError()}>
+              <div class="notification is-danger is-light">{testSmsError()}</div>
             </Show>
 
-            <div class="field">
-              <div class="control">
-                <textarea
-                  class="textarea"
-                  rows={4}
-                  placeholder={`Bonjour, est-il possible de commander à emporter pour {PickupTime} ? Ce serait: {Orders} Merci !`}
-                  value={smsTemplate()}
-                  onInput={(e) => setSmsTemplate(e.currentTarget.value)}
-                  disabled={smsLoading()}
+            <div class="field has-addons">
+              <div class="control is-expanded">
+                <input
+                  class="input"
+                  type="tel"
+                  placeholder="+33612345678"
+                  value={testSmsPhone()}
+                  onInput={(e) => setTestSmsPhone(e.currentTarget.value)}
+                  disabled={testSmsLoading()}
                 />
               </div>
-            </div>
-
-            <div class="field">
               <div class="control">
                 <button
-                  class="button is-primary"
-                  classList={{ "is-loading": smsLoading() }}
-                  onClick={handleSaveSmsTemplate}
-                  disabled={smsLoading()}
+                  class="button is-light"
+                  classList={{ "is-loading": testSmsLoading() }}
+                  onClick={handleTestSms}
+                  disabled={testSmsLoading() || !testSmsPhone().trim()}
+                  title="Send a test SMS through OVH (uses 1 credit)"
                 >
-                  Save
+                  Send test SMS
                 </button>
               </div>
             </div>
-
-            <Show when={smsTemplateSaved()}>
-              <p class="help has-text-grey">Template saved.</p>
-            </Show>
-            <Show when={!smsTemplateSaved()}>
-              <p class="help has-text-grey">No template set — using default plain format.</p>
-            </Show>
           </div>
         </Show>
       </div>

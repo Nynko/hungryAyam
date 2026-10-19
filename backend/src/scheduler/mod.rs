@@ -20,6 +20,8 @@
 //! 2. **Session auto-close** — When an order session's `end_date` passes and
 //!    the restaurant has `auto_close_session = true`, transition the session
 //!    from `Open` to `Closed`.
+//! 3. **SMS fallback** — When the iPhone Shortcut did not confirm the SMS in
+//!    time, send it through the OVH SMS API instead.
 
 use chrono::{NaiveDate, Utc};
 use sqlx::PgPool;
@@ -32,11 +34,25 @@ use uuid::Uuid;
 use crate::features::{
     email::EmailService,
     order::domain::order_session::OrderSessionStatus,
+    sms::OvhSmsClient,
 };
 
 /// Maximum time the scheduler will sleep before waking up to re-check.
 /// This caps drift from events inserted without a notify (e.g. direct DB edits).
 const MAX_SLEEP_SECS: u64 = 5 * 60; // 5 minutes
+
+/// Fallback when the Shortcut received the email but never confirmed the SMS.
+const FALLBACK_AFTER_RECEIVED_SECS: i64 = 5 * 60;
+/// Fallback when the email was never received by the Shortcut. Must be longer
+/// than the 5-minute `verify-notification` window so that the Shortcut can no
+/// longer start sending once the fallback fires.
+const FALLBACK_AFTER_UNRECEIVED_SECS: i64 = 6 * 60;
+/// Delay between two OVH attempts for the same event.
+const FALLBACK_RETRY_SECS: i64 = 60;
+const FALLBACK_MAX_ATTEMPTS: i32 = 3;
+/// Never send a fallback SMS for a notification older than this (e.g. after
+/// downtime) — the order would be stale.
+const FALLBACK_MAX_AGE_SECS: i64 = 60 * 60;
 
 /// Resolve a system user for `updated_by` fields on scheduler-initiated writes.
 /// Picks the first user in the database (typically the initial admin).
@@ -52,7 +68,13 @@ async fn resolve_system_user(pool: &PgPool) -> Option<Uuid> {
 ///
 /// The scheduler runs indefinitely until the process exits. It uses the
 /// provided `Notify` handle to wake early when relevant data changes.
-pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>, email_service: Option<EmailService>, notification_secret: Option<String>) {
+pub fn spawn_scheduler(
+    pool: PgPool,
+    notify: Arc<Notify>,
+    email_service: Option<EmailService>,
+    notification_secret: Option<String>,
+    sms_client: Option<OvhSmsClient>,
+) {
     tokio::spawn(async move {
         info!("Scheduler started (sleep_until + Notify pattern)");
 
@@ -74,7 +96,7 @@ pub fn spawn_scheduler(pool: PgPool, notify: Arc<Notify>, email_service: Option<
                 run_menu_auto_reset(&pool, system_user),
                 run_session_auto_close(&pool, system_user, email_service.as_ref(), notification_secret.as_deref()),
                 run_session_auto_finish(&pool, system_user),
-                run_sms_fallback(&pool, system_user),
+                run_sms_fallback(&pool, system_user, sms_client.as_ref()),
             );
 
             if let Err(e) = reset_result {
@@ -243,6 +265,13 @@ async fn compute_next_wake(pool: &PgPool) -> anyhow::Result<std::time::Duration>
         }
     }
 
+    // ── SMS fallback candidates ───────────────────────────────────────
+    if let Some(due) = next_fallback_due(pool).await? {
+        if due < earliest {
+            earliest = due;
+        }
+    }
+
     // ── Compute the duration ──────────────────────────────────────────
     let diff = earliest - now_utc;
     let duration = if diff <= chrono::Duration::zero() {
@@ -404,6 +433,7 @@ struct CloseCandidate {
     notify_on_session_close: bool,
     restaurant_name: String,
     restaurant_phone: Option<String>,
+    sms_template: Option<String>,
 }
 
 async fn run_session_auto_close(
@@ -420,7 +450,8 @@ async fn run_session_auto_close(
                os.pickup_time   as "pickup_time?: chrono::DateTime<Utc>",
                ros.notify_on_session_close,
                r.name           as restaurant_name,
-               r.sms_phone_number as "restaurant_phone?: String"
+               r.sms_phone_number as "restaurant_phone?: String",
+               r.sms_message_template as "sms_template?: String"
         FROM order_sessions os
         JOIN restaurant_order_settings ros ON ros.restaurant_id = os.restaurant_id
         JOIN restaurants r ON r.id = os.restaurant_id
@@ -438,25 +469,20 @@ async fn run_session_auto_close(
         return Ok(());
     }
 
-    // Fetch notification settings once (global settings)
-    let (notification_email, sms_template): (Option<String>, Option<String>) = if email_service.is_some() {
-        let row = sqlx::query!(
-            r#"SELECT notification_email, sms_message_template FROM app_settings WHERE id = 1"#
-        )
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten();
-        match row {
-            Some(r) => (r.notification_email, r.sms_message_template),
-            None => (None, None),
-        }
+    // Fetch the notification address once (global setting)
+    let notification_email: Option<String> = if email_service.is_some() {
+        sqlx::query_scalar!(r#"SELECT notification_email FROM app_settings WHERE id = 1"#)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .flatten()
     } else {
-        (None, None)
+        None
     };
 
     for candidate in candidates {
-        if let Err(e) = close_session(pool, &candidate, system_user, email_service, notification_email.as_deref(), notification_secret, sms_template.as_deref()).await {
+        if let Err(e) = close_session(pool, &candidate, system_user, email_service, notification_email.as_deref(), notification_secret).await {
             error!(
                 "Scheduler: auto-close failed for session {}: {e:#}",
                 candidate.session_id
@@ -474,7 +500,6 @@ async fn close_session(
     email_service: Option<&EmailService>,
     notification_email: Option<&str>,
     notification_secret: Option<&str>,
-    sms_template: Option<&str>,
 ) -> anyhow::Result<()> {
     let result = sqlx::query!(
         r#"
@@ -514,7 +539,7 @@ async fn close_session(
                 svc,
                 to,
                 notification_secret,
-                sms_template,
+                candidate.sms_template.as_deref(),
             ).await {
                 warn!("Scheduler: failed to send session-close notification: {e}");
             }
@@ -526,19 +551,76 @@ async fn close_session(
 
 // ─── SMS Fallback ─────────────────────────────────────────────────────────
 
-/// For notification events where the email was received but the SMS was not
-/// confirmed within 5 minutes, trigger the OVH SMS fallback and transition
-/// the session to Requested.
-async fn run_sms_fallback(pool: &PgPool, system_user: Uuid) -> anyhow::Result<()> {
+/// Earliest instant at which a pending notification event becomes due for
+/// the OVH fallback (`None` if nothing is pending).
+async fn next_fallback_due(pool: &PgPool) -> anyhow::Result<Option<chrono::DateTime<Utc>>> {
+    let due = sqlx::query_scalar!(
+        r#"
+        SELECT MIN(GREATEST(
+                   CASE WHEN ne.email_received_at IS NOT NULL
+                        THEN ne.email_received_at + make_interval(secs => $1)
+                        ELSE ne.email_sent_at + make_interval(secs => $2)
+                   END,
+                   COALESCE(ne.fallback_attempted_at + make_interval(secs => $3), '-infinity')
+               )) as "due: chrono::DateTime<Utc>"
+        FROM notification_events ne
+        JOIN order_sessions os ON os.id = ne.session_id
+        WHERE ne.sms_sent_at IS NULL
+          AND ne.fallback_sent_at IS NULL
+          AND ne.fallback_attempts < $4
+          AND ne.email_sent_at > NOW() - make_interval(secs => $5)
+          AND os.status = ANY($6)
+        "#,
+        FALLBACK_AFTER_RECEIVED_SECS as f64,
+        FALLBACK_AFTER_UNRECEIVED_SECS as f64,
+        FALLBACK_RETRY_SECS as f64,
+        FALLBACK_MAX_ATTEMPTS,
+        FALLBACK_MAX_AGE_SECS as f64,
+        &[OrderSessionStatus::Closed.as_i16(), OrderSessionStatus::Requested.as_i16()],
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(due)
+}
+
+/// For notification events whose SMS was not confirmed by the iPhone Shortcut
+/// in time — either the email was received but no confirmation came within
+/// 5 minutes, or the email never reached the Shortcut — send the SMS through
+/// OVH and transition the session to SmsSent.
+///
+/// Sessions that were already moved on manually (SmsSent, Confirmed,
+/// Cancelled…) are skipped. Failed attempts are retried up to
+/// `FALLBACK_MAX_ATTEMPTS` times.
+pub(crate) async fn run_sms_fallback(
+    pool: &PgPool,
+    system_user: Uuid,
+    sms_client: Option<&OvhSmsClient>,
+) -> anyhow::Result<()> {
     let overdue = sqlx::query!(
         r#"
-        SELECT sig, session_id, phone, time_str, orders, restaurant
-        FROM notification_events
-        WHERE email_received_at IS NOT NULL
-          AND sms_sent_at IS NULL
-          AND fallback_sent_at IS NULL
-          AND email_received_at < NOW() - INTERVAL '5 minutes'
+        SELECT ne.sig, ne.session_id, ne.phone, ne.time_str, ne.orders, ne.message
+        FROM notification_events ne
+        JOIN order_sessions os ON os.id = ne.session_id
+        WHERE ne.sms_sent_at IS NULL
+          AND ne.fallback_sent_at IS NULL
+          AND ne.fallback_attempts < $4
+          AND ne.email_sent_at > NOW() - make_interval(secs => $5)
+          AND os.status = ANY($6)
+          AND (
+                (ne.email_received_at IS NOT NULL
+                 AND ne.email_received_at <= NOW() - make_interval(secs => $1))
+             OR (ne.email_received_at IS NULL
+                 AND ne.email_sent_at <= NOW() - make_interval(secs => $2))
+          )
+          AND (ne.fallback_attempted_at IS NULL
+               OR ne.fallback_attempted_at <= NOW() - make_interval(secs => $3))
         "#,
+        FALLBACK_AFTER_RECEIVED_SECS as f64,
+        FALLBACK_AFTER_UNRECEIVED_SECS as f64,
+        FALLBACK_RETRY_SECS as f64,
+        FALLBACK_MAX_ATTEMPTS,
+        FALLBACK_MAX_AGE_SECS as f64,
+        &[OrderSessionStatus::Closed.as_i16(), OrderSessionStatus::Requested.as_i16()],
     )
     .fetch_all(pool)
     .await?;
@@ -547,59 +629,96 @@ async fn run_sms_fallback(pool: &PgPool, system_user: Uuid) -> anyhow::Result<()
         return Ok(());
     }
 
-    // Fetch SMS template once for all overdue events
-    let sms_template: Option<String> = sqlx::query_scalar!(
-        r#"SELECT sms_message_template FROM app_settings WHERE id = 1"#
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .flatten();
+    let Some(client) = sms_client else {
+        warn!(
+            "Scheduler: {} SMS notification(s) not confirmed by the Shortcut, but OVH fallback is not configured",
+            overdue.len()
+        );
+        return Ok(());
+    };
 
     for row in overdue {
+        // Claim the event first: once fallback_attempts > 0, verify-notification
+        // tells the Shortcut not to send, so the SMS can't go out twice.
+        let claimed = sqlx::query_scalar!(
+            r#"
+            UPDATE notification_events
+            SET fallback_attempts = fallback_attempts + 1,
+                fallback_attempted_at = NOW()
+            WHERE sig = $1
+              AND sms_sent_at IS NULL
+              AND fallback_sent_at IS NULL
+            RETURNING fallback_attempts
+            "#,
+            row.sig,
+        )
+        .fetch_optional(pool)
+        .await?;
+        let Some(attempt) = claimed else { continue };
+
         warn!(
-            "Scheduler: SMS not confirmed after 5 min for session {} — triggering OVH fallback",
+            "Scheduler: SMS not confirmed by Shortcut for session {} — OVH fallback (attempt {attempt}/{FALLBACK_MAX_ATTEMPTS})",
             row.session_id
         );
 
-        let msg = crate::features::notification::render_sms_message(
-            sms_template.as_deref(),
-            &row.time_str,
-            &row.orders,
-        );
+        // Old rows (before `message` existed) fall back to the default format
+        let msg = row.message.unwrap_or_else(|| {
+            crate::features::notification::render_sms_message(None, &row.time_str, &row.orders)
+        });
 
-        // TODO: send OVH SMS here
-        info!(
-            "Scheduler: [OVH STUB] would send SMS to {} — MSG: {}",
-            row.phone, msg
-        );
+        let result = if crate::features::sms::normalize_phone(&row.phone).is_none() {
+            // Not retryable — give up straight away
+            sqlx::query!(
+                "UPDATE notification_events SET fallback_attempts = $2 WHERE sig = $1",
+                row.sig,
+                FALLBACK_MAX_ATTEMPTS,
+            )
+            .execute(pool)
+            .await?;
+            Err(anyhow::anyhow!("restaurant has no valid SMS phone number ('{}')", row.phone))
+        } else {
+            client.send(&row.phone, &msg).await
+        };
 
-        // Mark fallback as sent
-        let _ = sqlx::query!(
-            "UPDATE notification_events SET fallback_sent_at = NOW() WHERE sig = $1",
-            row.sig,
-        )
-        .execute(pool)
-        .await;
+        match result {
+            Ok(_) => {
+                sqlx::query!(
+                    "UPDATE notification_events SET fallback_sent_at = NOW(), fallback_error = NULL WHERE sig = $1",
+                    row.sig,
+                )
+                .execute(pool)
+                .await?;
 
-        // Transition Closed or Requested → SmsSent
-        let _ = sqlx::query!(
-            r#"
-            UPDATE order_sessions
-            SET status     = $1,
-                updated_at = NOW(),
-                updated_by = $2
-            WHERE id = $3
-              AND status = ANY($4)
-            "#,
-            OrderSessionStatus::SmsSent.as_i16(),
-            system_user,
-            row.session_id,
-            &[OrderSessionStatus::Closed.as_i16(), OrderSessionStatus::Requested.as_i16()],
-        )
-        .execute(pool)
-        .await;
+                // Transition Closed or Requested → SmsSent
+                sqlx::query!(
+                    r#"
+                    UPDATE order_sessions
+                    SET status     = $1,
+                        updated_at = NOW(),
+                        updated_by = $2
+                    WHERE id = $3
+                      AND status = ANY($4)
+                    "#,
+                    OrderSessionStatus::SmsSent.as_i16(),
+                    system_user,
+                    row.session_id,
+                    &[OrderSessionStatus::Closed.as_i16(), OrderSessionStatus::Requested.as_i16()],
+                )
+                .execute(pool)
+                .await?;
+                info!("Scheduler: OVH fallback SMS sent for session {}", row.session_id);
+            }
+            Err(e) => {
+                error!("Scheduler: OVH fallback failed for session {}: {e:#}", row.session_id);
+                sqlx::query!(
+                    "UPDATE notification_events SET fallback_error = $2 WHERE sig = $1",
+                    row.sig,
+                    format!("{e:#}"),
+                )
+                .execute(pool)
+                .await?;
+            }
+        }
     }
 
     Ok(())
@@ -635,3 +754,5 @@ async fn run_session_auto_finish(pool: &PgPool, system_user: Uuid) -> anyhow::Re
 
     Ok(())
 }
+#[cfg(test)]
+mod tests;

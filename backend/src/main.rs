@@ -22,7 +22,7 @@ mod scheduler;
 use crate::{
     state::build_state,
     app::build_app,
-    features::email::EmailService,
+    features::{email::EmailService, sms::OvhSmsClient},
 };
 
 #[tokio::main]
@@ -81,6 +81,13 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let sms_client = OvhSmsClient::from_env();
+    if sms_client.is_some() {
+        info!("OVH SMS fallback configured");
+    } else {
+        tracing::warn!("OVH_* variables not set — SMS fallback disabled");
+    }
+
     // --------------------------------------------------
     // Database
     // --------------------------------------------------
@@ -127,12 +134,13 @@ async fn main() -> anyhow::Result<()> {
     // --------------------------------------------------
     let scheduler_email = email_service.clone();
     let scheduler_secret = notification_secret.clone();
-    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone(), upload_dir, email_service, base_url, notification_secret);
+    let scheduler_sms = sms_client.clone();
+    let state = build_state(setup_completed, db.clone(), scheduler_notify.clone(), upload_dir, email_service, base_url, notification_secret, sms_client);
 
     // --------------------------------------------------
     // Background scheduler (menu auto-reset, session auto-close)
     // --------------------------------------------------
-    scheduler::spawn_scheduler(db, scheduler_notify, scheduler_email, scheduler_secret);
+    scheduler::spawn_scheduler(db, scheduler_notify, scheduler_email, scheduler_secret, scheduler_sms);
 
     // --------------------------------------------------
     // Router

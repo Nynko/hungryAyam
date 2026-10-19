@@ -71,7 +71,8 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
   const [restaurantImageUrl, setRestaurantImageUrl] = createSignal("");
   const [restaurantPhoneNumber, setRestaurantPhoneNumber] = createSignal("");
   const [restaurantSmsPhone, setRestaurantSmsPhone] = createSignal("");
-  const [smsPhoneLoaded, setSmsPhoneLoaded] = createSignal(false);
+  const [restaurantSmsTemplate, setRestaurantSmsTemplate] = createSignal("");
+  const [smsSettingsLoaded, setSmsSettingsLoaded] = createSignal(false);
   const [restaurantAddress, setRestaurantAddress] = createSignal("");
   const [restaurantSaving, setRestaurantSaving] = createSignal(false);
   const [restaurantSuccess, setRestaurantSuccess] = createSignal<string | null>(null);
@@ -117,13 +118,14 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       setRestaurantImageUrl(r.image_url ?? "");
       setRestaurantPhoneNumber(r.phone_number ?? "");
       setRestaurantAddress(r.address ?? "");
-      // Load SMS phone from admin-only endpoint (not in public Restaurant response)
-      if (!smsPhoneLoaded()) {
-        fetch(`/api/admin/restaurants/${r.id}/sms-phone`)
+      // Load SMS settings from admin-only endpoint (not in public Restaurant response)
+      if (!smsSettingsLoaded()) {
+        fetch(`/api/admin/restaurants/${r.id}/sms-settings`)
           .then((res) => res.json())
           .then((json) => {
             setRestaurantSmsPhone(json.data?.sms_phone_number ?? "");
-            setSmsPhoneLoaded(true);
+            setRestaurantSmsTemplate(json.data?.sms_message_template ?? "");
+            setSmsSettingsLoaded(true);
           })
           .catch(() => {});
       }
@@ -168,13 +170,21 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
       address: restaurantAddress().trim() || null,
     };
 
-    // Save SMS phone via admin-only endpoint
-    const smsPhone = restaurantSmsPhone().trim() || null;
-    await fetch(`/api/admin/restaurants/${r.id}/sms-phone`, {
+    // Save SMS settings via admin-only endpoint
+    const smsRes = await fetch(`/api/admin/restaurants/${r.id}/sms-settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sms_phone_number: smsPhone }),
+      body: JSON.stringify({
+        sms_phone_number: restaurantSmsPhone().trim() || null,
+        sms_message_template: restaurantSmsTemplate().trim() || null,
+      }),
     });
+    if (!smsRes.ok) {
+      const json = await smsRes.json().catch(() => null);
+      setRestaurantSaving(false);
+      setError(json?.error ?? "Failed to save SMS settings.");
+      return;
+    }
 
     const result = await updateRestaurantApi(request);
     setRestaurantSaving(false);
@@ -403,6 +413,29 @@ export default function RestaurantSettingsPanel(props: RestaurantSettingsPanelPr
                   </p>
                 </div>
               </div>
+
+              <Show when={restaurantSmsPhone().trim()}>
+                <div class="column is-12">
+                  <div class="field">
+                    <label class="label">SMS Message</label>
+                    <div class="control">
+                      <textarea
+                        class="textarea"
+                        rows={4}
+                        placeholder={`Bonjour, est-il possible de commander à emporter pour {PickupTime} ? Ce serait:\n{Orders}\nMerci !`}
+                        value={restaurantSmsTemplate()}
+                        onInput={(e) => setRestaurantSmsTemplate(e.currentTarget.value)}
+                        disabled={restaurantSaving()}
+                      />
+                    </div>
+                    <p class="help">
+                      Sent to this restaurant when a session closes. <code>{"{PickupTime}"}</code> and{" "}
+                      <code>{"{Orders}"}</code> are replaced with the pickup time and the order list.
+                      Leave empty for the default plain format.
+                    </p>
+                  </div>
+                </div>
+              </Show>
 
               <div class="column is-6">
                 <div class="field">

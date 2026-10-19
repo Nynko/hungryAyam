@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT notification_email, sms_message_template FROM app_settings WHERE id = 1",
+  "query": "SELECT sms_phone_number, sms_message_template FROM restaurants WHERE id = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "notification_email",
+        "name": "sms_phone_number",
         "type_info": "Text"
       },
       {
@@ -15,12 +15,14 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       true,
       true
     ]
   },
-  "hash": "bd450ef156a2c6229e7030af306e0c684d88a1b91b1e652c6f0d73fcdbe1b03a"
+  "hash": "182983e0c4d00febd875d54fbf2b18734ac97881c2b650d9870fd8499d21aa66"
 }

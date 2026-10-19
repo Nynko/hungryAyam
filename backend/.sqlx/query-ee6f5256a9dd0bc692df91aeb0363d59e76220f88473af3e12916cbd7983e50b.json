@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE restaurants\n            SET sms_phone_number = $1,\n                sms_message_template = $2,\n                updated_at = NOW(),\n                updated_by = $3\n            WHERE id = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ee6f5256a9dd0bc692df91aeb0363d59e76220f88473af3e12916cbd7983e50b"
+}

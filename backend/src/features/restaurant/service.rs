@@ -49,14 +49,22 @@ impl RestaurantService {
     }
 
 
-    /// Get the SMS phone number for a restaurant (admin only).
-    pub async fn get_sms_phone(&self, id: Uuid) -> Result<Option<String>> {
-        self.repository.get_sms_phone(id).await
+    /// Get the SMS settings (phone number, message template) for a restaurant (admin only).
+    pub async fn get_sms_settings(&self, id: Uuid) -> Result<Option<(Option<String>, Option<String>)>> {
+        self.repository.get_sms_settings(id).await
     }
 
-    /// Set (or clear) the SMS phone number for a restaurant (admin only).
-    pub async fn update_sms_phone(&self, id: Uuid, sms_phone: Option<String>, operator_id: Uuid) -> Result<bool> {
-        self.repository.update_sms_phone(id, sms_phone.as_deref(), operator_id).await
+    /// Set (or clear) the SMS phone number and message template for a restaurant (admin only).
+    pub async fn update_sms_settings(
+        &self,
+        id: Uuid,
+        sms_phone: Option<String>,
+        sms_template: Option<String>,
+        operator_id: Uuid,
+    ) -> Result<bool> {
+        self.repository
+            .update_sms_settings(id, sms_phone.as_deref(), sms_template.as_deref(), operator_id)
+            .await
     }
 
     /// Delete a restaurant

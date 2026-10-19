@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE notification_events SET fallback_attempts = $2 WHERE sig = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f4f480040b0d6ae8c3abbc0c5c08f24de7904d3f301a698ee25132e3801138ca"
+}

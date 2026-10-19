@@ -216,27 +216,36 @@ impl RestaurantRepository {
         Ok(result)
     }
 
-    /// Get the SMS phone number for a restaurant (admin only).
-    pub async fn get_sms_phone(&self, id: Uuid) -> Result<Option<String>> {
+    /// Get the SMS settings (phone number + message template) for a restaurant (admin only).
+    pub async fn get_sms_settings(&self, id: Uuid) -> Result<Option<(Option<String>, Option<String>)>> {
         let row = sqlx::query!(
-            r#"SELECT sms_phone_number FROM restaurants WHERE id = $1"#,
+            r#"SELECT sms_phone_number, sms_message_template FROM restaurants WHERE id = $1"#,
             id
         )
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.and_then(|r| r.sms_phone_number))
+        Ok(row.map(|r| (r.sms_phone_number, r.sms_message_template)))
     }
 
-    /// Set (or clear) the SMS phone number for a restaurant (admin only).
-    pub async fn update_sms_phone(
+    /// Set (or clear) the SMS phone number and message template for a restaurant (admin only).
+    pub async fn update_sms_settings(
         &self,
         id: Uuid,
         sms_phone: Option<&str>,
+        sms_template: Option<&str>,
         operator_id: Uuid,
     ) -> Result<bool> {
         let result = sqlx::query!(
-            r#"UPDATE restaurants SET sms_phone_number = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3"#,
+            r#"
+            UPDATE restaurants
+            SET sms_phone_number = $1,
+                sms_message_template = $2,
+                updated_at = NOW(),
+                updated_by = $3
+            WHERE id = $4
+            "#,
             sms_phone,
+            sms_template,
             operator_id,
             id
         )

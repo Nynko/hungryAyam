@@ -1,5 +1,5 @@
 use axum::{
-    Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, post, put}
+    Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, post}
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -23,40 +23,58 @@ pub fn restaurant_routes() -> Router<AppState> {
         .route("/api/restaurants/:id", get(get_restaurant))
         .route("/api/restaurants/:id", delete(delete_restaurant))
         .route("/api/update-restaurant", post(update_restaurant))
-        .route("/api/admin/restaurants/:id/sms-phone", get(get_sms_phone))
-        .route("/api/admin/restaurants/:id/sms-phone", put(set_sms_phone))
+        .route("/api/admin/restaurants/:id/sms-settings", get(get_sms_settings).put(set_sms_settings))
 }
 
-#[derive(Serialize)]
-struct SmsPhoneResponse {
-    sms_phone_number: Option<String>,
+#[derive(Serialize, Deserialize)]
+pub struct SmsSettings {
+    pub sms_phone_number: Option<String>,
+    /// Message with `{PickupTime}` and `{Orders}` placeholders. `None` → default format.
+    pub sms_message_template: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct SetSmsPhoneRequest {
-    sms_phone_number: Option<String>,
+fn non_blank(s: Option<String>) -> Option<String> {
+    s.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
-/// Get the SMS phone number for a restaurant (admin only).
-pub async fn get_sms_phone(
+/// Get the SMS settings for a restaurant (admin only).
+pub async fn get_sms_settings(
     EditorUser(_user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<ApiJson<ApiResponse<SmsPhoneResponse>>, ApiError> {
-    let sms_phone_number = app_state.restaurant_service.get_sms_phone(id).await?;
-    Ok(ApiJson(ApiResponse::success(SmsPhoneResponse { sms_phone_number })))
+) -> Result<ApiJson<ApiResponse<SmsSettings>>, ApiError> {
+    let (sms_phone_number, sms_message_template) = app_state
+        .restaurant_service
+        .get_sms_settings(id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(ApiJson(ApiResponse::success(SmsSettings { sms_phone_number, sms_message_template })))
 }
 
-/// Set or clear the SMS phone number for a restaurant (admin only).
-pub async fn set_sms_phone(
+/// Set or clear the SMS phone number and message template for a restaurant (admin only).
+pub async fn set_sms_settings(
     EditorUser(user): EditorUser,
     State(app_state): State<AppState>,
     Path(id): Path<Uuid>,
-    ApiJson(body): ApiJson<SetSmsPhoneRequest>,
-) -> Result<ApiJson<ApiResponse<SmsPhoneResponse>>, ApiError> {
-    let sms_phone = body.sms_phone_number.and_then(|s| if s.trim().is_empty() { None } else { Some(s.trim().to_string()) });
-    app_state.restaurant_service.update_sms_phone(id, sms_phone.clone(), user.id).await?;
-    Ok(ApiJson(ApiResponse::success(SmsPhoneResponse { sms_phone_number: sms_phone })))
+    ApiJson(body): ApiJson<SmsSettings>,
+) -> Result<ApiJson<ApiResponse<SmsSettings>>, ApiError> {
+    let sms_phone_number = non_blank(body.sms_phone_number);
+    if let Some(phone) = &sms_phone_number {
+        if crate::features::sms::normalize_phone(phone).is_none() {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid SMS phone number '{phone}'. Use international format, e.g. +33612345678."
+            )));
+        }
+    }
+    let sms_message_template = non_blank(body.sms_message_template);
+    let updated = app_state
+        .restaurant_service
+        .update_sms_settings(id, sms_phone_number.clone(), sms_message_template.clone(), user.id)
+        .await?;
+    if !updated {
+        return Err(ApiError::NotFound);
+    }
+    Ok(ApiJson(ApiResponse::success(SmsSettings { sms_phone_number, sms_message_template })))
 }
 
 /// Create a new restaurant (requires editor user)
